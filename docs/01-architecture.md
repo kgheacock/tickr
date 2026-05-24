@@ -66,39 +66,48 @@ The S&P 500 is the upper bound on what can ever appear in the watch list, not
 the polling scope. This keeps Alpaca load proportional to actual game activity.
 
 ```
-Watch list (derived, re-evaluated each poll cycle):
+Watch list (derived, re-evaluated each cycle):
   SELECT DISTINCT ts.symbol
   FROM theme_symbol ts
   JOIN season s ON s.theme_id = ts.theme_id
   WHERE s.status = 'active'
 ```
 
+**Live pricing — WebSocket primary path (Finnhub):**
 ```
-Worker (live poll, every snapshot interval):
-  → compute watch list
-  → fetch latest bars for watch list symbols from Alpaca (SIP feed)
-  → append OHLCV bar rows to price_bar hypertable (TimescaleDB)
-  → (no Redis quote cache — consumers read TimescaleDB directly)
+Worker (persistent WebSocket connection to Finnhub):
+  → subscribe to all watch-list symbols
+  → on each trade event: upsert latest price + append bar to price_bar
+  Free tier: ≤50 symbols. Paid tier: unlimited.
+  If watch list > 50 symbols on free tier: overflow symbols fall back to REST.
 ```
 
+**Live pricing — REST fallback (watch list overflow or WebSocket gap):**
 ```
-Backfill cron (runs on season activation or periodic sweep):
+Worker (REST poll, every snapshot interval):
+  → for symbols not covered by active WebSocket subscription
+  → GET /quote for each symbol from Finnhub
+  → upsert latest price + append bar to price_bar
+  Rate limit: 60 req/min (free tier)
+```
+
+**Backfill cron (runs on season activation or periodic sweep):**
+```
   → new_to_watch = watch list symbols WHERE universe_symbol.backfilled = false
-  → for each: fetch 5 years of 5-min bars from Alpaca (SIP feed)
+  → for each: GET /stock/candle?resolution=5 for 5 years of bars
   → bulk-insert into price_bar
   → mark universe_symbol.backfilled = true (symbol becomes tradeable)
 ```
 
 **~49 M rows** for a full 500-symbol corpus (500 × 5 years × 252 trading days
 × 78 five-minute bars/day). In practice a per-theme backfill covers 7–50
-symbols (~490–4,900 API requests, under 25 minutes at the 200 req/min rate
-limit). Alpaca SIP feed provides 5-min bar history back to at least 2016
-(confirmed). See [09-open-questions T2b](09-open-questions.md) — resolved.
+symbols. Finnhub historical bar depth and per-call pagination limits need
+verification — see [09-open-questions T2b](09-open-questions.md).
 
-The watch list is designed to expand beyond active seasons (e.g. to support
-pre-season prep or user-defined watchlists) without redesign. See
+The watch list is designed to expand beyond active seasons (e.g. pre-season
+prep, user-defined watchlists) without redesign. See
 [02-data-model §2.11](02-data-model.md#211-watch_list) for the data model and
-[08-deployment](08-deployment.md#alpaca-integration) for Alpaca tier notes.
+[08-deployment](08-deployment.md#2-finnhub-integration) for tier notes.
 
 ### 2.2 Order submission (human or bot)
 
@@ -158,7 +167,7 @@ makes rankings reproducible/auditable.
 
 | Concern | Approach |
 |---|---|
-| **Rate limiting (Alpaca)** | Centralized in worker; token-bucket in Redis (200 req/min). No other component calls Alpaca. Live poll covers only the watch list; backfill cron shares the same bucket. |
+| **Rate limiting (Finnhub)** | Centralized in worker; token-bucket in Redis (60 req/min free tier; higher on paid). No other component calls Finnhub. WebSocket path does not consume REST quota; REST fallback and backfill cron share the same bucket. |
 | **Rate limiting (our API)** | Per-user + per-IP counters in Redis; stricter limits for order/algo endpoints. |
 | **Idempotency** | Order submission accepts a client idempotency key; duplicates return the original result. |
 | **Time** | All timestamps UTC, ISO-8601 at the boundary. Market hours handled in worker logic. **TODO:** define behavior outside market hours. |

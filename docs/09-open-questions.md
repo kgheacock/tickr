@@ -66,7 +66,7 @@ rationale. Each item links back to its source doc where the decision is applied.
 
 | # | Question | Decision |
 |---|---|---|
-| O1 | Alpaca tier + rate limits + data freshness | **Algo Trader ($9/mo)** — real-time WebSocket bars; verify exact limits at implementation time |
+| O1 | Market data provider + tier | **Finnhub** — switched from Alpaca. Free tier ($0/mo) provides real-time US quotes + WebSocket streaming for ≤50 symbols + 60 req/min REST. Paid tiers from ~$11.99/mo add unlimited WebSocket symbols and higher REST quota. Free tier viable for themes ≤50 symbols. |
 | O2 | Job-queue durability | **Re-enqueue on boot** using idempotency keys; no Redis persistence mode needed |
 | O3 | Backup cadence/retention + restore drill | **Daily `pg_dump` to off-VPS storage; 7-day retention; restore drill before each new season** (`pg_dump` includes TimescaleDB hypertable data) |
 
@@ -76,9 +76,17 @@ rationale. Each item links back to its source doc where the decision is applied.
 |---|---|---|---|
 | T1 | Timeseries DB choice | **TimescaleDB** (Postgres extension) | No new service on the VPS — same container, same `DATABASE_URL`, same `pg_dump` backup path. Hypertables + columnar compression handle OHLCV append workloads well. Alternatives considered: QuestDB (fast but another process + port, different query language), InfluxDB (separate service, Flux/InfluxQL instead of SQL), ClickHouse (excellent for analytics but heavy for a single-VPS game). TimescaleDB wins on operational simplicity for the single-VPS target. |
 | T2 | Live polling scope | **Watch list only** — the union of symbols across all active seasons' themes, recomputed each poll cycle | S&P 500 is the upper bound on what can ever be in the watch list, not the polling scope. Load stays proportional to game activity. Original "poll all 500" design was incorrect. |
-| T3 | Theme purpose | **Themes are a gameplay mechanic** — they constrain what a player may trade and define the watch list for their season | Themes also serve as a soft Alpaca-load lever: fewer theme symbols = smaller watch list = fewer poll calls. |
+| T3 | Theme purpose | **Themes are a gameplay mechanic** — they constrain what a player may trade and define the watch list for their season | Themes also serve as a soft data-cost lever: fewer theme symbols = smaller watch list = fewer WebSocket subscriptions and REST calls. |
 | T4 | Source of truth for all in-game pricing | **TimescaleDB `price_bar`** — fills, valuation snapshots, and bot strategy context all read from here | Single source eliminates Redis-vs-Postgres divergence. Redis retains queue, rate-limit, session, and leaderboard-cache roles; it is no longer used for quote data. |
-| T5 | Backfill strategy | **Watch-list-driven cron: 5 years of 5-min bars per symbol, triggered on season activation** | Triggers when a symbol first appears in the watch list (i.e. a season using its theme goes `active`) with `backfilled = false`. ~49 M rows total for full 500-symbol corpus; per-theme backfill is 7–50 symbols (~25 min). Matches live cadence (G4). |
+| T5 | Backfill strategy | **Watch-list-driven cron: 5 years of 5-min bars per symbol via `GET /stock/candle`, triggered on season activation** | Triggers when a symbol first appears in the watch list with `backfilled = false`. ~49 M rows total for full 500-symbol corpus. Per-symbol call count depends on Finnhub's response window size (see T2b). REST rate limit: 60 req/min (free tier). Matches live cadence (G4). |
 | T6 | No-trade-until-backfill gate | **Symbol not tradeable until `universe_symbol.backfilled = true`** | Prevents orders from filling against a symbol with incomplete price history, which would break snapshot and backtest reproducibility. |
 | T7 | `universe_symbol` population | **Admin-managed (manual upsert)** in v1; periodic check job deferred | Keeps v1 simple. S&P 500 composition changes infrequently (~30–50 changes/year); admin can act on rebalance announcements without an automated feed. |
-| T2b | Alpaca Algo Trader tier — historical bar depth and rate-limit capacity | **Resolved.** SIP feed confirmed to provide 5-min bars back to at least 2016 (10+ years). Rate limit: 200 req/min. Per-theme backfill (7–50 symbols): ~490–4,900 requests, under 25 min. Full-500 backfill: ~49,140 requests, ~4.1 hours — feasible one-time ops task. IEX feed does **not** carry historical data; SIP feed required. |
+| T2b | Finnhub historical bar depth and per-call response window | **Open** (data provider changed from Alpaca to Finnhub). Need to verify: (1) how many years of 5-min OHLCV history `GET /stock/candle?resolution=5` returns per call; (2) whether it paginates or returns all bars in one call per time range; (3) free-tier restrictions on historical depth. Prior Alpaca finding (SIP bars since 2016, confirmed) is no longer applicable. |
+
+## Finnhub integration ([08](08-deployment.md))
+
+| # | Open question | Notes |
+|---|---|---|
+| F1 | Commercial licensing — does Finnhub's free tier permit a public game? | Free tier ToS must be reviewed before launch. "Commercial use" may require a paid plan regardless of symbol count or call volume. Verify with Finnhub support or legal terms. |
+| F2 | WebSocket symbol limit per plan — at what watch-list size must we upgrade from free? | Free tier: 50 simultaneous symbols. If any season theme exceeds 50 symbols, the worker must subscribe to overflow symbols via REST polling. Confirm the paid plan cost and symbol limit at the next tier. |
+| F3 | REST rate limit under combined load — does the 60 req/min bucket cover both REST fallback poll and backfill cron simultaneously? | At 60 req/min, a 50-symbol REST fallback poll uses 50 calls/interval; backfill of a 50-symbol theme uses ~50–N calls (depends on T2b window size). Worst case: both running simultaneously at season start could saturate the free-tier bucket. Backfill should run at reduced rate or be scheduled off-peak. |

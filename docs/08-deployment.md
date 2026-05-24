@@ -48,36 +48,35 @@
 > nodes. Extracting the worker or bot-runner onto its own host later is a compose
 > change, not a redesign.
 
-## 2. Alpaca integration
+## 2. Finnhub integration
 
-The only component that talks to Alpaca is the **worker**. This centralizes
-credentials and rate limiting.
+The only component that talks to Finnhub is the **worker**. This centralizes
+credentials and rate limiting. Finnhub uses a single API key (query param or
+header); no secret required.
 
-- **Endpoints used:** market-data bars for the full S&P 500; historical bars API
-  for backfill. tickr does **not** route real orders to Alpaca — fills are
-  internal, priced from TimescaleDB ([04-game-mechanics](04-game-mechanics.md#41-fill-model-v1)).
-- **Symbol set (live poll):** the **watch list** — symbols in active seasons'
-  themes, recomputed each cycle. Not all S&P 500 indiscriminately; load is
-  proportional to game activity. See
-  [02-data-model §2.11](02-data-model.md#211-watch_list).
-- **Cadence:** one poll loop per snapshot interval (default 5 min); appends
-  each bar to the `price_bar` hypertable via SIP feed. No Redis quote cache —
-  consumers read TimescaleDB directly.
-- **Backfill:** when a season activates and new watch-list symbols have
-  `universe_symbol.backfilled = false`, the backfill cron fetches 5 years of
-  5-min bars (SIP feed) and bulk-inserts them. Rate limiting shares the same
-  token-bucket in Redis as the live poll.
-- **Rate limiting:** 200 req/min (confirmed); token-bucket in Redis; both poll
-  and backfill back off on `429`. No other component may call Alpaca.
-- **Credentials:** Alpaca API key/secret are server-side env only, never sent to
+- **Live pricing — WebSocket (primary):** the worker maintains a persistent
+  WebSocket connection, subscribing to watch-list symbols. Each trade event
+  updates the latest price and feeds `price_bar`. Free tier: ≤50 simultaneous
+  symbol subscriptions. Paid tiers: unlimited. If the watch list exceeds the
+  subscription limit, overflow symbols fall back to REST polling.
+- **Live pricing — REST fallback:** `GET /quote` per symbol at the snapshot
+  interval, for any symbol not covered by the active WebSocket subscription.
+- **Backfill:** `GET /stock/candle?resolution=5` per symbol for 5 years of
+  5-min bars, triggered when a symbol enters the watch list with
+  `universe_symbol.backfilled = false`. Bulk-inserts into `price_bar`; sets
+  `backfilled = true` on completion.
+- **Rate limiting:** 60 req/min (free tier); token-bucket in Redis; REST
+  fallback and backfill cron share the bucket. WebSocket traffic does not
+  consume REST quota. No other component may call Finnhub.
+- **Credentials:** `FINNHUB_API_KEY` is server-side env only, never sent to
   the browser.
 
-> **Alpaca tier: Algo Trader ($9/mo).** SIP feed provides 5-min bar history
-> back to at least 2016 (confirmed by live test). Rate limits are sufficient:
-> a per-theme backfill (7–50 symbols) completes in under 25 minutes; a
-> theoretical full-500 backfill takes ~4 hours — a one-time ops task.
-> Open question T2b is **resolved**. See
-> [09-open-questions](09-open-questions.md#timeseries--data-architecture).
+> **Finnhub tier: Free ($0/mo) viable for watch lists ≤50 symbols.** Real-time
+> WebSocket quotes included. REST rate limit: 60 req/min. Paid tiers start at
+> ~$11.99/mo and increase the WebSocket symbol limit and REST quota. Commercial
+> licensing terms must be confirmed before public launch — see open question F1
+> in [09-open-questions](09-open-questions.md#finnhub-integration).
+> Historical bar depth and per-call pagination limits need verification (T2b).
 
 ## 3. Configuration & secrets
 
@@ -87,7 +86,7 @@ All via environment / a secrets file mounted into containers (never committed):
 |---|---|
 | `DATABASE_URL` | api, worker, bot-runner |
 | `REDIS_URL` | api, worker, bot-runner |
-| `ALPACA_KEY` / `ALPACA_SECRET` | worker only |
+| `FINNHUB_API_KEY` | worker only |
 | `GOOGLE_OAUTH_CLIENT_ID/SECRET` | api |
 | `GITHUB_OAUTH_CLIENT_ID/SECRET` | api |
 | `SESSION_SIGNING_KEY` | api |
@@ -112,8 +111,9 @@ Run by the worker (and bot-runner):
 
 | Job | Cadence | Effect |
 |---|---|---|
-| Quote poll | every snapshot interval (5 min default) | compute watch list; fetch bars for watch-list symbols from Alpaca SIP; append to `price_bar` |
-| Backfill cron | on season activation (or periodic sweep for watch-list symbols with `backfilled = false`) | fetch 5 years of 5-min bars per new-to-watch symbol; set `universe_symbol.backfilled = true` |
+| Finnhub WebSocket | persistent (always-on while worker is running) | subscribe to watch-list symbols; on trade event append to `price_bar` |
+| REST fallback poll | every snapshot interval (5 min default) | `GET /quote` for symbols not covered by WebSocket subscription; append to `price_bar` |
+| Backfill cron | on season activation (or periodic sweep for `backfilled = false` symbols) | `GET /stock/candle` for 5 years of 5-min bars per new-to-watch symbol; set `backfilled = true` |
 | Valuation snapshot | `season.snapshotIntervalSec` | read latest prices from `price_bar`; write snapshots; recompute leaderboard; refresh Redis leaderboard cache |
 | Season transitions | on schedule / at boundaries | `scheduled→active`, `active→settling→closed` |
 | Bot/algo cycle | each snapshot interval | strategies read latest prices from `price_bar`; decide → submit orders |
@@ -151,7 +151,7 @@ Minimum viable:
 
 ## 9. Ops decisions (resolved)
 
-- **Alpaca tier:** Algo Trader ($9/mo), real-time WebSocket bars (see §2).
+- **Alpaca tier:** Algo Trader Plus ($99/mo), real-time WebSocket bars (see §2).
 - **Queue durability:** re-enqueue on boot; idempotency keys prevent double-run.
 - **Backups:** daily `pg_dump` to off-VPS storage (e.g. Hetzner Object Storage or
   B2); 7-day retention; periodic restore drill before each new season.

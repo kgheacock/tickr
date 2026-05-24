@@ -22,8 +22,10 @@ historical and live OHLCV data is stored in TimescaleDB and all in-game pricing
 The **theme** mechanic constrains *what a player can trade* within a season —
 e.g., a "Big 7" season limits players to Apple, Microsoft, etc. Theme symbols
 must be a subset of the S&P 500. Themes are a gameplay mechanic; they no longer
-bound data-ingestion scope (the worker always prices all 500 symbols regardless
-of which themes are active).
+bound data-ingestion scope. Operationally, the **watch list** (symbols in active
+seasons' themes) drives live polling and backfill — Finnhub's free WebSocket
+tier covers up to 50 symbols at once, which naturally fits small-to-medium
+themes.
 
 Players can compete using **traditional** (manual) strategies or **algorithmic**
 strategies (user-authored bots that place orders programmatically). The admin
@@ -71,7 +73,7 @@ baseline to beat.
   another) is an explicitly reserved escape hatch for hot paths if profiling
   shows we need it. See [01-architecture](01-architecture.md#language-strategy).
 - **Data:** PostgreSQL + **TimescaleDB extension** (system of record + OHLCV price-bar history; all in-game pricing served from here) + Redis (job queue, rate-limit counters, session helpers, leaderboard read cache).
-- **Market data:** Alpaca API (paper/market-data endpoints).
+- **Market data:** Finnhub API (real-time quotes + WebSocket streaming + historical bars).
 - **Hosting:** Single VPS, containerized. See [08-deployment](08-deployment.md).
 
 ## Document map
