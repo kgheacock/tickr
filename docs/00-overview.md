@@ -55,8 +55,9 @@ baseline to beat.
 | Rule | Value | Notes |
 |---|---|---|
 | Starting capital | $1,000,000 virtual | Identical for every player every season |
-| Price data scope | Full S&P 500 (~500 symbols), always | Worker polls all components; backfilled to 5 years in TimescaleDB |
-| Tradeable universe | Season theme (S&P 500 subset) | Gameplay mechanic; symbols tradeable only after backfill is complete |
+| Symbol universe | S&P 500 (~500 symbols) | Upper bound on what can ever be traded; tracked in `universe_symbol` |
+| Watch list | Symbols in active season themes | What the worker actively polls; triggers 5-year backfill on first entry |
+| Tradeable universe | Season theme (S&P 500 subset) | Gameplay mechanic; symbol tradeable only after backfill completes |
 | Season length | 1 month default (per-season field) | See [04-game-mechanics](04-game-mechanics.md) |
 | Leaderboard metric | Total equity (cash + positions) | Ranked desc; ties → see mechanics |
 | Auth | Google + GitHub SSO (OAuth 2.0 / OIDC) | No local passwords |

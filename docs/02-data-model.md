@@ -25,7 +25,8 @@ portfolio 1───∞ valuation_snapshot (a portfolio's marks over time)
 
 theme  1───∞ theme_symbol     (theme symbols must be universe_symbol members)
 
-universe_symbol               (S&P 500 membership; backfill-complete gate)
+universe_symbol               (S&P 500 registry; backfill-state gate)
+watch_list                    (derived from active seasons; drives live polling + backfill)
 ```
 
 ## 2. Core entities
@@ -374,21 +375,54 @@ CREATE TABLE algo (
 );
 ```
 
-### 2.11 `universe_symbol`
+### 2.11 `watch_list`
 
-Tracks current S&P 500 membership and backfill state. **Admin-managed**: the
-admin upserts rows when the S&P 500 composition changes (additions and
-removals). A periodic check job may assist but the feed is not automated in v1.
+The set of symbols the worker actively polls and the backfill cron monitors.
+In v1 this is **derived** from active seasons' themes — no separate table is
+required. The worker recomputes it each cycle. It is modeled here as a named
+concept so future expansion (pre-season prep, user-defined watchlists, admin
+overrides) can promote it to an explicit table without redesigning consumers.
 
-When a symbol is inserted with `backfilled = false`, the backfill cron picks it
-up, loads 5 years of 5-min bars into `price_bar`, then sets `backfilled = true`.
+```sql
+-- v1: watch list is a query, not a table
+CREATE VIEW watch_list AS
+  SELECT DISTINCT ts.symbol
+  FROM theme_symbol ts
+  JOIN season s ON s.theme_id = ts.theme_id
+  WHERE s.status = 'active';
+```
+
+A symbol enters the watch list when a season referencing its theme becomes
+`active`. The backfill cron checks:
+
+```sql
+SELECT wl.symbol
+FROM watch_list wl
+JOIN universe_symbol us ON us.symbol = wl.symbol
+WHERE us.backfilled = false;
+```
+
+A symbol leaves the watch list when no active season references its theme, but
+its `price_bar` rows and `universe_symbol.backfilled` flag are retained —
+re-entering the watch list later requires no re-backfill.
+
+### 2.12 `universe_symbol`
+
+The S&P 500 registry: the allowed set of symbols that may ever appear in a
+theme or watch list. **Admin-managed** — the admin upserts rows when the index
+composition changes (~30–50 changes/year). The feed is not automated in v1.
+
+Backfill state lives here because it is a property of the *data corpus*, not
+of any particular season. A symbol is only backfilled once; all subsequent
+seasons that include it inherit the existing history.
+
 **A symbol is not tradeable in any season until `backfilled = true`.**
 
 ```ts
 interface UniverseSymbol {
   symbol: string;          // e.g. "AAPL" — primary key
   addedAt: string;         // when it entered the S&P 500 (or the system)
-  removedAt: string | null;// null while still in index
+  removedAt: string | null;// null while still a current component
   backfilled: boolean;     // false until 5-year price_bar history is loaded
   backfilledAt: string | null;
 }
@@ -405,17 +439,18 @@ CREATE TABLE universe_symbol (
 CREATE INDEX ON universe_symbol (backfilled) WHERE backfilled = false;
 ```
 
-> **Referential integrity:** `theme_symbol.symbol` should reference
-> `universe_symbol.symbol` (optionally enforced via FK; minimally enforced via
-> application validation so theme symbols cannot name non-universe tickers).
+> **Referential integrity:** `theme_symbol.symbol` references
+> `universe_symbol.symbol` (FK enforced; prevents themes from naming non-S&P
+> 500 tickers).
 
-### 2.12 `price_bar` (TimescaleDB)
+### 2.13 `price_bar` (TimescaleDB)
 
-OHLCV bars for the full S&P 500 (~500 symbols). Written by the worker each live
-poll cycle and bulk-loaded by the backfill cron (5 years of 5-min bars per
-symbol). **This is the sole source of price truth for the game** — order fills,
-valuation snapshots, and the bot-runner strategy context all read from here.
-See [01-architecture §2.1](01-architecture.md#21-market-data-ingestion-full-sp-500).
+OHLCV bars for watch-list symbols. Written by the worker each live poll cycle
+(watch list symbols only) and bulk-loaded by the backfill cron (5 years of
+5-min bars per symbol, SIP feed). **This is the sole source of price truth for
+the game** — order fills, valuation snapshots, and the bot-runner strategy
+context all read from here.
+See [01-architecture §2.1](01-architecture.md#21-market-data-ingestion-watch-list).
 
 ```ts
 interface PriceBar {

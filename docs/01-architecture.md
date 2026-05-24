@@ -58,33 +58,46 @@ be extracted or rewritten (e.g. in Go) without rippling through the rest.
 
 ## 2. Core data flows
 
-### 2.1 Market data ingestion (full S&P 500)
+### 2.1 Market data ingestion (watch list)
 
-The worker always polls the **complete current S&P 500 (~500 symbols)**,
-regardless of which themes are active. Themes are a gameplay mechanic; they do
-not bound ingestion scope. All pricing is written to and served from TimescaleDB.
+The worker polls only the **watch list** — the set of symbols currently in
+scope. In v1 this is the union of symbols across all active seasons' themes.
+The S&P 500 is the upper bound on what can ever appear in the watch list, not
+the polling scope. This keeps Alpaca load proportional to actual game activity.
+
+```
+Watch list (derived, re-evaluated each poll cycle):
+  SELECT DISTINCT ts.symbol
+  FROM theme_symbol ts
+  JOIN season s ON s.theme_id = ts.theme_id
+  WHERE s.status = 'active'
+```
 
 ```
 Worker (live poll, every snapshot interval):
-  → fetch latest bars for all S&P 500 symbols from Alpaca
-  → upsert OHLCV bar row into price_bar hypertable (TimescaleDB)
+  → compute watch list
+  → fetch latest bars for watch list symbols from Alpaca (SIP feed)
+  → append OHLCV bar rows to price_bar hypertable (TimescaleDB)
   → (no Redis quote cache — consumers read TimescaleDB directly)
 ```
 
 ```
-Backfill cron (fires when a symbol enters universe_symbol):
-  → for new symbol: fetch 5 years of 5-min bars from Alpaca
+Backfill cron (runs on season activation or periodic sweep):
+  → new_to_watch = watch list symbols WHERE universe_symbol.backfilled = false
+  → for each: fetch 5 years of 5-min bars from Alpaca (SIP feed)
   → bulk-insert into price_bar
   → mark universe_symbol.backfilled = true (symbol becomes tradeable)
 ```
 
-**~125 M rows** to backfill at 500 symbols × 5 years × ~252 trading days ×
-78 five-minute bars/day. TimescaleDB compression keeps on-disk size manageable;
-a one-time bulk load runs against the Alpaca historical data API, respecting
-rate limits via the same token-bucket in Redis.
+**~49 M rows** for a full 500-symbol corpus (500 × 5 years × 252 trading days
+× 78 five-minute bars/day). In practice a per-theme backfill covers 7–50
+symbols (~490–4,900 API requests, under 25 minutes at the 200 req/min rate
+limit). Alpaca SIP feed provides 5-min bar history back to at least 2016
+(confirmed). See [09-open-questions T2b](09-open-questions.md) — resolved.
 
-See [02-data-model §2.11](02-data-model.md#211-universe_symbol) for the
-`universe_symbol` table, and
+The watch list is designed to expand beyond active seasons (e.g. to support
+pre-season prep or user-defined watchlists) without redesign. See
+[02-data-model §2.11](02-data-model.md#211-watch_list) for the data model and
 [08-deployment](08-deployment.md#alpaca-integration) for Alpaca tier notes.
 
 ### 2.2 Order submission (human or bot)
@@ -145,7 +158,7 @@ makes rankings reproducible/auditable.
 
 | Concern | Approach |
 |---|---|
-| **Rate limiting (Alpaca)** | Centralized in worker; token-bucket in Redis. No other component calls Alpaca. Worker polls all ~500 S&P 500 symbols; backfill cron uses the same bucket. |
+| **Rate limiting (Alpaca)** | Centralized in worker; token-bucket in Redis (200 req/min). No other component calls Alpaca. Live poll covers only the watch list; backfill cron shares the same bucket. |
 | **Rate limiting (our API)** | Per-user + per-IP counters in Redis; stricter limits for order/algo endpoints. |
 | **Idempotency** | Order submission accepts a client idempotency key; duplicates return the original result. |
 | **Time** | All timestamps UTC, ISO-8601 at the boundary. Market hours handled in worker logic. **TODO:** define behavior outside market hours. |

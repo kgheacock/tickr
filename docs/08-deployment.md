@@ -56,26 +56,28 @@ credentials and rate limiting.
 - **Endpoints used:** market-data bars for the full S&P 500; historical bars API
   for backfill. tickr does **not** route real orders to Alpaca — fills are
   internal, priced from TimescaleDB ([04-game-mechanics](04-game-mechanics.md#41-fill-model-v1)).
-- **Symbol set:** all current S&P 500 components (~500 symbols), always. Theme
-  membership does not affect which symbols the worker polls.
-- **Cadence:** one poll loop on the snapshot interval (default 5 min); appends
-  each bar to the `price_bar` hypertable. No Redis quote cache — consumers read
-  TimescaleDB directly.
-- **Backfill:** when a symbol is added to `universe_symbol`, a cron job fetches
-  5 years of 5-min bars via the Alpaca historical data API and bulk-inserts them.
-  Rate limiting for backfill uses the same token-bucket in Redis as the live
-  poll; they share the Alpaca quota.
-- **Rate limiting:** token-bucket in Redis; both the live poll and backfill cron
-  back off on `429`. No other component may call Alpaca.
+- **Symbol set (live poll):** the **watch list** — symbols in active seasons'
+  themes, recomputed each cycle. Not all S&P 500 indiscriminately; load is
+  proportional to game activity. See
+  [02-data-model §2.11](02-data-model.md#211-watch_list).
+- **Cadence:** one poll loop per snapshot interval (default 5 min); appends
+  each bar to the `price_bar` hypertable via SIP feed. No Redis quote cache —
+  consumers read TimescaleDB directly.
+- **Backfill:** when a season activates and new watch-list symbols have
+  `universe_symbol.backfilled = false`, the backfill cron fetches 5 years of
+  5-min bars (SIP feed) and bulk-inserts them. Rate limiting shares the same
+  token-bucket in Redis as the live poll.
+- **Rate limiting:** 200 req/min (confirmed); token-bucket in Redis; both poll
+  and backfill back off on `429`. No other component may call Alpaca.
 - **Credentials:** Alpaca API key/secret are server-side env only, never sent to
   the browser.
 
-> **Alpaca tier: Algo Trader ($9/mo).** Provides real-time WebSocket bar data.
-> Historical bar depth and rate limits for the 500-symbol backfill load must be
-> verified against current Alpaca docs at implementation time — see open question
-> T2b in [09-open-questions](09-open-questions.md#timeseries--backtesting). The
-> token-bucket in Redis absorbs any quota changes without touching application
-> logic.
+> **Alpaca tier: Algo Trader ($9/mo).** SIP feed provides 5-min bar history
+> back to at least 2016 (confirmed by live test). Rate limits are sufficient:
+> a per-theme backfill (7–50 symbols) completes in under 25 minutes; a
+> theoretical full-500 backfill takes ~4 hours — a one-time ops task.
+> Open question T2b is **resolved**. See
+> [09-open-questions](09-open-questions.md#timeseries--data-architecture).
 
 ## 3. Configuration & secrets
 
@@ -110,8 +112,8 @@ Run by the worker (and bot-runner):
 
 | Job | Cadence | Effect |
 |---|---|---|
-| Quote poll | every snapshot interval (5 min default) | fetch all S&P 500 bars from Alpaca; append to `price_bar` hypertable |
-| Backfill cron | on `universe_symbol` insert (or periodic sweep for `backfilled = false`) | fetch 5 years of 5-min bars per new symbol; set `backfilled = true` when done |
+| Quote poll | every snapshot interval (5 min default) | compute watch list; fetch bars for watch-list symbols from Alpaca SIP; append to `price_bar` |
+| Backfill cron | on season activation (or periodic sweep for watch-list symbols with `backfilled = false`) | fetch 5 years of 5-min bars per new-to-watch symbol; set `universe_symbol.backfilled = true` |
 | Valuation snapshot | `season.snapshotIntervalSec` | read latest prices from `price_bar`; write snapshots; recompute leaderboard; refresh Redis leaderboard cache |
 | Season transitions | on schedule / at boundaries | `scheduled→active`, `active→settling→closed` |
 | Bot/algo cycle | each snapshot interval | strategies read latest prices from `price_bar`; decide → submit orders |
