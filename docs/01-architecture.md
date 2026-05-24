@@ -21,10 +21,10 @@ be extracted or rewritten (e.g. in Go) without rippling through the rest.
     │        │                          │                                  │
     │        └─────────────┬────────────┴──────────────┬───────────────────┘
     │                      │                            │
-┌───▼─────┐         ┌──────▼──────┐              ┌──────▼───────┐
-│Postgres │         │   Redis     │              │ Alpaca API   │
-│(SoR)    │         │(cache/queue)│              │ (market data)│
-└─────────┘         └─────────────┘              └──────────────┘
+┌───▼──────────────────┐  ┌──────▼──────┐  ┌──────▼───────┐
+│Postgres + TimescaleDB│  │   Redis     │  │ Alpaca API   │
+│(SoR + OHLCV history) │  │(cache/queue)│  │ (market data)│
+└──────────────────────┘  └─────────────┘  └──────────────┘
 ```
 
 ### Responsibilities
@@ -43,10 +43,14 @@ be extracted or rewritten (e.g. in Go) without rippling through the rest.
   schedule, translating their decisions into orders through the same internal
   order pathway humans use. Isolated so a misbehaving algo cannot take down the
   API. See [07-bots-and-algos](07-bots-and-algos.md).
-- **Postgres** — System of record for users, seasons, portfolios, orders, fills,
-  snapshots, leaderboard rows.
-- **Redis** — Quote cache, job queue, rate-limit counters, ephemeral session
-  helpers, leaderboard read cache.
+- **Postgres + TimescaleDB** — System of record for all game entities (users,
+  seasons, portfolios, orders, fills, snapshots, leaderboard rows) plus the
+  OHLCV `price_bar` hypertable for historical price data. TimescaleDB runs as
+  a Postgres extension (same service, same `DATABASE_URL`); no separate process.
+  See [02-data-model §2.11](02-data-model.md#211-price_bar-timescaledb).
+- **Redis** — Job queue, rate-limit counters (Alpaca + API), ephemeral session
+  helpers, leaderboard read cache. **Not** used for quote/price data; TimescaleDB
+  is authoritative for all pricing.
 
 > **Deployment note:** API service, worker, and bot runner *may* run as three
 > processes of the same codebase initially (one binary/image, role selected by
@@ -54,23 +58,34 @@ be extracted or rewritten (e.g. in Go) without rippling through the rest.
 
 ## 2. Core data flows
 
-### 2.1 Market data ingestion (bounded by theme)
+### 2.1 Market data ingestion (full S&P 500)
 
-The reason themes exist is to keep this flow cheap. Only symbols belonging to
-**active seasons' themes** are polled.
+The worker always polls the **complete current S&P 500 (~500 symbols)**,
+regardless of which themes are active. Themes are a gameplay mechanic; they do
+not bound ingestion scope. All pricing is written to and served from TimescaleDB.
 
 ```
-Worker (scheduler)
-  → collect DISTINCT symbols across all ACTIVE seasons' themes
-  → batch-request quotes from Alpaca (respecting rate limits)
-  → write {symbol → price, asOf} into Redis quote cache (short TTL)
-  → persist periodic price points to Postgres for snapshot/history
+Worker (live poll, every snapshot interval):
+  → fetch latest bars for all S&P 500 symbols from Alpaca
+  → upsert OHLCV bar row into price_bar hypertable (TimescaleDB)
+  → (no Redis quote cache — consumers read TimescaleDB directly)
 ```
 
-Because the union of active themes is small (tens, not thousands, of symbols),
-one polling cadence covers all seasons. See
-[04-game-mechanics](04-game-mechanics.md#themes) and
-[08-deployment](08-deployment.md#alpaca-integration).
+```
+Backfill cron (fires when a symbol enters universe_symbol):
+  → for new symbol: fetch 5 years of 5-min bars from Alpaca
+  → bulk-insert into price_bar
+  → mark universe_symbol.backfilled = true (symbol becomes tradeable)
+```
+
+**~125 M rows** to backfill at 500 symbols × 5 years × ~252 trading days ×
+78 five-minute bars/day. TimescaleDB compression keeps on-disk size manageable;
+a one-time bulk load runs against the Alpaca historical data API, respecting
+rate limits via the same token-bucket in Redis.
+
+See [02-data-model §2.11](02-data-model.md#211-universe_symbol) for the
+`universe_symbol` table, and
+[08-deployment](08-deployment.md#alpaca-integration) for Alpaca tier notes.
 
 ### 2.2 Order submission (human or bot)
 
@@ -84,17 +99,20 @@ Client / Bot runner
   → emit event (WS push + audit log)
 ```
 
-**Fill model (TODO to finalize, see open questions):** the default proposal is
-*immediate fill at last cached price* for simplicity and fairness within a
-snapshot window. Limit orders, slippage, and partial fills are deferred.
+**Fill model:** immediate fill at the `close` price of the most recent
+`price_bar` row for the symbol, queried from TimescaleDB. Limit orders,
+slippage, and partial fills are deferred.
 
 ### 2.3 Valuation + leaderboard
 
 ```
 Worker (snapshot cadence, e.g. every N minutes / EOD)
   → for each active season:
+      prices = SELECT symbol, close FROM price_bar
+               WHERE symbol IN (season theme) AND ts = (latest ts per symbol)
+               -- served from TimescaleDB
       for each portfolio:
-        equity = cash + Σ(position.qty × latest_price(symbol))
+        equity = cash + Σ(position.qty × prices[symbol])
       write valuation_snapshot rows
       rank portfolios by equity → write leaderboard rows
   → invalidate/refresh Redis leaderboard cache
@@ -127,7 +145,7 @@ makes rankings reproducible/auditable.
 
 | Concern | Approach |
 |---|---|
-| **Rate limiting (Alpaca)** | Centralized in worker; token-bucket in Redis. No other component calls Alpaca for quotes. |
+| **Rate limiting (Alpaca)** | Centralized in worker; token-bucket in Redis. No other component calls Alpaca. Worker polls all ~500 S&P 500 symbols; backfill cron uses the same bucket. |
 | **Rate limiting (our API)** | Per-user + per-IP counters in Redis; stricter limits for order/algo endpoints. |
 | **Idempotency** | Order submission accepts a client idempotency key; duplicates return the original result. |
 | **Time** | All timestamps UTC, ISO-8601 at the boundary. Market hours handled in worker logic. **TODO:** define behavior outside market hours. |

@@ -23,7 +23,9 @@ portfolio 1───∞ order
 order     1───∞ fill
 portfolio 1───∞ valuation_snapshot (a portfolio's marks over time)
 
-theme  1───∞ theme_symbol
+theme  1───∞ theme_symbol     (theme symbols must be universe_symbol members)
+
+universe_symbol               (S&P 500 membership; backfill-complete gate)
 ```
 
 ## 2. Core entities
@@ -372,6 +374,86 @@ CREATE TABLE algo (
 );
 ```
 
+### 2.11 `universe_symbol`
+
+Tracks current S&P 500 membership and backfill state. **Admin-managed**: the
+admin upserts rows when the S&P 500 composition changes (additions and
+removals). A periodic check job may assist but the feed is not automated in v1.
+
+When a symbol is inserted with `backfilled = false`, the backfill cron picks it
+up, loads 5 years of 5-min bars into `price_bar`, then sets `backfilled = true`.
+**A symbol is not tradeable in any season until `backfilled = true`.**
+
+```ts
+interface UniverseSymbol {
+  symbol: string;          // e.g. "AAPL" — primary key
+  addedAt: string;         // when it entered the S&P 500 (or the system)
+  removedAt: string | null;// null while still in index
+  backfilled: boolean;     // false until 5-year price_bar history is loaded
+  backfilledAt: string | null;
+}
+```
+
+```sql
+CREATE TABLE universe_symbol (
+  symbol        TEXT        PRIMARY KEY,
+  added_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  removed_at    TIMESTAMPTZ,
+  backfilled    BOOLEAN     NOT NULL DEFAULT false,
+  backfilled_at TIMESTAMPTZ
+);
+CREATE INDEX ON universe_symbol (backfilled) WHERE backfilled = false;
+```
+
+> **Referential integrity:** `theme_symbol.symbol` should reference
+> `universe_symbol.symbol` (optionally enforced via FK; minimally enforced via
+> application validation so theme symbols cannot name non-universe tickers).
+
+### 2.12 `price_bar` (TimescaleDB)
+
+OHLCV bars for the full S&P 500 (~500 symbols). Written by the worker each live
+poll cycle and bulk-loaded by the backfill cron (5 years of 5-min bars per
+symbol). **This is the sole source of price truth for the game** — order fills,
+valuation snapshots, and the bot-runner strategy context all read from here.
+See [01-architecture §2.1](01-architecture.md#21-market-data-ingestion-full-sp-500).
+
+```ts
+interface PriceBar {
+  symbol: string;     // e.g. "AAPL"
+  ts: string;         // ISO-8601 UTC, bar open time (aligned to poll cadence)
+  open: number;       // cents
+  high: number;       // cents
+  low: number;        // cents
+  close: number;      // cents
+  volume: number | null;  // shares; null if provider omits
+}
+```
+
+```sql
+-- Requires TimescaleDB extension enabled on the database.
+CREATE TABLE price_bar (
+  symbol TEXT        NOT NULL,
+  ts     TIMESTAMPTZ NOT NULL,
+  open   BIGINT      NOT NULL,   -- cents
+  high   BIGINT      NOT NULL,
+  low    BIGINT      NOT NULL,
+  close  BIGINT      NOT NULL,
+  volume NUMERIC(20,8),
+  PRIMARY KEY (symbol, ts)
+);
+SELECT create_hypertable('price_bar', 'ts');
+-- Optional: enable compression for bars older than 7 days
+ALTER TABLE price_bar SET (
+  timescaledb.compress,
+  timescaledb.compress_segmentby = 'symbol'
+);
+SELECT add_compression_policy('price_bar', INTERVAL '7 days');
+```
+
+> **Note:** TimescaleDB partitions the hypertable by time automatically.
+> Queries of the form `WHERE symbol = $1 AND ts BETWEEN $2 AND $3` are the
+> expected hot path for both leaderboard history and eventual backtesting replay.
+
 ## 3. Derived vs. stored
 
 | Data | Stored? | Why |
@@ -380,14 +462,14 @@ CREATE TABLE algo (
 | `portfolio.cash` | Materialized | Authoritative running balance, updated per fill in a txn |
 | `valuation_snapshot` | Stored | Immutable history; basis for ranking |
 | `leaderboard_row` | Stored + cached | Reproducible from snapshots; cached for read load |
-| Live quote | **Not** in Postgres | Redis cache only; periodic price points persisted for history |
+| OHLCV bar history + latest price | `price_bar` hypertable (TimescaleDB) | Appended each live poll cycle; backfilled 5y at symbol onboarding; compressed after 7 days; sole source of pricing for fills, snapshots, and bots |
 
 ## 4. Invariants
 
 1. A portfolio's `cash` and `position` rows are only mutated inside the same DB
    transaction that records the `fill`.
 2. `cash >= 0` always (no margin in v1).
-3. An order's `symbol` must be in its season's theme at submission time.
+3. An order's `symbol` must be in its season's theme at submission time, **and** `universe_symbol.backfilled = true` for that symbol.
 4. Snapshots and fills are append-only; corrections happen via new rows, never
    in-place edits.
 5. Leaderboard ranking for a `taken_at` is a pure function of the snapshots at

@@ -43,7 +43,7 @@ interface StrategyContext {
   cash: number;                         // cents
   positions: ReadonlyArray<{ symbol: string; quantity: number; avgCost: number }>;
   themeSymbols: ReadonlyArray<string>;
-  prices: Readonly<Record<string, number | null>>;  // cents; cached
+  prices: Readonly<Record<string, number | null>>;  // cents; latest close from price_bar (TimescaleDB)
   clock: { now: string; marketOpen: boolean };
 }
 

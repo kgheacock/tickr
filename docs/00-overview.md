@@ -13,10 +13,17 @@ constrained universe of symbols defined by the season's **theme** (e.g. *Top 50*
 *Big 7*, *Energy*).
 
 Trades are executed against **paper-trading** market data sourced from the
-[Alpaca API](https://alpaca.markets/). No real money is ever involved. The theme
-mechanic exists primarily to **bound the set of symbols we must price**, which
-keeps Alpaca API load predictable and gives every player a fair, comparable
-experience within a season.
+[Alpaca API](https://alpaca.markets/). No real money is ever involved.
+
+**Price ingestion scope is always the full S&P 500 (~500 symbols).** All
+historical and live OHLCV data is stored in TimescaleDB and all in-game pricing
+(fills, valuations, leaderboard) is served from it.
+
+The **theme** mechanic constrains *what a player can trade* within a season —
+e.g., a "Big 7" season limits players to Apple, Microsoft, etc. Theme symbols
+must be a subset of the S&P 500. Themes are a gameplay mechanic; they no longer
+bound data-ingestion scope (the worker always prices all 500 symbols regardless
+of which themes are active).
 
 Players can compete using **traditional** (manual) strategies or **algorithmic**
 strategies (user-authored bots that place orders programmatically). The admin
@@ -39,13 +46,17 @@ baseline to beat.
 - Horizontal multi-node scaling. Single VPS is the target; the design should
   *not preclude* scaling later, but we will not build for it up front.
 - A mobile native app. The web frontend is responsive; native is out of scope.
+- A backtesting sandbox (future). The timeseries data layer is provisioned from
+  day one so replay infrastructure has a foundation when the feature is built.
+  See [09-open-questions](09-open-questions.md#timeseries--backtesting).
 
 ## Headline product rules
 
 | Rule | Value | Notes |
 |---|---|---|
 | Starting capital | $1,000,000 virtual | Identical for every player every season |
-| Tradeable universe | Season theme | Bounds Alpaca symbol set |
+| Price data scope | Full S&P 500 (~500 symbols), always | Worker polls all components; backfilled to 5 years in TimescaleDB |
+| Tradeable universe | Season theme (S&P 500 subset) | Gameplay mechanic; symbols tradeable only after backfill is complete |
 | Season length | 1 month default (per-season field) | See [04-game-mechanics](04-game-mechanics.md) |
 | Leaderboard metric | Total equity (cash + positions) | Ranked desc; ties → see mechanics |
 | Auth | Google + GitHub SSO (OAuth 2.0 / OIDC) | No local passwords |
@@ -58,7 +69,7 @@ baseline to beat.
 - **Backend:** TypeScript (Node.js) by default. A compiled language (**Go**, or
   another) is an explicitly reserved escape hatch for hot paths if profiling
   shows we need it. See [01-architecture](01-architecture.md#language-strategy).
-- **Data:** PostgreSQL (system of record) + Redis (cache, queues, rate limiting).
+- **Data:** PostgreSQL + **TimescaleDB extension** (system of record + OHLCV price-bar history; all in-game pricing served from here) + Redis (job queue, rate-limit counters, session helpers, leaderboard read cache).
 - **Market data:** Alpaca API (paper/market-data endpoints).
 - **Hosting:** Single VPS, containerized. See [08-deployment](08-deployment.md).
 
