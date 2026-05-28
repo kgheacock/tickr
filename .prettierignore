@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+package-lock.json
+
+# pre-existing content not owned by this PR
+docs/
+TODO/
+schema/

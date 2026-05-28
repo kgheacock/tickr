@@ -51,11 +51,15 @@ clone the repo, run one command, and have api + worker + bot + Postgres
 4. **Caddyfile.** Local dev uses `tickr.local` with Caddy's internal CA
    (`tls internal`). Add `tickr.local` → `127.0.0.1` to `/etc/hosts` (note
    in README).
-5. **Env wiring.** `.env.example` lists every var consumed by the api:
-   `DATABASE_URL`, `REDIS_URL`, `FINNHUB_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID`,
-   `GOOGLE_OAUTH_CLIENT_SECRET`, `GITHUB_OAUTH_CLIENT_ID`,
-   `GITHUB_OAUTH_CLIENT_SECRET`, `SESSION_SIGNING_KEY`, `ADMIN_BOOTSTRAP`,
-   `PUBLIC_BASE_URL`, `ROLE`, `LOG_LEVEL`. Compose loads it via `env_file`.
+5. **Env wiring.** `.env.example` lists every var consumed by the api/worker:
+   `DATABASE_URL`, `REDIS_URL`, `FINNHUB_API_KEY`, `FINNHUB_WEBHOOK_SECRET`,
+   `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
+   `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`,
+   `SESSION_SIGNING_KEY`, `ADMIN_BOOTSTRAP`, `PUBLIC_BASE_URL`, `LOG_LEVEL`.
+   `ROLE` is set per-service in compose, not in `.env`. Compose loads `.env`
+   via `env_file:` (path relative to the compose file).
+   `FINNHUB_WEBHOOK_SECRET` is the secret Finnhub uses to sign webhook
+   payloads — used by item 05 to verify inbound webhooks.
 6. **One-shot dev script.** `scripts/dev-up.sh`:
    ```bash
    set -euo pipefail

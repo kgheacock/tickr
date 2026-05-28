@@ -1,0 +1,21 @@
+{
+	# Local dev: use Caddy's internal CA. Trust the root once with
+	#   caddy trust   (or accept the self-signed cert per browser).
+	local_certs
+}
+
+tickr.local {
+	tls internal
+
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	handle /ws/* {
+		reverse_proxy api:3000
+	}
+
+	handle {
+		respond "tickr — web not built yet (run item 11 frontend scaffold)" 200
+	}
+}
