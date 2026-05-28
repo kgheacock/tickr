@@ -2,6 +2,14 @@
 
 > Structure and contracts only — **not implemented**. TypeScript is the default
 > for the entire client; there is no plain-JS path.
+>
+> **Phases:** this doc describes the **v2+ target**. In v1 the SPA ships only
+> `/`, `/login`, `/portfolio`, and a perpetual `/leaderboard`. The
+> season-scoped routes below (`/seasons/*`, per-season leaderboard) arrive
+> in v2 when seasons + themes land; the `/algos` route arrives in v3 with
+> user-authored strategies. The `WsTopic` shape is similarly v2+ — see
+> [03-api §7](03-api.md#7-websocket) for the v1 topic set and
+> [09-open-questions A3](09-open-questions.md) for the v1→v2 transition.
 
 ## 1. Stack
 
@@ -12,7 +20,7 @@
 | Build/dev | Vite (recommended) | Fast HMR; simple static output for the VPS |
 | Routing | Client-side router | e.g. React Router; routes in §4 |
 | Data fetching | Typed fetch + a query/cache layer | e.g. TanStack Query; types from §2 |
-| Realtime | Single WebSocket client | Subscriptions per [03-api](03-api.md#9-websocket) |
+| Realtime | Single WebSocket client | Subscriptions per [03-api](03-api.md#7-websocket) |
 | State | Server-state via query cache; minimal local UI state | Avoid a heavy global store early |
 | Styling | **CSS Modules** | Scoped by default, no runtime, matches workspace convention |
 
@@ -37,7 +45,7 @@ them on both sides.
 ```
 
 > If/when a component is rewritten in Go (see
-> [01-architecture](01-architecture.md#language-strategy)), the shared types stop
+> [01-architecture](01-architecture.md#3-language-strategy)), the shared types stop
 > being the source of truth for *that* boundary and the language-neutral contract
 > format (OpenAPI/Protobuf — TODO) takes over. The web app keeps generated TS
 > types either way.
@@ -97,7 +105,7 @@ them on both sides.
 ## 7. Realtime client contract
 
 The WS client is typed against `WsClientMessage` / `WsServerMessage`
-([03-api](03-api.md#9-websocket)):
+([03-api](03-api.md#7-websocket)):
 
 ```ts
 interface TickrSocket {
@@ -118,7 +126,7 @@ periodic REST refetch if the socket is unavailable.
 - The client is read-mostly; the leaderboard and portfolio views are the hot
   screens. Lean on the cached server reads (snapshots), not live recompute.
 - The "use a compiled language if slow" decision is a **backend** concern
-  ([01-architecture](01-architecture.md#language-strategy)); it does not change
+  ([01-architecture](01-architecture.md#3-language-strategy)); it does not change
   the React app, which talks to the same API contract regardless.
 
 ## 9. Frontend decisions (resolved)

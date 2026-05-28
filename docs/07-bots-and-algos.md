@@ -1,5 +1,14 @@
 # 07 — Bots & Algorithmic Strategies
 
+> **Phases:** this doc describes the **v2+ design**. In v1 there is exactly
+> one built-in bot — `index`, a buy-and-hold of an equally-weighted S&P 500
+> basket, seeded once at system bootstrap and never trading again (see
+> [04-game-mechanics §1.2](04-game-mechanics.md#12-the-index-bot)). The
+> strategy registry below (§2) and the bot-runner cycle (§1) are **v2+**.
+> User-authored algos (§1.2-on referenced as "user algos") are **v3+**.
+> The order-API single-source-of-truth validation (§1.1) applies in all
+> phases.
+
 Two kinds of non-human players share one mechanism:
 
 - **House bots** — admin-owned, used to seed and populate leaderboards (the
@@ -7,7 +16,7 @@ Two kinds of non-human players share one mechanism:
 - **User algos** — player-authored algorithmic strategies competing for real on
   the leaderboard.
 
-Both are `algo` rows ([02-data-model](02-data-model.md#210-algo)) driving a
+Both are `algo` rows ([02-data-model §2.8](02-data-model.md#28-algo)) driving a
 `portfolio`, and both place orders through the **same internal order pathway**
 humans use — so they're subject to identical rules (theme, capital, buying power,
 validation). No special-casing in the trade engine.
@@ -16,7 +25,7 @@ validation). No special-casing in the trade engine.
 
 Strategies run in the **bot runner** ([01-architecture](01-architecture.md)), on a
 schedule aligned to the quote/snapshot cadence — *not* on every tick. This keeps
-Alpaca load bounded and ranking fair.
+Finnhub load bounded and ranking fair.
 
 ```
 Bot runner (each cycle, e.g. each snapshot interval):
@@ -43,7 +52,7 @@ interface StrategyContext {
   cash: number;                         // cents
   positions: ReadonlyArray<{ symbol: string; quantity: number; avgCost: number }>;
   themeSymbols: ReadonlyArray<string>;
-  prices: Readonly<Record<string, number | null>>;  // cents; cached
+  prices: Readonly<Record<string, number | null>>;  // cents; latest close from price_bar (TimescaleDB)
   clock: { now: string; marketOpen: boolean };
 }
 
@@ -94,7 +103,7 @@ These let the admin seed a varied, beatable-but-not-trivial field.
 
 ## 3. Seeding a season (admin)
 
-Via `POST /admin/seasons/:id/bots` ([03-api](03-api.md#8-admin)):
+Via `POST /admin/seasons/:id/bots` (v2 endpoint, see [03-api §9](03-api.md#9-v2--v3-endpoint-outlook)):
 
 ```ts
 // Example payload: populate a fresh season's leaderboard
@@ -120,9 +129,9 @@ on the leaderboard flagged `isBot: true`.
 - Bots and user algos act **once per cycle** at the same cadence; no algo gets
   intra-cycle advantage.
 - Fills use the same cached price as humans for that window
-  ([04-game-mechanics](04-game-mechanics.md#41-fill-model-v1)) — no latency edge.
+  ([04-game-mechanics §2.1](04-game-mechanics.md#21-fill-model)) — no latency edge.
 - Per-algo order rate is bounded by the cycle cadence plus the API rate limits
-  ([03-api](03-api.md#10-rate-limiting)).
+  ([03-api §8](03-api.md#8-rate-limiting)).
 
 ## 5. Safety & limits
 
@@ -130,7 +139,7 @@ on the leaderboard flagged `isBot: true`.
 |---|---|
 | Untrusted code | v1 forbids it; only registered strategy types run |
 | Runaway trading | Cycle cadence + per-type risk caps + API rate limits |
-| Alpaca load | Bots read the shared quote cache; they never call Alpaca |
+| Finnhub load | Bots read the shared quote cache; they never call Finnhub |
 | Determinism/audit | Seeded RNG for stochastic strategies; orders/fills are immutable |
 | Bad config | `validateConfig` rejects before an algo is enabled |
 
