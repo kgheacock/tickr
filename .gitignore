@@ -1,2 +1,27 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# env
 .env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# editors / OS
+.DS_Store
+.vscode/
+.idea/
+
+# claude
 .claude/
+
+# coverage
+coverage/
