@@ -1,9 +1,12 @@
 # 03 — API
 
-> Interface definitions only — **not implemented**. The public API is REST over
-> HTTPS with JSON bodies; live updates use WebSocket. Types reuse the entities in
+> This doc describes **v1 endpoints in the body** and previews v2+/v3+
+> endpoints in §10. Interface definitions only — **not implemented**. The
+> public API is REST over HTTPS with JSON bodies; live updates use a single
+> authenticated WebSocket. Types reuse the entities in
 > [02-data-model](02-data-model.md). The contract source-of-truth format
-> (OpenAPI vs Protobuf) is a **TODO** — see [09-open-questions](09-open-questions.md).
+> is **OpenAPI + JSON** for the public API and the
+> `@tickr/shared-types` package for internal types.
 
 ## 1. Conventions
 
@@ -16,15 +19,16 @@
 ```ts
 interface ApiError {
   error: {
-    code: string;        // machine-readable, e.g. "SYMBOL_NOT_IN_THEME"
+    code: string;        // machine-readable, e.g. "SYMBOL_NOT_TRADEABLE"
     message: string;     // human-readable
-    details?: unknown;   // optional structured context
+    details?: unknown;
   };
 }
 ```
 
-- Standard codes: `UNAUTHENTICATED` (401), `FORBIDDEN` (403), `NOT_FOUND` (404),
-  `VALIDATION` (422), `RATE_LIMITED` (429), `CONFLICT` (409), `INTERNAL` (500).
+- Standard codes: `UNAUTHENTICATED` (401), `FORBIDDEN` (403),
+  `NOT_FOUND` (404), `VALIDATION` (422), `RATE_LIMITED` (429),
+  `CONFLICT` (409), `INTERNAL` (500).
 - List endpoints paginate with `?limit=&cursor=` and return:
 
 ```ts
@@ -42,77 +46,27 @@ interface Page<T> {
 | GET | `/auth/:provider/callback` | public | OAuth redirect target; sets session |
 | POST | `/auth/logout` | player | Clear session |
 | POST | `/auth/link/:provider/start` | player | Link an additional SSO identity |
-| GET | `/me` | player | Current user + linked identities |
+| GET | `/me` | player | Current user + linked identities + my portfolio id |
 
 ```ts
 interface MeResponse {
   user: User;
   identities: Array<Pick<Identity, "provider" | "emailAtLink">>;
+  portfolioId: string;    // v1: each user has exactly one portfolio
 }
 ```
 
 Full flow detail in [05-auth](05-auth.md).
 
-## 3. Themes
+## 3. Portfolio & trading
+
+In v1 each user has exactly one portfolio, auto-created on first sign-in
+with `cash = 100_000_000` (cents). All routes scoped to a portfolio the
+caller owns (or admin).
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/themes` | public | List active themes |
-| GET | `/themes/:key` | public | Theme + its symbol list |
-
-```ts
-interface ThemeDetail {
-  theme: Theme;
-  symbols: string[];
-}
-```
-
-## 4. Seasons
-
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| GET | `/seasons` | public | List seasons (filter `?status=`) |
-| GET | `/seasons/:id` | public | Season detail |
-| POST | `/seasons/:id/join` | player | Create caller's portfolio in the season |
-| GET | `/seasons/:id/leaderboard` | public | Ranked rows from latest snapshot |
-
-```ts
-interface SeasonDetail {
-  season: Season;
-  theme: Pick<Theme, "key" | "name">;
-  playerCount: number;
-  joined: boolean;            // is the caller already in?
-}
-
-interface JoinSeasonResponse {
-  portfolio: Portfolio;
-}
-
-interface LeaderboardResponse {
-  takenAt: string;            // snapshot the ranking reflects
-  rows: Array<{
-    rank: number;
-    portfolioId: string;
-    displayName: string;      // user or bot name
-    isBot: boolean;
-    equity: number;
-    returnPct: number;
-  }>;
-  page: Page<never>["nextCursor"]; // cursor for paging large boards
-}
-```
-
-> Join is rejected if season status is not `scheduled`/`active`, or if a join
-> policy (one portfolio per user) is violated. See
-> [04-game-mechanics](04-game-mechanics.md).
-
-## 5. Portfolio & trading
-
-All scoped to a portfolio the caller owns (or admin).
-
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| GET | `/portfolios/:id` | player | Cash, positions, current equity (cached price) |
+| GET | `/portfolios/:id` | player | Cash, positions, current best-effort equity |
 | GET | `/portfolios/:id/orders` | player | Order history (paginated) |
 | GET | `/portfolios/:id/history` | player | Equity over time (from snapshots) |
 | POST | `/portfolios/:id/orders` | player | Submit an order |
@@ -125,19 +79,20 @@ interface PortfolioView {
     symbol: string;
     quantity: number;
     avgCost: number;
-    lastPrice: number | null;   // from quote cache; null if unknown
+    lastPrice: number | null;   // latest price_bar.close; null if unbackfilled
     marketValue: number | null;
   }>;
   equity: number | null;        // cash + Σ marketValue (best-effort live)
   buyingPower: number;          // == cash in v1 (no margin)
+  lastSnapshotAt: string | null;// when the official ranking last refreshed
 }
 
 interface CreateOrderRequest {
   symbol: string;
   side: OrderSide;              // "buy" | "sell"
   type: OrderType;              // "market" (only type in v1)
-  quantity: number;            // > 0; fractional allowed
-  idempotencyKey: string;       // client-generated; dedupes retries
+  quantity: number;             // > 0; fractional allowed
+  idempotencyKey: string;       // client-generated
 }
 
 interface CreateOrderResponse {
@@ -146,83 +101,95 @@ interface CreateOrderResponse {
 }
 ```
 
-**Validation performed server-side:** season active; symbol ∈ theme; `quantity > 0`;
-buying power sufficient for buys; position sufficient for sells (no shorting);
-idempotency-key dedupe. Failures return `422` with a specific `code`.
+**Validation performed server-side:** caller owns the portfolio; symbol
+exists in `universe_symbol` with `backfilled = true`; latest `price_bar`
+for the symbol is not stale (see
+[04-game-mechanics §4](04-game-mechanics.md#4-off-hours-holidays-missing-prices));
+`quantity > 0`; buying power sufficient for buys; position sufficient for
+sells (no shorting); idempotency-key dedupe. Failures return `422` with a
+specific `code` (e.g. `SYMBOL_NOT_TRADEABLE`, `STALE_PRICE`,
+`INSUFFICIENT_FUNDS`, `INSUFFICIENT_POSITION`).
 
-## 6. Algos / bots (player-facing)
+> **Fill price (v1):** the most recent `price_bar.close` for the symbol.
+> Because v1 only refreshes prices once daily, intraday orders fill at the
+> prior day's close — by design (see
+> [04-game-mechanics §2](04-game-mechanics.md#2-trading--fills)).
 
-Players can register algos and attach one to a season as a portfolio driver.
-House-bot creation is admin-only (§8). Execution model: see
-[07-bots-and-algos](07-bots-and-algos.md).
+## 4. Leaderboard
+
+A single perpetual leaderboard in v1.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/algos` | player | Caller's algos |
-| POST | `/algos` | player | Create an algo definition |
-| GET | `/algos/:id` | player | Algo detail |
-| PATCH | `/algos/:id` | player | Update config / enable-disable |
-| POST | `/seasons/:id/join-with-algo` | player | Join season driven by an algo |
+| GET | `/leaderboard` | public | Ranked rows from the latest snapshot |
 
 ```ts
-interface CreateAlgoRequest {
-  name: string;
-  strategyType: string;        // must be a registered, allowed type
-  config: Record<string, unknown>;  // validated against the type's schema
+interface LeaderboardResponse {
+  takenAt: string;            // snapshot the ranking reflects
+  rows: Array<{
+    rank: number;
+    portfolioId: string;
+    displayName: string;      // user name; "index" for the bot
+    isBot: boolean;
+    equity: number;
+    returnPct: number;
+  }>;
+  nextCursor: string | null;  // cursor for paging large boards
 }
 ```
 
-> **Security note:** `strategyType` must be one of the server's registered
-> strategy types. v1 does **not** accept arbitrary user code via this API. See
-> [07-bots-and-algos](07-bots-and-algos.md#execution-model).
-
-## 7. Market data (read-only passthrough)
+## 5. Market data (read-only passthrough)
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/quotes?symbols=AAPL,MSFT` | player | Latest cached prices (never hits Alpaca synchronously) |
+| GET | `/quotes?symbols=AAPL,MSFT` | player | Latest `price_bar.close` per symbol |
+| GET | `/symbols` | public | The S&P 500 universe (tradeable subset) |
 
 ```ts
 interface QuotesResponse {
-  asOf: string;               // cache timestamp
-  quotes: Record<string, { price: number | null }>;  // cents; null if unknown
+  asOf: string;               // latest price_bar ts considered
+  quotes: Record<string, { price: number | null; ts: string | null }>;
+}
+
+interface SymbolsResponse {
+  items: Array<{
+    symbol: string;
+    backfilled: boolean;      // false → not yet tradeable
+  }>;
 }
 ```
 
-Symbols not in any active theme may return `null` (we don't poll them).
+Symbols not yet backfilled return `null` and cannot be traded.
 
-## 8. Admin
+## 6. Admin (v1)
 
-`auth: admin` for all. Used to run the game and seed leaderboards with house bots.
+`auth: admin` for all. v1 admin surface is minimal — the universe registry
+and an ops view.
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/admin/themes` | Create theme |
-| PUT | `/admin/themes/:id/symbols` | Set a theme's symbol list |
-| POST | `/admin/seasons` | Create a season (draft) |
-| POST | `/admin/seasons/:id/transition` | Move status (draft→scheduled→active→…) |
-| POST | `/admin/seasons/:id/bots` | Seed N house bots into the season |
-| GET | `/admin/seasons/:id/ops` | Operational view (snapshot lag, Alpaca errors) |
+| POST | `/admin/universe/upsert` | Add or update S&P 500 membership rows |
+| POST | `/admin/universe/backfill` | Manually re-trigger backfill for a symbol |
+| GET | `/admin/ops` | Operational view (snapshot lag, Finnhub REST 429s, queue depth) |
 
 ```ts
-interface SeedBotsRequest {
-  bots: Array<{
-    name: string;             // e.g. "lava lamp #3"
-    strategyType: string;     // "random" | "mixed" | "buy_and_hold" | ...
-    config?: Record<string, unknown>;
-    count?: number;           // shorthand to create several of one kind
-  }>;
+interface UpsertUniverseRequest {
+  symbols: string[];          // e.g. ["AAPL","MSFT",...]
 }
 
-interface TransitionSeasonRequest {
-  to: SeasonStatus;           // server validates legal transitions
+interface OpsResponse {
+  lastSnapshotAt: string | null;
+  snapshotLagSec: number | null;
+  finnhubRest429sLast24h: number;
+  jobQueueDepth: number;
+  backfillRemaining: number;  // count of universe_symbol where backfilled = false
 }
 ```
 
-## 9. WebSocket
+## 7. WebSocket
 
-One authenticated socket at `/ws`. Client subscribes to topics; server pushes
-typed events. Used for live portfolio/leaderboard updates without polling.
+One authenticated socket at `/ws`. Client subscribes to topics; server
+pushes typed events.
 
 ```ts
 type WsClientMessage =
@@ -231,22 +198,60 @@ type WsClientMessage =
 
 type WsTopic =
   | { kind: "portfolio"; portfolioId: string }   // owner only
-  | { kind: "leaderboard"; seasonId: string }
+  | { kind: "leaderboard" }                      // v1: perpetual board
   | { kind: "quotes"; symbols: string[] };
 
 type WsServerMessage =
   | { type: "portfolio.updated"; portfolioId: string; view: PortfolioView }
   | { type: "order.filled"; portfolioId: string; order: Order; fill: Fill }
-  | { type: "leaderboard.updated"; seasonId: string; data: LeaderboardResponse }
+  | { type: "leaderboard.updated"; data: LeaderboardResponse }
   | { type: "quotes.updated"; asOf: string; quotes: QuotesResponse["quotes"] }
   | { type: "error"; error: ApiError["error"] };
 ```
 
-Push cadence is tied to the quote-poll and snapshot cadences in
-[01-architecture](01-architecture.md); the socket does not create new Alpaca load.
+In v1, `leaderboard.updated` fires **once per day** after the EOD snapshot
+completes. `portfolio.updated` and `order.filled` fire on each fill.
+`quotes.updated` fires after the daily price update. v2 increases all of
+these to per-snapshot cadence.
 
-## 10. Rate limiting
+## 8. Rate limiting
 
-- Order/algo endpoints: stricter per-user limits (protects fairness + Alpaca).
+- Order endpoints: stricter per-user limits (protects fairness).
+- All routes: per-IP limits to absorb bot/abuse traffic.
 - `429` returns `Retry-After`. Limits enforced via Redis counters.
-- Specific numeric limits: **TODO** ([09-open-questions](09-open-questions.md)).
+- Specific numeric limits: defined at implementation time
+  ([09-open-questions A1](09-open-questions.md)).
+
+## 9. v2+ / v3+ endpoint outlook
+
+v2 adds **seasons + themes**:
+
+| Method | Path | Auth | Phase | Purpose |
+|---|---|---|---|---|
+| GET | `/themes` | public | v2 | List active themes |
+| GET | `/themes/:key` | public | v2 | Theme + its symbol list |
+| GET | `/seasons` | public | v2 | List seasons (filter `?status=`) |
+| GET | `/seasons/:id` | public | v2 | Season detail |
+| POST | `/seasons/:id/join` | player | v2 | Create caller's portfolio in the season |
+| GET | `/seasons/:id/leaderboard` | public | v2 | Per-season ranked rows |
+| POST | `/admin/themes` | admin | v2 | Create theme |
+| PUT | `/admin/themes/:id/symbols` | admin | v2 | Set a theme's symbol list |
+| POST | `/admin/seasons` | admin | v2 | Create a season (draft) |
+| POST | `/admin/seasons/:id/transition` | admin | v2 | Move status (draft→scheduled→active→…) |
+| POST | `/admin/seasons/:id/bots` | admin | v2 | Seed N house bots into the season |
+
+v3 adds **user-authored algos**:
+
+| Method | Path | Auth | Phase | Purpose |
+|---|---|---|---|---|
+| GET | `/algos` | player | v3 | Caller's algos |
+| POST | `/algos` | player | v3 | Create an algo definition |
+| GET | `/algos/:id` | player | v3 | Algo detail |
+| PATCH | `/algos/:id` | player | v3 | Update config / enable-disable |
+| POST | `/seasons/:id/join-with-algo` | player | v3 | Join season driven by an algo |
+
+The `WsTopic` shape gains a `seasonId` discriminator in v2 (the v1
+`{ kind: "leaderboard" }` becomes `{ kind: "leaderboard"; seasonId?: string }`
+where the absent form continues to address the v1 perpetual board for
+backward compatibility, or is removed at the v2 cutover — see
+[09-open-questions](09-open-questions.md)).

@@ -1,37 +1,38 @@
 # 02 — Data Model
 
-> Schemas are **defined, not implemented**. Types below are language-neutral.
-> SQL is illustrative (Postgres dialect) to pin down relationships, constraints,
-> and indexes — not a migration. Monetary values are integer **cents** (or a
-> `NUMERIC` with fixed scale) to avoid float drift; quantities support fractional
-> shares as `NUMERIC`.
+> This doc describes **v1 schema in the body** and previews v2+ extensions in
+> §5. Schemas are **defined, not implemented**. Types below are
+> language-neutral. SQL is illustrative (Postgres dialect) to pin down
+> relationships, constraints, and indexes — not a migration. Monetary values
+> are integer **cents** (or a `NUMERIC` with fixed scale) to avoid float
+> drift; quantities support fractional shares as `NUMERIC(20,8)`.
 
-## 1. Entity-relationship summary
+## 1. v1 entity-relationship summary
 
 ```
-user 1───∞ identity          (one user, many linked SSO identities)
-user 1───∞ portfolio         (one per season the user joins)
-user 1───∞ algo              (user-authored strategies; house algos owned by admin)
-
-season 1───∞ portfolio
-season 1───1 theme           (theme is a named symbol set; see note)
-season 1───∞ valuation_snapshot
-season 1───∞ leaderboard_row (per snapshot)
+user 1───∞ identity            (one user, many linked SSO identities)
+user 1───1 portfolio           (v1: one perpetual portfolio per user)
+                                 v2+ relaxes to one per (user, season)
 
 portfolio 1───∞ position
 portfolio 1───∞ order
 order     1───∞ fill
-portfolio 1───∞ valuation_snapshot (a portfolio's marks over time)
+portfolio 1───∞ valuation_snapshot
 
-theme  1───∞ theme_symbol     (theme symbols must be universe_symbol members)
+algo (single row in v1: the "index" buy-and-hold bot)
+  └──▶ has its own portfolio, just like a human
 
 universe_symbol               (S&P 500 registry; backfill-state gate)
-watch_list                    (derived from active seasons; drives live polling + backfill)
+price_bar                     (TimescaleDB hypertable; sole source of pricing)
+valuation_snapshot ───∞ leaderboard_row
 ```
 
-## 2. Core entities
+There is **no** `theme`, `theme_symbol`, `season`, or `watch_list` in v1 —
+those land in v2 (see §5).
 
-### 2.1 `user`
+## 2. Core entities (v1)
+
+### 2.1 `app_user`
 
 The human (or the admin) behind one or more SSO identities.
 
@@ -42,7 +43,6 @@ interface User {
   email: string | null;  // primary; may be null if provider withholds
   role: "player" | "admin";
   createdAt: string;     // ISO-8601 UTC
-  // No password field — auth is SSO only (see 05-auth.md).
 }
 ```
 
@@ -66,7 +66,7 @@ interface Identity {
   id: string;
   userId: string;
   provider: "google" | "github";
-  providerSubject: string;   // stable subject/sub from the IdP
+  providerSubject: string;
   emailAtLink: string | null;
   createdAt: string;
 }
@@ -84,95 +84,15 @@ CREATE TABLE identity (
 );
 ```
 
-### 2.3 `theme` and `theme_symbol`
+### 2.3 `portfolio`
 
-A theme is a named, curated symbol universe. Seasons reference a theme. Keeping
-themes as data (not code) lets the admin add "Energy", "Big 7", etc. without a
-deploy, and bounds Alpaca load.
-
-```ts
-interface Theme {
-  id: string;
-  key: string;          // stable slug e.g. "big-7", "top-50", "energy"
-  name: string;         // human label
-  description: string;
-  active: boolean;      // available for new seasons
-}
-
-interface ThemeSymbol {
-  themeId: string;
-  symbol: string;       // e.g. "AAPL"
-  // Optional display metadata; pricing comes from Alpaca at runtime.
-}
-```
-
-```sql
-CREATE TABLE theme (
-  id          UUID PRIMARY KEY,
-  key         TEXT NOT NULL UNIQUE,
-  name        TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  active      BOOLEAN NOT NULL DEFAULT true
-);
-
-CREATE TABLE theme_symbol (
-  theme_id UUID NOT NULL REFERENCES theme(id) ON DELETE CASCADE,
-  symbol   TEXT NOT NULL,
-  PRIMARY KEY (theme_id, symbol)
-);
-```
-
-> **Note:** A symbol may appear in multiple themes. The set of symbols the worker
-> polls is `SELECT DISTINCT symbol FROM theme_symbol JOIN season ... WHERE season
-> active`. See [01-architecture](01-architecture.md#21-market-data-ingestion).
-
-### 2.4 `season`
-
-```ts
-type SeasonStatus = "draft" | "scheduled" | "active" | "settling" | "closed";
-
-interface Season {
-  id: string;
-  name: string;
-  themeId: string;
-  status: SeasonStatus;
-  startsAt: string;          // ISO-8601 UTC
-  endsAt: string;            // ISO-8601 UTC — length is TODO (see 04)
-  startingCapital: number;   // cents; default 100_000_000 (= $1,000,000)
-  snapshotIntervalSec: number; // valuation cadence
-  createdBy: string;         // admin user id
-  createdAt: string;
-}
-```
-
-```sql
-CREATE TABLE season (
-  id                    UUID PRIMARY KEY,
-  name                  TEXT NOT NULL,
-  theme_id              UUID NOT NULL REFERENCES theme(id),
-  status                TEXT NOT NULL DEFAULT 'draft'
-                          CHECK (status IN
-                            ('draft','scheduled','active','settling','closed')),
-  starts_at             TIMESTAMPTZ NOT NULL,
-  ends_at               TIMESTAMPTZ NOT NULL,
-  starting_capital      BIGINT NOT NULL DEFAULT 100000000,  -- cents
-  snapshot_interval_sec INTEGER NOT NULL DEFAULT 300,
-  created_by            UUID NOT NULL REFERENCES app_user(id),
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK (ends_at > starts_at)
-);
-```
-
-### 2.5 `portfolio`
-
-One per (user, season). Holds cash; positions hang off it.
+One per user in v1 (perpetual; no season). Holds cash; positions hang off it.
 
 ```ts
 interface Portfolio {
   id: string;
-  seasonId: string;
-  userId: string;            // owner (human OR the admin owning a house bot)
-  algoId: string | null;     // set if this portfolio is driven by an algo/bot
+  userId: string;            // owner (human OR the admin owning the index bot)
+  algoId: string | null;     // null for humans; set for the index bot
   cash: number;              // cents available
   joinedAt: string;
 }
@@ -181,21 +101,31 @@ interface Portfolio {
 ```sql
 CREATE TABLE portfolio (
   id         UUID PRIMARY KEY,
-  season_id  UUID NOT NULL REFERENCES season(id) ON DELETE CASCADE,
   user_id    UUID NOT NULL REFERENCES app_user(id),
   algo_id    UUID REFERENCES algo(id),
-  cash       BIGINT NOT NULL,            -- cents; seeded = season.starting_capital
-  joined_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (season_id, user_id, algo_id)   -- see note on uniqueness below
+  cash       BIGINT NOT NULL,                -- cents; seeded = 100_000_000
+  joined_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Exactly one human portfolio per user (algo_id IS NULL).
+-- A plain UNIQUE (user_id, algo_id) won't enforce this because NULL ≠ NULL
+-- for unique constraints in Postgres — two (U, NULL) rows would both be
+-- allowed. Use a partial unique index instead.
+CREATE UNIQUE INDEX portfolio_one_human_per_user
+  ON portfolio (user_id) WHERE algo_id IS NULL;
+
+-- One portfolio per (user, algo) for users running algos.
+CREATE UNIQUE INDEX portfolio_one_per_user_algo
+  ON portfolio (user_id, algo_id) WHERE algo_id IS NOT NULL;
 ```
 
-> **Uniqueness note / TODO:** Is a human allowed both a manual portfolio *and*
-> one or more algo portfolios in the same season? The `UNIQUE` above permits one
-> manual (`algo_id IS NULL`) plus distinct algo portfolios. Confirm in
-> [09-open-questions](09-open-questions.md).
+> In v2, `season_id` is added and the same NULL-trap applies. The v2
+> uniqueness becomes a pair of partial indexes scoped by `season_id`
+> (`(season_id, user_id) WHERE algo_id IS NULL` and
+> `(season_id, user_id, algo_id) WHERE algo_id IS NOT NULL`). Postgres 15+
+> alternative: `UNIQUE NULLS NOT DISTINCT (season_id, user_id, algo_id)`.
 
-### 2.6 `position`
+### 2.4 `position`
 
 Current holding of one symbol in one portfolio. Derived from fills but
 materialized for fast reads.
@@ -212,22 +142,22 @@ interface Position {
 ```sql
 CREATE TABLE position (
   portfolio_id UUID NOT NULL REFERENCES portfolio(id) ON DELETE CASCADE,
-  symbol       TEXT NOT NULL,
+  symbol       TEXT NOT NULL REFERENCES universe_symbol(symbol),
   quantity     NUMERIC(20,8) NOT NULL DEFAULT 0,
-  avg_cost     BIGINT NOT NULL DEFAULT 0,   -- cents/share
+  avg_cost     BIGINT NOT NULL DEFAULT 0,    -- cents/share
   PRIMARY KEY (portfolio_id, symbol),
-  CHECK (quantity >= 0)                     -- no shorting in v1 (TODO)
+  CHECK (quantity >= 0)                      -- no shorting in v1
 );
 ```
 
-### 2.7 `order` and `fill`
+### 2.5 `trade_order` and `fill`
 
 Orders are immutable instructions; fills are immutable executions. Both are
 append-only for auditability.
 
 ```ts
 type OrderSide = "buy" | "sell";
-type OrderType = "market";                 // limit/stop deferred — TODO
+type OrderType = "market";                   // limit/stop deferred
 type OrderStatus = "accepted" | "rejected" | "filled" | "cancelled";
 
 interface Order {
@@ -236,10 +166,10 @@ interface Order {
   symbol: string;
   side: OrderSide;
   type: OrderType;
-  quantity: number;          // requested
+  quantity: number;
   status: OrderStatus;
   rejectReason: string | null;
-  idempotencyKey: string;    // client-supplied; dedupes retries
+  idempotencyKey: string;
   source: "human" | "algo";
   createdAt: string;
 }
@@ -249,7 +179,7 @@ interface Fill {
   orderId: string;
   symbol: string;
   side: OrderSide;
-  quantity: number;          // filled (may be < ordered if partials enabled)
+  quantity: number;
   price: number;             // cents/share at fill
   filledAt: string;
 }
@@ -259,7 +189,7 @@ interface Fill {
 CREATE TABLE trade_order (
   id              UUID PRIMARY KEY,
   portfolio_id    UUID NOT NULL REFERENCES portfolio(id) ON DELETE CASCADE,
-  symbol          TEXT NOT NULL,
+  symbol          TEXT NOT NULL REFERENCES universe_symbol(symbol),
   side            TEXT NOT NULL CHECK (side IN ('buy','sell')),
   type            TEXT NOT NULL DEFAULT 'market' CHECK (type IN ('market')),
   quantity        NUMERIC(20,8) NOT NULL CHECK (quantity > 0),
@@ -283,16 +213,15 @@ CREATE TABLE fill (
 );
 ```
 
-### 2.8 `valuation_snapshot`
+### 2.6 `valuation_snapshot`
 
-Periodic mark-to-market per portfolio. The source of truth for the leaderboard.
+Daily mark-to-market per portfolio. The source of truth for the leaderboard.
 
 ```ts
 interface ValuationSnapshot {
   id: string;
-  seasonId: string;
   portfolioId: string;
-  takenAt: string;           // snapshot time
+  takenAt: string;           // snapshot time (UTC; EOD job stamps this)
   cash: number;              // cents
   positionsValue: number;    // cents, Σ qty×price
   equity: number;            // cash + positionsValue
@@ -302,7 +231,6 @@ interface ValuationSnapshot {
 ```sql
 CREATE TABLE valuation_snapshot (
   id              UUID PRIMARY KEY,
-  season_id       UUID NOT NULL REFERENCES season(id) ON DELETE CASCADE,
   portfolio_id    UUID NOT NULL REFERENCES portfolio(id) ON DELETE CASCADE,
   taken_at        TIMESTAMPTZ NOT NULL,
   cash            BIGINT NOT NULL,
@@ -310,53 +238,54 @@ CREATE TABLE valuation_snapshot (
   equity          BIGINT NOT NULL,
   UNIQUE (portfolio_id, taken_at)
 );
-CREATE INDEX ON valuation_snapshot (season_id, taken_at);
+CREATE INDEX ON valuation_snapshot (taken_at);
 ```
 
-### 2.9 `leaderboard_row`
+> `season_id` is intentionally absent in v1; v2 adds it (nullable initially,
+> backfilled to the v2 "legacy" season, then `NOT NULL`).
+
+### 2.7 `leaderboard_row`
 
 Materialized ranking for a given snapshot moment. Read-heavy; cached in Redis.
 
 ```ts
 interface LeaderboardRow {
-  seasonId: string;
   takenAt: string;           // which snapshot this ranking reflects
   portfolioId: string;
   rank: number;
   equity: number;            // cents
-  returnPct: number;         // vs starting capital, basis points or float
+  returnPct: number;         // vs starting capital
 }
 ```
 
 ```sql
 CREATE TABLE leaderboard_row (
-  season_id    UUID NOT NULL REFERENCES season(id) ON DELETE CASCADE,
   taken_at     TIMESTAMPTZ NOT NULL,
   portfolio_id UUID NOT NULL REFERENCES portfolio(id) ON DELETE CASCADE,
   rank         INTEGER NOT NULL,
   equity       BIGINT NOT NULL,
   return_pct   DOUBLE PRECISION NOT NULL,
-  PRIMARY KEY (season_id, taken_at, portfolio_id)
+  PRIMARY KEY (taken_at, portfolio_id)
 );
-CREATE INDEX ON leaderboard_row (season_id, taken_at, rank);
+CREATE INDEX ON leaderboard_row (taken_at, rank);
 ```
 
-### 2.10 `algo`
+### 2.8 `algo`
 
-A strategy definition. House bots (random "lava lamp", "mixed", etc.) and
-user-authored algos share this table; `kind` distinguishes them. Execution detail
-lives in [07-bots-and-algos](07-bots-and-algos.md).
+A strategy definition. v1 has exactly **one row**: the built-in `index`
+buy-and-hold bot owned by the admin. v2 introduces the full strategy
+registry; v3 introduces user-authored algos.
 
 ```ts
-type AlgoKind = "house" | "user";
+type AlgoKind = "house" | "user";          // only "house" in v1
 
 interface Algo {
   id: string;
   ownerUserId: string;       // admin for house bots
   kind: AlgoKind;
-  name: string;              // e.g. "lava lamp", "momentum-v1"
-  strategyType: string;      // e.g. "random", "buy_and_hold", "declarative"
-  config: Record<string, unknown>; // strategy params (validated per type)
+  name: string;              // v1: "index"
+  strategyType: string;      // v1: "buy_and_hold"
+  config: Record<string, unknown>;
   enabled: boolean;
   createdAt: string;
 }
@@ -375,55 +304,23 @@ CREATE TABLE algo (
 );
 ```
 
-### 2.11 `watch_list`
+### 2.9 `universe_symbol`
 
-The set of symbols the worker actively polls and the backfill cron monitors.
-In v1 this is **derived** from active seasons' themes — no separate table is
-required. The worker recomputes it each cycle. It is modeled here as a named
-concept so future expansion (pre-season prep, user-defined watchlists, admin
-overrides) can promote it to an explicit table without redesigning consumers.
-
-```sql
--- v1: watch list is a query, not a table
-CREATE VIEW watch_list AS
-  SELECT DISTINCT ts.symbol
-  FROM theme_symbol ts
-  JOIN season s ON s.theme_id = ts.theme_id
-  WHERE s.status = 'active';
-```
-
-A symbol enters the watch list when a season referencing its theme becomes
-`active`. The backfill cron checks:
-
-```sql
-SELECT wl.symbol
-FROM watch_list wl
-JOIN universe_symbol us ON us.symbol = wl.symbol
-WHERE us.backfilled = false;
-```
-
-A symbol leaves the watch list when no active season references its theme, but
-its `price_bar` rows and `universe_symbol.backfilled` flag are retained —
-re-entering the watch list later requires no re-backfill.
-
-### 2.12 `universe_symbol`
-
-The S&P 500 registry: the allowed set of symbols that may ever appear in a
-theme or watch list. **Admin-managed** — the admin upserts rows when the index
-composition changes (~30–50 changes/year). The feed is not automated in v1.
+The S&P 500 registry: the allowed set of symbols that may ever be traded.
+**Admin-managed** — the admin upserts rows when the index composition
+changes (~30–50 changes/year).
 
 Backfill state lives here because it is a property of the *data corpus*, not
-of any particular season. A symbol is only backfilled once; all subsequent
-seasons that include it inherit the existing history.
+of any particular game state. A symbol is only backfilled once.
 
-**A symbol is not tradeable in any season until `backfilled = true`.**
+**A symbol is not tradeable until `backfilled = true`.**
 
 ```ts
 interface UniverseSymbol {
   symbol: string;          // e.g. "AAPL" — primary key
-  addedAt: string;         // when it entered the S&P 500 (or the system)
-  removedAt: string | null;// null while still a current component
-  backfilled: boolean;     // false until 5-year price_bar history is loaded
+  addedAt: string;
+  removedAt: string | null;
+  backfilled: boolean;
   backfilledAt: string | null;
 }
 ```
@@ -439,37 +336,36 @@ CREATE TABLE universe_symbol (
 CREATE INDEX ON universe_symbol (backfilled) WHERE backfilled = false;
 ```
 
-> **Referential integrity:** `theme_symbol.symbol` references
-> `universe_symbol.symbol` (FK enforced; prevents themes from naming non-S&P
-> 500 tickers).
+In v1 the worker's bootstrap-backfill job iterates over rows where
+`backfilled = false` and marks each `true` on completion (see
+[01-architecture §2.1](01-architecture.md#21-market-data-ingestion-rest-only)).
 
-### 2.13 `price_bar` (TimescaleDB)
+### 2.10 `price_bar` (TimescaleDB)
 
-OHLCV bars for watch-list symbols. Written by the worker each live poll cycle
-(watch list symbols only) and bulk-loaded by the backfill cron (5 years of
-5-min bars per symbol, SIP feed). **This is the sole source of price truth for
-the game** — order fills, valuation snapshots, and the bot-runner strategy
-context all read from here.
-See [01-architecture §2.1](01-architecture.md#21-market-data-ingestion-watch-list).
+OHLCV bars for S&P 500 symbols. Written by the worker's bootstrap backfill
+(5 years of 5-min bars per symbol) and the daily price update (one
+end-of-day bar per symbol per day). **This is the sole source of price
+truth for the game** — order fills, valuation snapshots, and the bot
+seeding all read from here.
 
 ```ts
 interface PriceBar {
-  symbol: string;     // e.g. "AAPL"
-  ts: string;         // ISO-8601 UTC, bar open time (aligned to poll cadence)
+  symbol: string;
+  ts: string;         // ISO-8601 UTC, bar open time
   open: number;       // cents
   high: number;       // cents
   low: number;        // cents
   close: number;      // cents
-  volume: number | null;  // shares; null if provider omits
+  volume: number | null;
 }
 ```
 
 ```sql
 -- Requires TimescaleDB extension enabled on the database.
 CREATE TABLE price_bar (
-  symbol TEXT        NOT NULL,
+  symbol TEXT        NOT NULL REFERENCES universe_symbol(symbol),
   ts     TIMESTAMPTZ NOT NULL,
-  open   BIGINT      NOT NULL,   -- cents
+  open   BIGINT      NOT NULL,
   high   BIGINT      NOT NULL,
   low    BIGINT      NOT NULL,
   close  BIGINT      NOT NULL,
@@ -477,7 +373,8 @@ CREATE TABLE price_bar (
   PRIMARY KEY (symbol, ts)
 );
 SELECT create_hypertable('price_bar', 'ts');
--- Optional: enable compression for bars older than 7 days
+
+-- Compress bars older than 7 days; segment by symbol for query locality.
 ALTER TABLE price_bar SET (
   timescaledb.compress,
   timescaledb.compress_segmentby = 'symbol'
@@ -485,9 +382,9 @@ ALTER TABLE price_bar SET (
 SELECT add_compression_policy('price_bar', INTERVAL '7 days');
 ```
 
-> **Note:** TimescaleDB partitions the hypertable by time automatically.
-> Queries of the form `WHERE symbol = $1 AND ts BETWEEN $2 AND $3` are the
-> expected hot path for both leaderboard history and eventual backtesting replay.
+> TimescaleDB partitions the hypertable by time automatically. Queries of
+> the form `WHERE symbol = $1 AND ts BETWEEN $2 AND $3` are the hot path for
+> portfolio history charts (v1) and future backtesting replay.
 
 ## 3. Derived vs. stored
 
@@ -497,25 +394,42 @@ SELECT add_compression_policy('price_bar', INTERVAL '7 days');
 | `portfolio.cash` | Materialized | Authoritative running balance, updated per fill in a txn |
 | `valuation_snapshot` | Stored | Immutable history; basis for ranking |
 | `leaderboard_row` | Stored + cached | Reproducible from snapshots; cached for read load |
-| OHLCV bar history + latest price | `price_bar` hypertable (TimescaleDB) | Appended each live poll cycle; backfilled 5y at symbol onboarding; compressed after 7 days; sole source of pricing for fills, snapshots, and bots |
+| OHLCV history + latest price | `price_bar` hypertable | Backfilled once + appended daily; compressed after 7 days; sole source of pricing |
 
 ## 4. Invariants
 
-1. A portfolio's `cash` and `position` rows are only mutated inside the same DB
-   transaction that records the `fill`.
+1. A portfolio's `cash` and `position` rows are only mutated inside the same
+   DB transaction that records the `fill`.
 2. `cash >= 0` always (no margin in v1).
-3. An order's `symbol` must be in its season's theme at submission time, **and** `universe_symbol.backfilled = true` for that symbol.
-4. Snapshots and fills are append-only; corrections happen via new rows, never
-   in-place edits.
-5. Leaderboard ranking for a `taken_at` is a pure function of the snapshots at
-   that `taken_at` → reproducible and auditable.
+3. An order's `symbol` must reference a `universe_symbol` row with
+   `backfilled = true`.
+4. Snapshots and fills are append-only; corrections happen via new rows,
+   never in-place edits.
+5. Leaderboard ranking for a `taken_at` is a pure function of the snapshots
+   at that `taken_at` → reproducible and auditable.
 
-## 5. Open schema TODOs
+## 5. v2+ schema outlook
 
-- Fractional shares precision (`NUMERIC(20,8)` is a placeholder).
-- Shorting / margin (currently disallowed by `CHECK` constraints).
-- Limit/stop order types (only `market` modeled now).
-- Multi-portfolio-per-user-per-season policy (see 2.5 note).
-- Contract/source-of-truth format for shared types (OpenAPI vs Protobuf).
+v2 introduces three new tables and one column addition. All changes are
+**additive** — no v1 column or table is dropped or restructured.
 
-See [09-open-questions](09-open-questions.md) for the consolidated list.
+| Change | What |
+|---|---|
+| **Add** `season` | Bounded competition (`starts_at`, `ends_at`, `status`, `starting_capital`, `snapshot_interval_sec`). |
+| **Add** `theme` + `theme_symbol` | Curated symbol universe per season. `theme_symbol.symbol` references `universe_symbol(symbol)`. |
+| **Add column** `portfolio.season_id` | Nullable in the v2 migration; backfilled to the "legacy" v2 season for existing v1 portfolios; then `NOT NULL`. New uniqueness: two partial indexes (`(season_id, user_id) WHERE algo_id IS NULL` and `(season_id, user_id, algo_id) WHERE algo_id IS NOT NULL`) or `UNIQUE NULLS NOT DISTINCT (season_id, user_id, algo_id)` on PG 15+. |
+| **Add column** `valuation_snapshot.season_id` and `leaderboard_row.season_id` | Same migration pattern. |
+| **Add view** `watch_list` | `SELECT DISTINCT ts.symbol FROM theme_symbol ts JOIN season s ON s.theme_id = ts.theme_id WHERE s.status = 'active'`. |
+| **Expand** `algo` rows | Multiple house bots seeded per season via the registry (`random`, `buy_and_hold`, `mixed`, `momentum`, `mean_reversion`, `cash_drip`). Schema unchanged. |
+
+v3 adds no new tables — user-authored algos use the existing `algo` table
+with `kind = 'user'` and per-user cap enforced at the API layer.
+
+## 6. Open schema items
+
+Consolidated in [09-open-questions](09-open-questions.md).
+
+- Confirm `NUMERIC(20,8)` for fractional shares (placeholder).
+- Confirm migration shape for `season_id` (nullable → backfill → NOT NULL).
+- Confirm contract source-of-truth across a polyglot future
+  (OpenAPI + JSON for the public API; `@tickr/shared-types` for internal).

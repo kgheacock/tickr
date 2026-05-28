@@ -1,176 +1,191 @@
 # 04 — Game Mechanics
 
-This doc defines the rules of play: seasons, themes, capital, trading, valuation,
-and the leaderboard. Where a number isn't yet decided it is marked **TODO**.
+> This doc describes **v1 rules in the body** and previews v2+ in §6. Where
+> a number isn't yet decided it is marked **TODO**.
 
-## 1. Seasons
+## 1. The game (v1)
 
-A **season** is one time-boxed competition: a single theme, a single leaderboard,
-a fixed start/end. Players join, trade for the duration, and are ranked.
+v1 is **one perpetual leaderboard**. There are no seasons, no themes, and
+no end date. Every player has a single portfolio that persists from sign-in
+forever.
 
-### 1.1 Lifecycle
+| Rule | Value |
+|---|---|
+| Starting capital | **$1,000,000** (`100_000_000` cents) — identical for every player |
+| Tradeable universe | Full S&P 500 (~500 symbols) — any backfilled `universe_symbol` |
+| Order types | **Market only** |
+| Trading window | **24/7** |
+| Fill price | The most recent `price_bar.close` from TimescaleDB |
+| Snapshot cadence | **Once daily** after the US market close |
+| Leaderboard metric | Total equity (`cash + Σ qty × latest close`) |
+| Fees | **None** |
+| Bots | Exactly one: the **`index`** buy-and-hold of an equally-weighted S&P 500 basket |
+| User algos | Not in v1 (v3) |
+
+### 1.1 Player onboarding
 
 ```
-draft ──▶ scheduled ──▶ active ──▶ settling ──▶ closed
-  │            │            │
-  └─ admin edits freely     └─ trading allowed only while active
+1. Sign in via Google or GitHub (see 05-auth)
+2. On first sign-in:
+     create app_user row
+     create portfolio row (cash = 100_000_000, algo_id = null)
+3. Land on /portfolio — start trading immediately
 ```
 
-| Status | Meaning | Trading? | Joining? |
-|---|---|---|---|
-| `draft` | Admin building it | no | no |
-| `scheduled` | Locked config, future start | no | yes (pre-register) |
-| `active` | Live | yes | yes, until 25% of duration elapsed |
-| `settling` | Ended; final snapshot/ranking computing | no | no |
-| `closed` | Final results frozen | no | no |
+There is no "join" step in v1 because there is nothing to join — the
+perpetual leaderboard is the only game state.
 
-### 1.2 Length
+### 1.2 The `index` bot
 
-**Decision: 1 month default.** The admin sets `startsAt` / `endsAt` per season,
-so length can vary; the default when creating a new season is 30 days. Monthly
-balances strategy depth against engagement — long enough to reward skill over
-luck, short enough to keep attention. Shorter (2-week) is a valid experiment for
-future seasons.
+A single house bot, owned by a **system user** (an `app_user` row seeded
+at install with a reserved `id`, `role = 'admin'`, and no `identity`
+rows — it never signs in). Seeded once at system bootstrap, after the
+backfill job has marked at least one symbol `backfilled = true`:
 
-| Option | Pros | Cons |
-|---|---|---|
-| 1 week | Fast turnover, frequent winners | Noisy; luck-dominated |
-| 2 weeks | Balance of skill/luck | — |
-| **1 month** ✓ | Strategy matters, fits a "season" feel | Slower engagement loop |
-| Quarter | Mirrors real reporting cadence | Long; attrition risk |
+```
+1. Seed system user row (idempotent: skip if it already exists)
+2. Create algo row: name = "index", strategy_type = "buy_and_hold",
+                    kind = "house", owner_user_id = system_user.id,
+                    config = { weighting: "equal" }
+3. Create portfolio row (cash = 100_000_000, algo_id = the new algo,
+                         user_id = system_user.id)
+4. Place market buy orders, one per backfilled universe_symbol,
+   each sized to ~ 1/N of starting capital where N = backfilled count
+5. The bot does not trade again — it just holds
+```
 
-### 1.3 Trading windows vs. market hours
+The system-user approach avoids a chicken-and-egg with the human admin
+(provisioned only on first matching SSO sign-in via `ADMIN_BOOTSTRAP`).
+If new symbols become tradeable later, the bot is **not** rebalanced —
+it holds its original basket forever. v2 will revisit bot rebalancing.
 
-**Decision: accept orders 24/7; fill at last cached price.** Off-hours orders
-fill at the most recent close price. This keeps the UI simple (no "market closed"
-rejection states) while preserving fairness — everyone in a window fills at the
-same cached price. This is a game, not a brokerage.
+This populates the leaderboard from day one and gives players a
+hard-to-beat baseline (an equal-weighted index hold). v2 expands this to
+the full bot registry described in
+[07-bots-and-algos](07-bots-and-algos.md).
 
-## 2. Themes
-
-A theme is the **constrained tradeable universe** for a season. Its purpose is
-twofold: (1) make seasons varied and fair (everyone trades the same finite set),
-and (2) **bound Alpaca API load** — we only poll symbols belonging to active
-seasons' themes.
-
-Examples (admin-curated, stored as data — see [02-data-model](02-data-model.md)):
-
-| Theme key | Roughly | Why it's fun |
-|---|---|---|
-| `big-7` | The mega-cap tech names | Tight, high-variance, easy to follow |
-| `top-50` | ~50 large caps | More breadth, more diversification skill |
-| `energy` | Energy-sector names | Sector dynamics, correlated moves |
-
-Rules:
-
-- A season's orders are restricted to its theme's symbols at submission time.
-- Symbol membership is a snapshot at season creation (changing a theme mid-season
-  is disallowed for active seasons — **TODO** to confirm; recommended).
-- The union of active themes' symbols is small, so one poll cadence serves all
-  active seasons. See [01-architecture](01-architecture.md#21-market-data-ingestion).
-
-## 3. Starting capital & buying power
-
-- Every player begins each season with **exactly** the season's
-  `startingCapital`, default **$1,000,000** (`100_000_000` cents).
-- **Buying power = cash** in v1. No margin, no leverage, no shorting.
-- Buys require `cash >= quantity × price (+ fees if any)`. Sells require holding
-  the quantity. These are hard invariants (see
-  [02-data-model](02-data-model.md#4-invariants)).
-
-**Decision: zero fees in v1.** Results stay legible; return % maps directly to
-trading decisions. A configurable fee can be added later as a season parameter
-(`season.commissionCents`) to discourage churn without re-architecting.
-
-## 4. Orders & fills
+## 2. Trading & fills
 
 v1 supports **market orders only**.
 
-### 4.1 Fill model (v1)
+### 2.1 Fill model
 
-Proposed default: **immediate fill at the latest cached price** for the symbol.
+**Immediate fill at the most recent `price_bar.close` for the symbol.**
 
-- Pros: simple, deterministic within a quote window, no resting-order machinery.
-- Cons: ignores slippage, spread, and intrabar movement.
+- Pros: simple, deterministic, no resting-order machinery, no latency edge
+  (everyone within a day fills at the same close price).
+- Cons: ignores slippage, spread, and intraday movement.
+- v1 specific: prices update once daily, so an order placed at 2pm today
+  fills at *yesterday's* close. The cadence change in v2 (snapshots every
+  5 min) tightens this.
 
-Deferred (post-v1): limit orders, stop orders, partial fills, slippage modeling,
-spread-aware fills. Modeled as future `OrderType`s; the schema reserves room.
+> **Fairness consideration:** Because everyone fills at the same cached
+> price within a day, no player gets a latency edge. This is intentional.
 
-> **Fairness consideration:** Because everyone fills at the same cached price
-> within a poll window, no player gets a latency edge. This is intentional and a
-> reason to *prefer* cached-price fills over chasing live ticks.
+### 2.2 Rejections
 
-### 4.2 Rejections
+Orders are rejected (not silently dropped) with a specific `code` when:
 
-Orders are rejected (not silently dropped) with a specific `code` when: season not
-active, symbol not in theme, insufficient buying power / position, non-positive
-quantity, or duplicate idempotency key resolving to a prior rejection.
+| Reason | Code |
+|---|---|
+| Symbol not in `universe_symbol` or `backfilled = false` | `SYMBOL_NOT_TRADEABLE` |
+| `quantity <= 0` | `VALIDATION` |
+| Buys: `cash < quantity × price` | `INSUFFICIENT_FUNDS` |
+| Sells: holding < `quantity` (no shorting) | `INSUFFICIENT_POSITION` |
+| Idempotency key collides with a prior rejection | replay original result |
 
-## 5. Valuation
+### 2.3 Buying power
 
-A **valuation snapshot** marks every active portfolio to market on a cadence
-(`season.snapshotIntervalSec`, default **5 min / 300 s**).
+- **Buying power = cash** in v1. No margin, no leverage, no shorting.
+- Hard invariants (see [02-data-model §4](02-data-model.md#4-invariants)):
+  `cash >= 0`; `position.quantity >= 0`.
+
+## 3. Snapshots & leaderboard
+
+### 3.1 Daily EOD snapshot
+
+Once per day, after the US market close, the worker runs:
 
 ```
-equity = cash + Σ over positions ( quantity × latest_price(symbol) )
+1. Daily price update (REST /quote for every backfilled symbol)
+2. For each portfolio:
+     read latest price_bar.close per held symbol
+     equity = cash + Σ (quantity × close)
+     write a valuation_snapshot row (immutable)
+3. Rank portfolios by equity → write leaderboard_row rows
+4. Refresh Redis leaderboard cache
+5. Emit a leaderboard.updated WS event
 ```
 
-Snapshots are immutable rows (see [02-data-model](02-data-model.md#28-valuation_snapshot)).
-The **leaderboard ranks on the latest snapshot's equity**, not on live quotes.
-This makes rankings stable, reproducible, and fair (everyone marked at the same
-prices/time).
+Steps 2–4 take seconds; the dominant cost is the REST poll (~8.5 min for
+500 symbols at 60 req/min — see
+[08-deployment §2](08-deployment.md#2-finnhub-integration)).
 
-### 5.1 Final settlement
+### 3.2 Leaderboard
 
-On `endsAt`, the season moves to `settling`. A final snapshot is taken (TODO:
-based on market close of the end date vs. exact `endsAt` instant), the final
-leaderboard is computed, and the season moves to `closed`. Closed results are
-frozen.
-
-## 6. Leaderboard
-
-- **Metric:** total equity (cash + positions value) at the latest snapshot.
+- **Metric:** total equity (cash + Σ qty × latest close) at the latest
+  snapshot.
 - **Display also shows:** return % vs. starting capital.
 - **Ordering:** equity descending.
-- **Tie-breaking:** ties share a rank; stable secondary sort by `portfolioId`
-  (UUID, deterministic). Risk-adjusted tie-breaking is a future option once
-  the Sharpe metric is well-established.
-- **Bots are ranked alongside humans** and clearly flagged (`isBot: true`). They
-  give humans a baseline and keep early/empty seasons lively (see §7 and
-  [07-bots-and-algos](07-bots-and-algos.md)).
+- **Tie-breaking:** ties share a rank; stable secondary sort by
+  `portfolioId` (UUID, deterministic). Risk-adjusted tie-breaking is a
+  future option.
+- **The `index` bot is ranked alongside humans** and flagged
+  (`isBot: true`).
 
-### 6.1 Anti-abuse considerations (TODO to flesh out)
+### 3.3 Intraday equity (UI-only)
 
-- One human, one manual portfolio per season (see uniqueness note in
-  [02-data-model](02-data-model.md#25-portfolio)).
-- Rate limits on orders to prevent spam and protect Alpaca budget
-  ([03-api](03-api.md#10-rate-limiting)).
-- Because all players share the same theme, capital, and fill prices, the surface
-  for "unfair edge" is small by construction.
+The `/portfolios/:id` view returns a best-effort live equity computed from
+the latest known `price_bar.close` per held symbol. This is for UX only —
+the **official ranking** is the latest `valuation_snapshot`, which moves
+once a day.
 
-## 7. Bots in the game
+## 4. Off-hours, holidays, missing prices
 
-The admin seeds each season with **house bots** so the leaderboard is populated
-immediately. House bots are ordinary portfolios driven by an `algo` rather than a
-human. Examples the prompt calls out:
+- Orders accepted 24/7. Fills always use the latest available
+  `price_bar.close` — weekends and holidays fill at Friday's close.
+- If a symbol's latest bar is older than **5 calendar days** (≈120 h),
+  orders for it are rejected with `STALE_PRICE`. The threshold survives a
+  3-day weekend plus the daily-update window, so a normal holiday Monday
+  doesn't trigger rejections — only an actually-stuck feed (delisting,
+  prolonged backfill failure) does. The admin can resolve via
+  `/admin/universe/upsert` or by re-running backfill.
 
-- **"lava lamp"** — random buys/sells within the theme (a chaos baseline).
-- **"mixed"** — a blend of simple strategies.
-- Plus simple references like **buy-and-hold** the whole theme (an index-like
-  baseline that's genuinely hard to beat).
+## 5. Anti-abuse
 
-Behavior, scheduling, and the strategy registry are specified in
-[07-bots-and-algos](07-bots-and-algos.md). Players may also enter their own
-**algorithmic** strategies, competing in the same season under the same rules.
+- One portfolio per user in v1 (`UNIQUE (user_id, algo_id)` with
+  `algo_id IS NULL`).
+- Rate limits on `POST /portfolios/:id/orders` to prevent spam and protect
+  the Finnhub budget ([03-api §8](03-api.md#8-rate-limiting)).
+- Idempotency keys dedupe accidental double-submits.
+- All players share the same universe, capital, and fill prices — the
+  surface for "unfair edge" is small by construction.
 
-## 8. Open mechanics decisions
+## 6. v2+ outlook
 
-Consolidated in [09-open-questions](09-open-questions.md):
+v2 wraps the v1 portfolio in **seasons** (bounded windows) with a
+**theme** (constrained universe) per season:
 
-1. Season length default.
-2. Trading window (24/7 vs market hours) & off-hours fill price.
-3. Fees/commissions (default zero?).
-4. Snapshot cadence default.
-5. Tie-breaking rule.
-6. Late-join policy for active seasons.
-7. Whether shorting/limit orders ever enter scope.
+- Season lifecycle: `draft → scheduled → active → settling → closed`.
+  Trading and joining gated by status; late-join allowed until ~25% of
+  duration elapsed (TODO confirm).
+- Snapshot cadence becomes `season.snapshotIntervalSec` (default **300 s**
+  / 5 min), not daily.
+- Fill model unchanged in form — still the latest `price_bar.close` — but
+  the cadence change means closes update every 5 min, so intraday
+  trading is meaningful.
+- Themes constrain the tradeable universe per season (Big 7, Top 50,
+  Energy, …).
+- The single v1 `index` bot expands into the **full strategy registry**
+  in [07-bots-and-algos](07-bots-and-algos.md): `random`, `buy_and_hold`,
+  `mixed`, `momentum`, `mean_reversion`, `cash_drip`.
+- Per-season starting capital remains $1M by default but is a
+  `season.starting_capital` field, configurable per season.
+
+v3 adds **user-authored algos**: a player picks a registered strategy
+type, supplies validated config, and attaches it as a portfolio driver.
+3 algos per user per season cap (TODO confirm). Arbitrary user code stays
+deferred.
+
+Open mechanics items consolidated in
+[09-open-questions](09-open-questions.md).
