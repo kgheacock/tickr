@@ -3,6 +3,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http';
+import { runMigrations } from '../db/migrate.js';
 
 const PORT = Number(process.env['PORT'] ?? 3000);
 const HOST = '0.0.0.0';
@@ -18,6 +19,7 @@ function handle(req: IncomingMessage, res: ServerResponse): void {
 }
 
 export async function runApi(): Promise<void> {
+  await runMigrations();
   const server = createServer(handle);
   await new Promise<void>((resolve) => {
     server.listen(PORT, HOST, () => resolve());

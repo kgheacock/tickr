@@ -1,6 +1,6 @@
 # 02 — Shared contracts
 
-> **Status:** done • **Depends on:** 01
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/4) • **Depends on:** 01
 
 ## Goal
 

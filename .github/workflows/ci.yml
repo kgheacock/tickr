@@ -24,6 +24,38 @@ jobs:
 
       - run: npm run format:check
 
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.docker-cache
+          key: docker-timescale-pg16-${{ runner.os }}
+
+      - name: Load cached image or pull
+        run: |
+          if [ -f /tmp/.docker-cache/timescaledb-ha-pg16.tar ]; then
+            docker load -i /tmp/.docker-cache/timescaledb-ha-pg16.tar
+          else
+            docker pull timescale/timescaledb-ha:pg16
+            mkdir -p /tmp/.docker-cache
+            docker save timescale/timescaledb-ha:pg16 -o /tmp/.docker-cache/timescaledb-ha-pg16.tar
+          fi
+
+      - name: Run schema tests
+        working-directory: apps/api
+        run: npm test
+
   codegen-check:
     runs-on: ubuntu-latest
     steps:
