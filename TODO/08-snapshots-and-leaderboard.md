@@ -60,14 +60,17 @@ snapshot — never recomputed per request.
                                 return_pct)
    SELECT taken_at,
           portfolio_id,
-          RANK() OVER (ORDER BY equity DESC, portfolio_id ASC) AS rank,
+          RANK() OVER (ORDER BY equity DESC) AS rank,
           equity,
           (equity::FLOAT - 100000000) / 100000000 AS return_pct
    FROM valuation_snapshot
    WHERE taken_at = $1
    ON CONFLICT (taken_at, portfolio_id) DO NOTHING;
    ```
-   Tie-break by `portfolio_id ASC` per G5.
+   `RANK() OVER (ORDER BY equity DESC)` assigns the same rank to tied
+   portfolios (G5b). Display queries use `ORDER BY rank, portfolio_id ASC`
+   so equal-rank rows have a deterministic display order without breaking
+   the rank value itself.
 4. **Redis cache.** Write `leaderboard:latest` = JSON of the top-N rows
    (default N=100) and a `leaderboard:taken_at` key with the snapshot
    time. `GET /leaderboard` reads from Redis first; on miss it reads from
