@@ -12,7 +12,9 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "tsx": "^4.7.0"
+    "@tickr/shared-types": "*",
+    "tsx": "^4.7.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "typescript": "^5.4.0"

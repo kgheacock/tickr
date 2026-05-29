@@ -99,6 +99,62 @@
     }
   ],
   "paths": {
+    "/stock/candle": {
+      "get": {
+        "summary": "Stock Candles",
+        "description": "Get OHLCV data for stocks. The endpoint returns historical data suitable for chart display. Resolution D+ requires a Finnhub paid plan for some markets.",
+        "operationId": "stockCandles",
+        "tags": ["Default"],
+        "section": "Stock Price",
+        "produces": ["application/json"],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbol",
+            "description": "Symbol",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "resolution",
+            "description": "Supported resolution includes 1, 5, 15, 30, 60, D, W, M. Some timeframes might not be available depending on the exchange.",
+            "required": true,
+            "type": "string",
+            "enum": ["1", "5", "15", "30", "60", "D", "W", "M"]
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "description": "UNIX timestamp. Interval initial value.",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "description": "UNIX timestamp. Interval end value.",
+            "required": true,
+            "type": "integer",
+            "format": "int64"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "schema": {
+              "$ref": "#/definitions/Candles"
+            }
+          }
+        },
+        "security": [
+          {
+            "api_key": []
+          }
+        ]
+      }
+    },
     "/quote": {
       "get": {
         "summary": "Quote",
@@ -170,6 +226,46 @@
     }
   },
   "definitions": {
+    "Candles": {
+      "type": "object",
+      "properties": {
+        "o": {
+          "description": "List of open prices for returned candles",
+          "type": "array",
+          "items": { "type": "number", "format": "float" }
+        },
+        "h": {
+          "description": "List of high prices for returned candles",
+          "type": "array",
+          "items": { "type": "number", "format": "float" }
+        },
+        "l": {
+          "description": "List of low prices for returned candles",
+          "type": "array",
+          "items": { "type": "number", "format": "float" }
+        },
+        "c": {
+          "description": "List of close prices for returned candles",
+          "type": "array",
+          "items": { "type": "number", "format": "float" }
+        },
+        "v": {
+          "description": "List of volume data for returned candles",
+          "type": "array",
+          "items": { "type": "number", "format": "float" }
+        },
+        "t": {
+          "description": "List of UNIX timestamps for returned candles",
+          "type": "array",
+          "items": { "type": "integer", "format": "int64" }
+        },
+        "s": {
+          "description": "Status of the response. This field can either be \"ok\" or \"no_data\".",
+          "type": "string",
+          "enum": ["ok", "no_data"]
+        }
+      }
+    },
     "Quote": {
       "type": "object",
       "properties": {
@@ -207,6 +303,11 @@
           "description": "Percent change",
           "type": "number",
           "format": "float"
+        },
+        "t": {
+          "description": "UNIX timestamp",
+          "type": "integer",
+          "format": "int64"
         }
       }
     }

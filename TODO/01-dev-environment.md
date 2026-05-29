@@ -1,6 +1,6 @@
 # 01 — Dev environment
 
-> **Status:** pending • **Depends on:** —
+> **Status:** [implemented](https://github.com/kgheacock/tickr/pull/3) • **Depends on:** —
 
 ## Goal
 
