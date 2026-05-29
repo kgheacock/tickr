@@ -15,7 +15,8 @@
     "typecheck": "npm run -ws --if-present typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "dev": "./scripts/dev-up.sh"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

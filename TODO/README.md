@@ -23,7 +23,7 @@ of each file as you go.
 
 | # | Item | Depends on | Status |
 |---|---|---|---|
-| 01 | [Dev environment](01-dev-environment.md) | — | pending |
+| 01 | [Dev environment](01-dev-environment.md) | — | implemented |
 | 02 | [Shared contracts](02-shared-contracts.md) | 01 | pending |
 | 03 | [Database schema](03-database-schema.md) | 01 | pending |
 | 04 | [Auth (SSO + sessions)](04-auth.md) | 02, 03 | pending |
