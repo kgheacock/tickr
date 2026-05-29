@@ -1,6 +1,6 @@
 # 03 — Database schema
 
-> **Status:** pending • **Depends on:** 01
+> **Status:** done • **Depends on:** 01 • **PR:** [#6](https://github.com/kgheacock/tickr/pull/6)
 
 ## Goal
 
@@ -71,13 +71,13 @@ through a migration tool that is safe in dev and prod. Schema must match
 
 ## Definition of done
 
-- [ ] `npm run db:migrate` is idempotent (running it twice is a no-op).
-- [ ] `psql -c '\dt'` lists every v1 table from §2 of the data-model doc.
-- [ ] `psql -c "SELECT hypertable_name FROM timescaledb_information.hypertables"`
+- [x] `npm run db:migrate` is idempotent (running it twice is a no-op).
+- [x] `psql -c '\dt'` lists every v1 table from §2 of the data-model doc.
+- [x] `psql -c "SELECT hypertable_name FROM timescaledb_information.hypertables"`
       includes `price_bar`.
-- [ ] Two `INSERT INTO portfolio (user_id, algo_id, cash) VALUES
+- [x] Two `INSERT INTO portfolio (user_id, algo_id, cash) VALUES
       ('<U>', NULL, 100000000)` calls — the second raises a unique violation.
-- [ ] Inserting `position` with a symbol absent from `universe_symbol`
+- [x] Inserting `position` with a symbol absent from `universe_symbol`
       raises a FK violation.
-- [ ] `npm run db:seed:universe` inserts ~500 rows; re-running is a no-op.
-- [ ] Vitest passes against an ephemeral Postgres in CI.
+- [x] `npm run db:seed:universe` inserts ~500 rows; re-running is a no-op.
+- [x] Vitest passes against an ephemeral Postgres in CI.
