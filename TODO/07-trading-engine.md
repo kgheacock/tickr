@@ -67,9 +67,11 @@ seeding of the `index` buy-and-hold bot owned by the system user.
    `ORDER_ALREADY_FILLED` for any order that has a `fill`. The route
    exists so the API surface matches v2+ where resting orders appear.
 7. **Index bot seeding.** `apps/api/src/bot/seed-index.ts` (runs in the
-   `bot` role at startup, after a Redis lock + `backfill complete` check):
+   `bot` role at startup, after a Redis lock):
    ```
    if "index" algo row exists with portfolio.algo_id and ≥ 1 fill: return
+   if COUNT(*) FROM universe_symbol WHERE backfilled = false > 0: return
+     // wait for full backfill (G8b); re-runs on next startup
    create algo (kind='house', strategy_type='buy_and_hold', owner=system)
    create portfolio (user=system, algo_id=algo.id, cash=100_000_000)
    N = COUNT(*) FROM universe_symbol WHERE backfilled = true
@@ -77,9 +79,11 @@ seeding of the `index` buy-and-hold bot owned by the system user.
    for each backfilled symbol:
      px = latestPrice(symbol).price
      qty = (per_symbol_budget_cents / px), rounded to 8 dp
-     POST /portfolios/<bot>/orders with idempotencyKey = "index-seed:<sym>"
+     call executeTrade({ portfolioId, symbol, side:'buy', qty, idempotencyKey: "index-seed:<sym>" })
    ```
-   Use the regular order route — same validation as humans (B2).
+   Call the trading-engine function **in-process** (A6 decision: trusted internal
+   caller). Full validation still runs; no session/CSRF check required. Do **not**
+   use the HTTP route — the bot has no SSO session.
 8. **Reads.** Endpoints:
    - `GET /portfolios/:id` → `PortfolioView` (cash, positions joined with
      latest `price_bar.close`, equity, `lastSnapshotAt`).

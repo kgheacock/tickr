@@ -55,6 +55,10 @@ and are restart-safe.
      ON CONFLICT (symbol, ts) DO NOTHING
    ```
    Uses the shared Finnhub bucket (60/min). 500 symbols ≈ 8.5 min.
+   > **v1 approximation (O5):** `q.c` is Finnhub's current/delayed price,
+   > not the official 4 PM close. `open/high/low` from `/quote` are
+   > real-time snapshots, not true OHLC. This is documented and accepted
+   > for v1; switching to `GET /stock/candle?resolution=D` is a v2 option.
 4. **Scheduler.** Use `node-cron` in-process. Worker registers:
    - Backfill: runs at startup (and only if there are unbackfilled
      symbols); cancels itself when none remain.

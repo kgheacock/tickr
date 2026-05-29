@@ -40,7 +40,8 @@ perpetual leaderboard is the only game state.
 A single house bot, owned by a **system user** (an `app_user` row seeded
 at install with a reserved `id`, `role = 'admin'`, and no `identity`
 rows — it never signs in). Seeded once at system bootstrap, after the
-backfill job has marked at least one symbol `backfilled = true`:
+bootstrap backfill has marked **all** seeded `universe_symbol` rows
+`backfilled = true`:
 
 ```
 1. Seed system user row (idempotent: skip if it already exists)
@@ -75,8 +76,9 @@ v1 supports **market orders only**.
 - Pros: simple, deterministic, no resting-order machinery, no latency edge
   (everyone within a day fills at the same close price).
 - Cons: ignores slippage, spread, and intraday movement.
-- v1 specific: prices update once daily, so an order placed at 2pm today
-  fills at *yesterday's* close. The cadence change in v2 (snapshots every
+- v1 specific: prices update once daily, so during the day the most recent
+  close is the prior trading day's. After 16:30 ET it is today's; on
+  Monday morning it is Friday's. The cadence change in v2 (snapshots every
   5 min) tightens this.
 
 > **Fairness consideration:** Because everyone fills at the same cached
@@ -89,6 +91,7 @@ Orders are rejected (not silently dropped) with a specific `code` when:
 | Reason | Code |
 |---|---|
 | Symbol not in `universe_symbol` or `backfilled = false` | `SYMBOL_NOT_TRADEABLE` |
+| Latest `price_bar` for the symbol is > 5 calendar days old | `STALE_PRICE` |
 | `quantity <= 0` | `VALIDATION` |
 | Buys: `cash < quantity × price` | `INSUFFICIENT_FUNDS` |
 | Sells: holding < `quantity` (no shorting) | `INSUFFICIENT_POSITION` |
@@ -153,8 +156,10 @@ once a day.
 
 ## 5. Anti-abuse
 
-- One portfolio per user in v1 (`UNIQUE (user_id, algo_id)` with
-  `algo_id IS NULL`).
+- One portfolio per user in v1, enforced by the `portfolio_one_human_per_user`
+  partial index (`(user_id) WHERE algo_id IS NULL`). A plain
+  `UNIQUE (user_id, algo_id)` would not work because Postgres treats
+  `NULL ≠ NULL`.
 - Rate limits on `POST /portfolios/:id/orders` to prevent spam and protect
   the Finnhub budget ([03-api §8](03-api.md#8-rate-limiting)).
 - Idempotency keys dedupe accidental double-submits.

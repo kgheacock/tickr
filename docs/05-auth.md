@@ -46,7 +46,9 @@ Browser            tickr API                 Provider (Google/GitHub)
 
 Key requirements:
 
-- **CSRF protection** via a `state` parameter, generated server-side, single-use.
+- **Login-CSRF protection** via two complementary mechanisms:
+  1. `state` parameter — generated server-side, single-use, stored in Redis with 10-min TTL.
+  2. `tickr_oauth_attempt` cookie — set at `/start` (host-only, `SameSite=Lax`, HMAC-signed, TTL ≤ 10 min); verified and cleared at `/callback`. Binds the flow to the initiating browser; prevents an attacker from completing their own flow in a victim's browser.
 - **PKCE** (`code_challenge`/`code_verifier`) for the auth-code exchange.
 - **ID token validation** (Google): signature against provider JWKS, `iss`,
   `aud` (our client id), `exp`. GitHub: validate token by calling its user API
@@ -116,7 +118,7 @@ Two roles in v1 (see `user.role` in [02-data-model](02-data-model.md)):
 
 | Threat | Mitigation |
 |---|---|
-| CSRF on login | `state` param, single-use, server-stored |
+| Login-CSRF | `state` param (single-use, server-stored) + `tickr_oauth_attempt` cookie (HMAC-signed, host-only, SameSite=Lax, TTL 10 min) |
 | Authorization-code interception | PKCE |
 | Token forgery (Google) | JWKS signature + `iss`/`aud`/`exp` validation |
 | Session theft via XSS | HTTP-only cookie (token never in JS) |

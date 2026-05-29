@@ -110,11 +110,12 @@ Client (or seed flow for the index bot)
 ```
 
 **Fill model (v1):** immediate fill at the `close` of the most recent
-`price_bar` row for the symbol, queried from TimescaleDB. Because v1 only
-updates prices once daily, intraday orders fill at the prior day's close.
-This is intentional — it matches the EOD snapshot cadence and removes any
-intraday latency edge. Limit orders, slippage, and partial fills are
-deferred.
+`price_bar` row for the symbol, queried from TimescaleDB. Because v1
+updates prices once daily, during the trading day the most recent close is
+the prior trading day's (after 16:30 ET it is today's; on Monday morning
+it is Friday's). This is intentional — it matches the EOD snapshot cadence
+and removes any intraday latency edge. Limit orders, slippage, and partial
+fills are deferred.
 
 ### 2.3 EOD valuation + leaderboard
 
