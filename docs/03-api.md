@@ -53,6 +53,7 @@ interface MeResponse {
   user: User;
   identities: Array<Pick<Identity, "provider" | "emailAtLink">>;
   portfolioId: string;    // v1: each user has exactly one portfolio
+  csrfToken: string;      // rotated per session; send as X-CSRF-Token on mutations
 }
 ```
 
@@ -111,8 +112,9 @@ specific `code` (e.g. `SYMBOL_NOT_TRADEABLE`, `STALE_PRICE`,
 `INSUFFICIENT_FUNDS`, `INSUFFICIENT_POSITION`).
 
 > **Fill price (v1):** the most recent `price_bar.close` for the symbol.
-> Because v1 only refreshes prices once daily, intraday orders fill at the
-> prior day's close — by design (see
+> Because v1 refreshes prices once daily, during the day this is the prior
+> trading day's close; after 16:30 ET it is today's; on Monday morning it
+> is Friday's — by design (see
 > [04-game-mechanics §2](04-game-mechanics.md#2-trading--fills)).
 
 ## 4. Leaderboard
@@ -129,7 +131,7 @@ interface LeaderboardResponse {
   rows: Array<{
     rank: number;
     portfolioId: string;
-    displayName: string;      // user name; "index" for the bot
+    displayName: string;      // user.displayName for humans; algo.name for bots
     isBot: boolean;
     equity: number;
     returnPct: number;

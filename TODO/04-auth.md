@@ -26,10 +26,14 @@ player can trade immediately.
      `https://github.com/login/oauth/*` + `https://api.github.com/user`.
 2. **Auth-code + PKCE flow per provider.**
    - `GET /auth/:provider/start` — generate `state` + `code_verifier`,
-     store in Redis with TTL 10 min keyed by `state`, 302 to provider's
-     authorize URL.
-   - `GET /auth/:provider/callback?code&state` — verify `state`, exchange
-     code (with PKCE `code_verifier`), validate ID token (Google) or fetch
+     store in Redis with TTL 10 min keyed by `state`, set a
+     `tickr_oauth_attempt` cookie (host-only, `SameSite=Lax`, HMAC-signed,
+     value = HMAC of `state`, TTL 10 min), then 302 to provider's authorize URL.
+   - `GET /auth/:provider/callback?code&state` — verify `state` exists in
+     Redis, verify the `tickr_oauth_attempt` cookie signature and that it
+     matches the `state` (closes login-CSRF — see [docs/09-open-questions
+     A8/AU4](../docs/09-open-questions.md)), clear the cookie, exchange code
+     (with PKCE `code_verifier`), validate ID token (Google) or fetch
      `/user` (GitHub), upsert `app_user` + `identity`, create session.
 3. **Sessions.** Server-side opaque sessions in Redis keyed by random 32-byte
    token. Cookie: `tickr_sid`, `HttpOnly`, `Secure`, `SameSite=Lax`, scoped
@@ -56,8 +60,8 @@ player can trade immediately.
    `display_name='system'`, no identities). The `index` bot in item 07
    owns its algo + portfolio through this user.
 10. **CSRF.** Add a CSRF token (rotated per session) required on all
-    state-changing requests; client reads from `GET /me`. Server validates
-    header `X-CSRF-Token`.
+    state-changing requests; client reads it from `GET /me` as
+    `MeResponse.csrfToken`. Server validates header `X-CSRF-Token`.
 11. **Tests.** Unit-test ID-token validation (signature, `iss`, `aud`,
     `exp`); integration-test the full flow against a mocked provider via
     `nock`.
