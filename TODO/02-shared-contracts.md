@@ -1,6 +1,6 @@
 # 02 — Shared contracts
 
-> **Status:** pending • **Depends on:** 01
+> **Status:** done • **Depends on:** 01
 
 ## Goal
 

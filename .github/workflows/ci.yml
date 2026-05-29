@@ -23,3 +23,20 @@ jobs:
       - run: npm run lint
 
       - run: npm run format:check
+
+  codegen-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run gen:types
+
+      - name: Fail if openapi.gen.ts is stale
+        run: git diff --exit-code packages/shared-types/src/openapi.gen.ts

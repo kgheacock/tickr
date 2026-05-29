@@ -16,15 +16,19 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev": "./scripts/dev-up.sh"
+    "dev": "./scripts/dev-up.sh",
+    "gen:types": "openapi-typescript packages/shared-types/openapi.yaml -o packages/shared-types/src/openapi.gen.ts",
+    "lint:openapi": "redocly lint packages/shared-types/openapi.yaml"
   },
   "devDependencies": {
+    "@redocly/cli": "^2.31.5",
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "lefthook": "^1.6.0",
+    "openapi-typescript": "^7.4.0",
     "prettier": "^3.2.0",
     "typescript": "^5.4.0"
   }
