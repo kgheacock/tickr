@@ -1,6 +1,6 @@
 # 04 — Auth (SSO + sessions)
 
-> **Status:** pending • **Depends on:** 02, 03
+> **Status:** done • **Depends on:** 02, 03 • **PR:** [#7](https://github.com/kgheacock/tickr/pull/7)
 
 ## Goal
 
