@@ -18,10 +18,6 @@ function callbackUri(baseUrl: string, provider: string): string {
   return `${baseUrl}/api/v1/auth/${provider}/callback`;
 }
 
-function linkCallbackUri(baseUrl: string, provider: string): string {
-  return `${baseUrl}/api/v1/auth/link/${provider}/callback`;
-}
-
 async function handleCallback(
   req: { url: string; cookies: Record<string, string | undefined> },
   reply: {
@@ -71,9 +67,9 @@ async function handleCallback(
     });
   }
 
-  const redirectUri = isLink
-    ? linkCallbackUri(baseUrl, provider)
-    : callbackUri(baseUrl, provider);
+  // isLink is authoritative from the stored attempt, not the route
+  const resolvedIsLink = isLink || !!attempt.linkUserId;
+  const redirectUri = callbackUri(baseUrl, provider);
 
   // Exchange code for profile
   let profile: {
@@ -100,7 +96,7 @@ async function handleCallback(
   try {
     await client.query('BEGIN');
 
-    if (isLink && attempt.linkUserId) {
+    if (resolvedIsLink && attempt.linkUserId) {
       await attachIdentity(client, {
         userId: attempt.linkUserId,
         provider,

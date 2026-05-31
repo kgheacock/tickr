@@ -59,7 +59,8 @@ export async function getSession(
   const raw = await redis.get(sessionKey(token));
   if (!raw) return null;
   const record = JSON.parse(raw) as SessionRecord;
-  if (nowSec() > record.expiresAt) {
+  const now = nowSec();
+  if (now > record.expiresAt || now >= record.createdAt + ABSOLUTE_MAX_SEC) {
     await redis.del(sessionKey(token));
     return null;
   }

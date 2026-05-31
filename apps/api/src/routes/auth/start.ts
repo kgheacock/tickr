@@ -17,10 +17,6 @@ function callbackUri(baseUrl: string, provider: string): string {
   return `${baseUrl}/api/v1/auth/${provider}/callback`;
 }
 
-function linkCallbackUri(baseUrl: string, provider: string): string {
-  return `${baseUrl}/api/v1/auth/link/${provider}/callback`;
-}
-
 async function buildAuthorizeUrl(
   provider: 'google' | 'github',
   redirectUri: string,
@@ -88,7 +84,7 @@ export async function registerStartRoutes(
 
       const { authorizeUrl, state, codeVerifier } = await buildAuthorizeUrl(
         provider,
-        linkCallbackUri(baseUrl, provider),
+        callbackUri(baseUrl, provider),
       );
 
       await storeOAuthAttempt(redis, state, {
@@ -97,15 +93,14 @@ export async function registerStartRoutes(
         linkUserId: req.userId!,
       });
 
-      void reply
-        .setCookie('tickr_oauth_attempt', signState(state, signingKey), {
-          httpOnly: true,
-          secure: true,
-          sameSite: 'lax',
-          path: '/',
-          maxAge: OAUTH_COOKIE_TTL_SEC,
-        })
-        .redirect(authorizeUrl);
+      reply.setCookie('tickr_oauth_attempt', signState(state, signingKey), {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: OAUTH_COOKIE_TTL_SEC,
+      });
+      return { url: authorizeUrl };
     },
   );
 }
