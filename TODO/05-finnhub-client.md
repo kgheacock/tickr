@@ -1,6 +1,6 @@
 # 05 — Finnhub client
 
-> **Status:** pending • **Depends on:** 01
+> **Status:** done • **Depends on:** 01 • **PR:** #PR_PLACEHOLDER
 
 ## Goal
 
@@ -60,11 +60,11 @@ limit. Caller code awaits a budget slot before each request.
 
 ## Definition of done
 
-- [ ] `npm run gen:finnhub` regenerates the types deterministically.
-- [ ] Synthetic load of 120 calls completes in just over 60 s under the
+- [x] `npm run gen:finnhub` regenerates the types deterministically.
+- [x] Synthetic load of 120 calls completes in just over 60 s under the
       default bucket (timer-mocked test).
-- [ ] No code path can call `axios`/`fetch` against `finnhub.io` outside
+- [x] No code path can call `axios`/`fetch` against `finnhub.io` outside
       `client.ts` (lint rule or grep check in CI).
-- [ ] The api container fails fast on import if any code accidentally
+- [x] The api container fails fast on import if any code accidentally
       imports `finnhub/client.ts`.
-- [ ] `FINNHUB_API_KEY` never appears in logs (redact at the logger).
+- [x] `FINNHUB_API_KEY` never appears in logs (redact at the logger).
