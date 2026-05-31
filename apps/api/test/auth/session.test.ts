@@ -79,6 +79,26 @@ describe('session lifecycle', () => {
     expect(updated!.expiresAt).toBeGreaterThanOrEqual(originalExpiry - 100);
   });
 
+  it('getSession rejects when absolute cap is exceeded even if sliding window is valid', async () => {
+    const userId = 'user-cap-get';
+    const { token } = await createSession(redis, userId);
+    const now = Math.floor(Date.now() / 1000);
+    // 31-day-old session whose sliding window hasn't expired yet
+    await redis.set(
+      `session:${token}`,
+      JSON.stringify({
+        userId,
+        csrfToken: 'abc',
+        createdAt: now - 31 * 24 * 60 * 60,
+        expiresAt: now + 60,
+      }),
+      'EX',
+      60,
+    );
+    const result = await getSession(redis, token);
+    expect(result).toBeNull();
+  });
+
   it('touchSession rejects when absolute cap is exceeded', async () => {
     const userId = 'user-cap';
     const { token } = await createSession(redis, userId);
