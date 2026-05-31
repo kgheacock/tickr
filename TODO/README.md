@@ -27,7 +27,7 @@ of each file as you go.
 | 02 | [Shared contracts](02-shared-contracts.md) | 01 | done |
 | 03 | [Database schema](03-database-schema.md) | 01 | done |
 | 04 | [Auth (SSO + sessions)](04-auth.md) | 02, 03 | [done](https://github.com/kgheacock/tickr/pull/7) |
-| 05 | [Finnhub client](05-finnhub-client.md) | 01 | pending |
+| 05 | [Finnhub client](05-finnhub-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/8) |
 | 06 | [Backfill + daily price](06-backfill-and-daily-price.md) | 03, 05 | pending |
 | 07 | [Trading engine](07-trading-engine.md) | 03, 04, 06 | pending |
 | 08 | [Snapshots + leaderboard](08-snapshots-and-leaderboard.md) | 06, 07 | pending |

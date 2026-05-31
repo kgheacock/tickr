@@ -82,3 +82,16 @@ jobs:
 
       - name: Fail if openapi.gen.ts is stale
         run: git diff --exit-code packages/shared-types/src/openapi.gen.ts
+
+      - run: npm run gen:finnhub
+
+      - name: Fail if finnhub.gen.ts is stale
+        run: git diff --exit-code apps/api/src/finnhub/finnhub.gen.ts
+
+      - name: Enforce no finnhub.io references outside finnhub/client.ts
+        run: |
+          if grep -r 'finnhub\.io' apps/api/src --include='*.ts' \
+               | grep -v -E 'finnhub/(client|finnhub\.gen)\.ts'; then
+            echo "ERROR: finnhub.io referenced in a file other than finnhub/client.ts"
+            exit 1
+          fi
