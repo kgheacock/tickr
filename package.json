@@ -17,6 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "./scripts/dev-up.sh",
+    "db:snapshot": "./scripts/db-snapshot.sh",
+    "db:restore": "./scripts/db-restore.sh",
     "gen:types": "openapi-typescript packages/shared-types/openapi.yaml -o packages/shared-types/src/openapi.gen.ts",
     "gen:finnhub": "openapi-typescript schema/finhub.io/openapi.json -o apps/api/src/finnhub/finnhub.gen.ts && prettier --write apps/api/src/finnhub/finnhub.gen.ts",
     "lint:openapi": "redocly lint packages/shared-types/openapi.yaml"

@@ -116,7 +116,7 @@ source doc where the decision is applied. Items split by **phase scope**:
 
 | # | Open question | Notes |
 |---|---|---|
-| T2b | Finnhub historical bar depth and per-call response window | Need to verify: (1) how many years of 5-min OHLCV history `GET /stock/candle?resolution=5` returns per call; (2) whether it paginates or returns all bars in one call per time range; (3) free-tier restrictions on historical depth. Open since the provider switch from Alpaca. |
+| T2b | Finnhub historical bar depth and per-call response window | **Resolved 2026-05-31.** `GET /stock/candle` returns HTTP 403 (`"You don't have access to this resource."`) for **all resolutions** (D, 5, etc.) on the free tier. The entire endpoint is premium-gated. `GET /quote` is free and confirmed working. The backfill job is correct but will 403 until the plan is upgraded. **Paths forward: (1) upgrade Finnhub plan, (2) seed from an alternative free source (Alpha Vantage, Polygon.io), (3) skip historical data and accumulate daily bars via `/quote` going forward.** Decision pending. |
 | F1 | Commercial licensing — does Finnhub's free tier permit a public game? | Free tier ToS must be reviewed before launch. "Commercial use" may require a paid plan regardless of symbol count or call volume. Verify with Finnhub support or legal terms. |
 | F2 | WebSocket symbol limit per plan (v2 concern) | Free tier: 50 simultaneous symbols. v2 themes are typically ≤50, so free tier should still fit; confirm at v2 implementation. |
 | F3 | REST rate limit under combined load (v2 concern) | At 60 req/min, simultaneous REST fallback + theme-triggered backfill could saturate the bucket. Backfill should run at reduced rate or off-peak. Not a v1 concern (REST is daily-burst only). |

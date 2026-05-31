@@ -6,6 +6,7 @@ import { registerStartRoutes } from '../routes/auth/start.js';
 import { registerCallbackRoutes } from '../routes/auth/callback.js';
 import { registerLogoutRoute } from '../routes/auth/logout.js';
 import { registerMeRoute } from '../routes/me.js';
+import { registerAdminUniverseRoutes } from '../routes/admin/universe.js';
 
 const PORT = Number(process.env['PORT'] ?? 3000);
 const HOST = '0.0.0.0';
@@ -29,6 +30,7 @@ export async function runApi(): Promise<void> {
       await registerCallbackRoutes(api);
       await registerLogoutRoute(api);
       await registerMeRoute(api);
+      await registerAdminUniverseRoutes(api);
     },
     { prefix: '/api/v1' },
   );
