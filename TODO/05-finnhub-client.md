@@ -1,6 +1,6 @@
 # 05 — Finnhub client
 
-> **Status:** done • **Depends on:** 01 • **PR:** #PR_PLACEHOLDER
+> **Status:** done • **Depends on:** 01 • **PR:** [#8](https://github.com/kgheacock/tickr/pull/8)
 
 ## Goal
 
