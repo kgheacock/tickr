@@ -93,14 +93,15 @@ export async function registerStartRoutes(
         linkUserId: req.userId!,
       });
 
-      reply.setCookie('tickr_oauth_attempt', signState(state, signingKey), {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: OAUTH_COOKIE_TTL_SEC,
-      });
-      return { url: authorizeUrl };
+      void reply
+        .setCookie('tickr_oauth_attempt', signState(state, signingKey), {
+          httpOnly: true,
+          secure: true,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: OAUTH_COOKIE_TTL_SEC,
+        })
+        .redirect(authorizeUrl);
     },
   );
 }
