@@ -1,28 +1,38 @@
-import {
-  createServer,
-  type IncomingMessage,
-  type ServerResponse,
-} from 'node:http';
+import Fastify from 'fastify';
+import cookie from '@fastify/cookie';
 import { runMigrations } from '../db/migrate.js';
+import { requireEnv } from '../config.js';
+import { registerStartRoutes } from '../routes/auth/start.js';
+import { registerCallbackRoutes } from '../routes/auth/callback.js';
+import { registerLogoutRoute } from '../routes/auth/logout.js';
+import { registerMeRoute } from '../routes/me.js';
 
 const PORT = Number(process.env['PORT'] ?? 3000);
 const HOST = '0.0.0.0';
 
-function handle(req: IncomingMessage, res: ServerResponse): void {
-  if (req.method === 'GET' && req.url === '/api/health') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
-    return;
-  }
-  res.writeHead(404, { 'content-type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not_found' }));
-}
-
 export async function runApi(): Promise<void> {
   await runMigrations();
-  const server = createServer(handle);
-  await new Promise<void>((resolve) => {
-    server.listen(PORT, HOST, () => resolve());
+
+  const fastify = Fastify({ logger: true });
+
+  await fastify.register(cookie, {
+    secret: requireEnv('SESSION_SIGNING_KEY'),
+    parseOptions: {},
   });
+
+  // All API routes under /api/v1
+  await fastify.register(
+    async (api) => {
+      api.get('/health', async () => ({ ok: true }));
+
+      await registerStartRoutes(api);
+      await registerCallbackRoutes(api);
+      await registerLogoutRoute(api);
+      await registerMeRoute(api);
+    },
+    { prefix: '/api/v1' },
+  );
+
+  await fastify.listen({ port: PORT, host: HOST });
   console.log(`[api] listening on http://${HOST}:${PORT}`);
 }

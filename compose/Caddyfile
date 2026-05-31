@@ -1,10 +1,10 @@
 {
-	# Local dev: use Caddy's internal CA. Trust the root once with
-	#   caddy trust   (or accept the self-signed cert per browser).
+	# Local dev: use Caddy's internal CA. Trust the root once with:
+	#   caddy trust
 	local_certs
 }
 
-tickr.local {
+local.tickr.keithheacock.com {
 	tls internal
 
 	handle /api/* {

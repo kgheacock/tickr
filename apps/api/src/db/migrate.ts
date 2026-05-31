@@ -12,13 +12,35 @@ export async function runMigrations(): Promise<void> {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
-  await runner({
-    databaseUrl,
-    dir: migrationsDir,
-    direction: 'up',
-    migrationsTable: 'pgmigrations',
-    verbose: true,
-  });
+  // api and worker both call runMigrations() on startup and may race for the
+  // advisory lock node-pg-migrate uses. Retry with backoff so whichever loses
+  // the race waits for the winner to finish, then finds nothing left to do.
+  const MAX_ATTEMPTS = 6;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      await runner({
+        databaseUrl,
+        dir: migrationsDir,
+        direction: 'up',
+        migrationsTable: 'pgmigrations',
+        verbose: true,
+      });
+      return;
+    } catch (err) {
+      const isLockConflict =
+        err instanceof Error &&
+        err.message.includes('Another migration is already running');
+      if (isLockConflict && attempt < MAX_ATTEMPTS - 1) {
+        const delay = 2000 * (attempt + 1);
+        console.log(
+          `[migrate] lock held by another process, retrying in ${delay}ms…`,
+        );
+        await new Promise((res) => setTimeout(res, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 // Run directly when invoked as the entry module (npm run db:migrate).
