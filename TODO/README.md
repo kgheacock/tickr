@@ -23,9 +23,9 @@ of each file as you go.
 
 | # | Item | Depends on | Status |
 |---|---|---|---|
-| 01 | [Dev environment](01-dev-environment.md) | — | implemented |
-| 02 | [Shared contracts](02-shared-contracts.md) | 01 | done |
-| 03 | [Database schema](03-database-schema.md) | 01 | done |
+| 01 | [Dev environment](01-dev-environment.md) | — | [done](https://github.com/kgheacock/tickr/pull/3) |
+| 02 | [Shared contracts](02-shared-contracts.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/4) |
+| 03 | [Database schema](03-database-schema.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/6) |
 | 04 | [Auth (SSO + sessions)](04-auth.md) | 02, 03 | [done](https://github.com/kgheacock/tickr/pull/7) |
 | 05 | [Finnhub client](05-finnhub-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/8) |
 | 06 | [Backfill + daily price](06-backfill-and-daily-price.md) | 03, 05, 13, 14 | [done](https://github.com/kgheacock/tickr/pull/9) |

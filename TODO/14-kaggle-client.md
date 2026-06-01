@@ -1,6 +1,6 @@
 # 14 — Kaggle client (bulk historical backfill)
 
-> **Status:** done • **Depends on:** 03, 13 • **PR:** [#9](https://github.com/kgheacock/tickr/pull/9)
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/9) • **Depends on:** 03, 13
 
 ## Goal
 

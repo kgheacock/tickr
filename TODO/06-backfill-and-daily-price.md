@@ -1,6 +1,6 @@
 # 06 — Backfill + daily price update
 
-> **Status:** done • **Depends on:** 03, 05, 13, 14 • **PR:** [#9](https://github.com/kgheacock/tickr/pull/9)
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/9) • **Depends on:** 03, 05, 13, 14
 
 ## Goal
 
