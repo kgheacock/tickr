@@ -35,6 +35,6 @@
     "@types/unzipper": "^0.10.11",
     "testcontainers": "^12.0.1",
     "typescript": "^5.4.0",
-    "vitest": "^3.0.0"
+    "vitest": "^4.1.0"
   }
 }
