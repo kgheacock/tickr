@@ -1,6 +1,6 @@
 # 15 — Migrate from npm workspaces to pnpm
 
-> **Status:** pending • **Depends on:** —
+> **Status:** done • **PR:** https://github.com/kgheacock/tickr/pull/11 • **Depends on:** —
 
 ## Goal
 
@@ -74,9 +74,9 @@ npm install lefthook@1.13.6 lefthook-darwin-arm64@1.13.6 --no-save
 
 ## Definition of done
 
-- [ ] `pnpm install` from a clean checkout installs all optional deps correctly
+- [x] `pnpm install` from a clean checkout installs all optional deps correctly
       (no manual `npm install --no-save` needed).
-- [ ] `pnpm -C apps/api test` runs all tests green.
-- [ ] `git commit` triggers the lefthook pre-commit hook (format + lint).
-- [ ] `package-lock.json` deleted; `pnpm-lock.yaml` committed.
-- [ ] No `npm` references remain in CI, Makefile, or deployment scripts.
+- [x] `pnpm -C apps/api test` runs all tests green.
+- [x] `git commit` triggers the lefthook pre-commit hook (format + lint).
+- [x] `package-lock.json` deleted; `pnpm-lock.yaml` committed.
+- [x] No `npm` references remain in CI, Makefile, or deployment scripts.
