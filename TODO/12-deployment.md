@@ -114,3 +114,4 @@ restore drill, and a one-command deploy from a fresh git pull.
       log committed to `docs/restore-drills/`.
 - [ ] Deploy script rolls back automatically on smoke-test failure.
 - [ ] External `nmap` from a separate host shows only 22/80/443 open.
+- [ ] Review the app for unsafe defaults

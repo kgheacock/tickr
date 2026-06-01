@@ -29,7 +29,7 @@ const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379';
 
 beforeAll(async () => {
   vi.stubEnv('ROLE', 'worker');
-  vi.stubEnv('FINNHUB_API_KEY', process.env['FINNHUB_API_KEY'] ?? 'test-key');
+  vi.stubEnv('MASSIVE_API_KEY', process.env['MASSIVE_API_KEY'] ?? 'test-key');
 
   container = await new PostgreSqlContainer('timescale/timescaledb-ha:pg16')
     .withDatabase('tickr_test')
@@ -69,7 +69,6 @@ beforeEach(async () => {
   vi.resetModules();
 });
 
-// Replace the pool module with one pointed at the test container.
 vi.mock('../../src/db/pool.js', async () => {
   const _pg = await import('pg');
   const proxy = new Proxy({} as _pg.Pool, {
@@ -82,21 +81,35 @@ vi.mock('../../src/db/pool.js', async () => {
   return { pool: proxy };
 });
 
-// Mock the bucket so backfill tests are not rate-limited.
-vi.mock('../../src/finnhub/bucket.js', () => ({
+vi.mock('../../src/massive/bucket.js', () => ({
   acquire: vi.fn().mockResolvedValue(undefined),
-  BUCKET_KEY: 'finnhub:bucket',
+  BUCKET_KEY: 'massive:bucket',
 }));
 
-function makeCandles(count: number, startUnixSec: number) {
+function makeBars(count: number, startMs: number) {
   return {
-    s: 'ok' as const,
-    t: Array.from({ length: count }, (_, i) => startUnixSec + i * 300),
-    o: Array.from({ length: count }, () => 150.0),
-    h: Array.from({ length: count }, () => 152.0),
-    l: Array.from({ length: count }, () => 149.0),
-    c: Array.from({ length: count }, () => 151.0),
-    v: Array.from({ length: count }, () => 1000),
+    status: 'OK',
+    ticker: 'TEST',
+    queryCount: count,
+    resultsCount: count,
+    results: Array.from({ length: count }, (_, i) => ({
+      t: startMs + i * 24 * 60 * 60 * 1000,
+      o: 150.0,
+      h: 152.0,
+      l: 149.0,
+      c: 151.0,
+      v: 1000,
+    })),
+  };
+}
+
+function makeEmpty() {
+  return {
+    status: 'OK',
+    ticker: 'TEST',
+    queryCount: 0,
+    resultsCount: 0,
+    results: [],
   };
 }
 
@@ -109,7 +122,7 @@ describe('backfill', () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValue(
-        new Response(JSON.stringify({ s: 'no_data' }), { status: 200 }),
+        new Response(JSON.stringify(makeEmpty()), { status: 200 }),
       );
 
     vi.stubGlobal('fetch', mockFetch);
@@ -125,21 +138,17 @@ describe('backfill', () => {
       `INSERT INTO universe_symbol (symbol, backfilled) VALUES ('MSFT', false)`,
     );
 
-    // Respond ok for first window, no_data for the rest.
-    const candles = makeCandles(
-      5,
-      Math.floor((Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000),
-    );
+    const bars = makeBars(5, Date.now() - 90 * 24 * 60 * 60 * 1000);
     let firstCall = true;
     const mockFetch = vi.fn().mockImplementation(() => {
       if (firstCall) {
         firstCall = false;
         return Promise.resolve(
-          new Response(JSON.stringify(candles), { status: 200 }),
+          new Response(JSON.stringify(bars), { status: 200 }),
         );
       }
       return Promise.resolve(
-        new Response(JSON.stringify({ s: 'no_data' }), { status: 200 }),
+        new Response(JSON.stringify(makeEmpty()), { status: 200 }),
       );
     });
 
@@ -159,16 +168,15 @@ describe('backfill', () => {
       `INSERT INTO universe_symbol (symbol, backfilled) VALUES ('GOOG', false)`,
     );
 
-    // First run: insert 3 bars, then "crash" (mock throws after first window).
-    const startSec = Math.floor((Date.now() - 60 * 24 * 60 * 60 * 1000) / 1000);
-    const candles = makeCandles(3, startSec);
+    const startMs = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    const bars = makeBars(3, startMs);
 
     let firstCall = true;
     const mockFetch = vi.fn().mockImplementation(() => {
       if (firstCall) {
         firstCall = false;
         return Promise.resolve(
-          new Response(JSON.stringify(candles), { status: 200 }),
+          new Response(JSON.stringify(bars), { status: 200 }),
         );
       }
       return Promise.reject(new Error('simulated crash'));
@@ -179,13 +187,11 @@ describe('backfill', () => {
     const { runBackfill } = await import('../../src/jobs/backfill.js');
     await expect(runBackfill(redis)).rejects.toThrow('simulated crash');
 
-    // Symbol still not backfilled.
     const { rows: beforeRows } = await client.query<{ backfilled: boolean }>(
       `SELECT backfilled FROM universe_symbol WHERE symbol = 'GOOG'`,
     );
     expect(beforeRows[0]?.backfilled).toBe(false);
 
-    // Partial rows were written.
     const { rows: barRows } = await client.query<{ count: string }>(
       `SELECT count(*) FROM price_bar WHERE symbol = 'GOOG'`,
     );
@@ -198,11 +204,11 @@ describe('backfill', () => {
       if (secondFirst) {
         secondFirst = false;
         return Promise.resolve(
-          new Response(JSON.stringify(candles), { status: 200 }),
+          new Response(JSON.stringify(bars), { status: 200 }),
         );
       }
       return Promise.resolve(
-        new Response(JSON.stringify({ s: 'no_data' }), { status: 200 }),
+        new Response(JSON.stringify(makeEmpty()), { status: 200 }),
       );
     });
     vi.stubGlobal('fetch', mockFetch2);

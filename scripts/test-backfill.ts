@@ -6,7 +6,7 @@
  * Usage (from repo root):
  *   BACKFILL_LOOKBACK_DAYS=3 BACKFILL_WINDOW_DAYS=3 tsx scripts/test-backfill.ts AAPL PYPL
  *
- * Reads DATABASE_URL, REDIS_URL, and FINNHUB_API_KEY from the environment.
+ * Reads DATABASE_URL, REDIS_URL, and MASSIVE_API_KEY from the environment.
  * If DATABASE_URL is not set, the script attempts to load .env from the repo root.
  */
 

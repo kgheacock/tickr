@@ -1,29 +1,19 @@
-// T2b resolved 2026-05-31: /stock/candle is premium-only on the Finnhub free tier
-// (403 for all resolutions). This job is correct but will fail until the plan is
-// upgraded or an alternative source is chosen. See docs/09-open-questions.md T2b.
 import type { Redis } from 'ioredis';
 import pLimit from 'p-limit';
 import { pool } from '../db/pool.js';
-import { finnhubGet } from '../finnhub/client.js';
+import { massiveGet } from '../massive/client.js';
+import type { components } from '../massive/massive.gen.js';
+import { insertBars } from './insertBars.js';
 
-const CONCURRENCY = parseInt(process.env['FINNHUB_CONCURRENCY'] ?? '4', 10);
+type AggregatesResponse = components['schemas']['AggregatesResponse'];
 
-// Window per /stock/candle call. Daily bars are small; 365 days per call is safe.
+const CONCURRENCY = parseInt(process.env['BACKFILL_CONCURRENCY'] ?? '4', 10);
 const WINDOW_DAYS = parseInt(process.env['BACKFILL_WINDOW_DAYS'] ?? '365', 10);
 const LOOKBACK_DAYS = parseInt(
-  process.env['BACKFILL_LOOKBACK_DAYS'] ?? String(5 * 365),
+  process.env['BACKFILL_LOOKBACK_DAYS'] ?? '730',
   10,
 );
-
-interface CandleResponse {
-  s: 'ok' | 'no_data';
-  t?: number[];
-  o?: number[];
-  h?: number[];
-  l?: number[];
-  c?: number[];
-  v?: number[];
-}
+const BACKFILL_START_DATE = process.env['BACKFILL_START_DATE'];
 
 function log(
   level: 'info' | 'warn' | 'error',
@@ -35,49 +25,15 @@ function log(
   );
 }
 
-function toCents(usd: number): number {
-  return Math.round(usd * 100);
-}
-
-async function insertBars(
-  symbol: string,
-  candles: CandleResponse,
-): Promise<void> {
-  const ts = candles.t!;
-  const opens = candles.o!;
-  const highs = candles.h!;
-  const lows = candles.l!;
-  const closes = candles.c!;
-  const vols = candles.v!;
-
-  // Use unnest to pass all rows as parallel arrays — avoids the 65,535
-  // bind-parameter limit that chunked multi-row VALUES would hit.
-  await pool.query(
-    `INSERT INTO price_bar (symbol, ts, open, high, low, close, volume)
-     SELECT
-       unnest($1::text[])          AS symbol,
-       unnest($2::timestamptz[])   AS ts,
-       unnest($3::bigint[])        AS open,
-       unnest($4::bigint[])        AS high,
-       unnest($5::bigint[])        AS low,
-       unnest($6::bigint[])        AS close,
-       unnest($7::numeric[])       AS volume
-     ON CONFLICT (symbol, ts) DO NOTHING`,
-    [
-      ts.map(() => symbol),
-      ts.map((t) => new Date(t * 1000).toISOString()),
-      opens.map(toCents),
-      highs.map(toCents),
-      lows.map(toCents),
-      closes.map(toCents),
-      vols.map((v) => v ?? null),
-    ],
-  );
+function toDateStr(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
 async function backfillSymbol(redis: Redis, symbol: string): Promise<void> {
   const nowMs = Date.now();
-  const startMs = nowMs - LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+  const startMs = BACKFILL_START_DATE
+    ? new Date(BACKFILL_START_DATE).getTime()
+    : nowMs - LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
   const windowMs = WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
   log('info', 'symbol start', { symbol });
@@ -85,23 +41,23 @@ async function backfillSymbol(redis: Redis, symbol: string): Promise<void> {
   let fromMs = startMs;
   while (fromMs < nowMs) {
     const toMs = Math.min(fromMs + windowMs, nowMs);
-    const from = Math.floor(fromMs / 1000);
-    const to = Math.floor(toMs / 1000);
+    const from = toDateStr(fromMs);
+    const to = toDateStr(toMs);
 
-    const candles = await finnhubGet<CandleResponse>(redis, '/stock/candle', {
-      symbol,
-      resolution: 5,
-      from,
-      to,
-    });
+    const response = await massiveGet<AggregatesResponse>(
+      redis,
+      `/v2/aggs/ticker/${symbol}/range/1/day/${from}/${to}`,
+      { sort: 'asc' },
+    );
 
-    if (candles.s === 'ok' && (candles.t?.length ?? 0) > 0) {
-      await insertBars(symbol, candles);
+    const results = response.results ?? [];
+    if (results.length > 0) {
+      await insertBars(symbol, results);
       log('info', 'window inserted', {
         symbol,
         from,
         to,
-        bars: candles.t!.length,
+        bars: results.length,
       });
     } else {
       log('info', 'window no_data', { symbol, from, to });

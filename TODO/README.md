@@ -28,14 +28,15 @@ of each file as you go.
 | 03 | [Database schema](03-database-schema.md) | 01 | done |
 | 04 | [Auth (SSO + sessions)](04-auth.md) | 02, 03 | [done](https://github.com/kgheacock/tickr/pull/7) |
 | 05 | [Finnhub client](05-finnhub-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/8) |
-| 06 | [Backfill + daily price](06-backfill-and-daily-price.md) | 03, 05 | pending |
+| 06 | [Backfill + daily price](06-backfill-and-daily-price.md) | 03, 05, 13, 14 | [done](https://github.com/kgheacock/tickr/pull/9) |
 | 07 | [Trading engine](07-trading-engine.md) | 03, 04, 06 | pending |
 | 08 | [Snapshots + leaderboard](08-snapshots-and-leaderboard.md) | 06, 07 | pending |
 | 09 | [WebSocket gateway](09-websocket-gateway.md) | 04, 07, 08 | pending |
 | 10 | [Observability + admin](10-observability-and-admin.md) | 04, 06, 08 | pending |
 | 11 | [Frontend SPA](11-frontend.md) | 02, 04, 07, 08, 09 | pending |
 | 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11 | pending |
-| 13 | [Massive client](13-massive-client.md) | 01 | pending |
+| 13 | [Massive client](13-massive-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/9) |
+| 14 | [Kaggle client](14-kaggle-client.md) | 03, 13 | [done](https://github.com/kgheacock/tickr/pull/9) |
 
 ## Dependency graph (at a glance)
 

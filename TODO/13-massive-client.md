@@ -1,6 +1,6 @@
 # 13 — Massive client
 
-> **Status:** pending • **Depends on:** 01 • **PR:** —
+> **Status:** done • **Depends on:** 01 • **PR:** [#9](https://github.com/kgheacock/tickr/pull/9)
 
 ## Goal
 
