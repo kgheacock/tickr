@@ -122,7 +122,7 @@ Once per day, after the US market close, the worker runs:
 
 Steps 2–4 take seconds; the dominant cost is the REST poll (~8.5 min for
 500 symbols at 60 req/min — see
-[08-deployment §2](08-deployment.md#2-finnhub-integration)).
+[08-deployment §2](08-deployment.md#2-market-data-integration)).
 
 ### 3.2 Leaderboard
 
@@ -161,7 +161,7 @@ once a day.
   `UNIQUE (user_id, algo_id)` would not work because Postgres treats
   `NULL ≠ NULL`.
 - Rate limits on `POST /portfolios/:id/orders` to prevent spam and protect
-  the Finnhub budget ([03-api §8](03-api.md#8-rate-limiting)).
+  the market data rate limit ([03-api §8](03-api.md#8-rate-limiting)).
 - Idempotency keys dedupe accidental double-submits.
 - All players share the same universe, capital, and fill prices — the
   surface for "unfair edge" is small by construction.

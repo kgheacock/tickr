@@ -30,7 +30,7 @@
      └────────┘
             │ outbound only (worker)
         ┌───▼────────────┐
-        │  Finnhub       │
+        │  Market data   │
         │ REST (v1)      │
         │ + WS (v2+)     │
         └────────────────┘
@@ -50,40 +50,39 @@
 > nodes. Extracting the worker or bot-runner onto its own host later is a
 > Compose change, not a redesign.
 
-## 2. Finnhub integration
+## 2. Market data integration
 
-The only component that talks to Finnhub is the **worker**. This centralizes
-credentials and rate limiting. Finnhub authenticates via a single API key
-(query param or header); no secret required.
+The only component that calls external market data APIs is the **worker**.
+This centralizes credentials and rate limiting.
 
 **v1 is REST-only.** Because v1 uses a daily EOD snapshot cadence, intraday
-streaming adds no game value. The worker uses two REST endpoints:
+streaming adds no game value. The worker uses two REST endpoints across two
+providers:
 
-- **Bootstrap backfill — `GET /stock/candle?resolution=5`:** one-time at
-  install, per `universe_symbol` row with `backfilled = false`. Loads 5
-  years of 5-minute OHLCV bars per symbol; bulk-inserts into `price_bar`;
+- **Bootstrap backfill — Massive `GET /v2/aggs/ticker/{symbol}/range/1/day`:**
+  one-time at install, per `universe_symbol` row with `backfilled = false`.
+  Loads 2 years of daily OHLCV bars per symbol; bulk-inserts into `price_bar`;
   sets `backfilled = true` on completion. Restart-safe — re-running the job
-  picks up where it left off. Total: ~49 M rows for a full 500-symbol corpus
-  (500 × 5 y × 252 trading days × 78 five-min bars/day).
-- **Daily price update — `GET /quote`:** once per day, just after the US
-  market close (16:00 ET). Fetches the latest quote per backfilled symbol
+  picks up where it left off. Total: ~252 K rows for a full 500-symbol corpus
+  (500 × 2 y × 252 trading days × 1 daily bar).
+- **Daily price update — Finnhub `GET /quote`:** once per day, just after the
+  US market close (16:00 ET). Fetches the latest quote per backfilled symbol
   and appends one row to `price_bar`. At 60 req/min, 500 symbols ≈ 8.5 min.
-- **Rate limiting:** 60 req/min (free tier); token-bucket in Redis. Both
-  REST jobs share the bucket. The bootstrap backfill is throttled to leave
-  headroom for the daily update if both are eligible to run.
-- **Credentials:** `FINNHUB_API_KEY` is server-side env only, never sent to
-  the browser.
+- **Rate limiting:** separate Redis token buckets per provider. Finnhub bucket:
+  60 req/min (free tier). Massive bucket: sized to free-tier limit after the
+  probe in TODO/13 step 4.
+- **Credentials:** `MASSIVE_API_KEY` (backfill) and `FINNHUB_API_KEY` (daily
+  price) are server-side env only, never sent to the browser.
 
-> **Finnhub tier (v1): Free ($0/mo)** is sufficient. v1 has no WebSocket
-> usage and one REST burst per day. **Commercial licensing terms must be
-> confirmed before public launch** (open question F1); historical depth and
-> `/stock/candle` per-call window need verification (T2b).
-> See [09-open-questions](09-open-questions.md#open-finnhub-questions).
+> **Market data tiers (v1): both free tiers** are sufficient. v1 has no
+> WebSocket usage. **Commercial licensing terms for both providers must be
+> confirmed before public launch** (open question F1).
+> See [09-open-questions](09-open-questions.md#open-market-data-questions).
 
 > **v2 adds WebSocket streaming.** When seasons + themes land, the watch
 > list narrows from "all 500" to "the union of active themes" — typically
-> ≤50 symbols, which fits the free-tier WebSocket limit. The worker grows
-> a persistent WS connection (primary live path) with REST `/quote` as
+> ≤50 symbols, which fits the Finnhub free-tier WebSocket limit. The worker
+> grows a persistent WS connection (primary live path) with REST `/quote` as
 > overflow fallback. The token bucket above continues to govern REST; WS
 > traffic does not consume REST quota.
 
@@ -96,7 +95,8 @@ committed to the repo):
 |---|---|
 | `DATABASE_URL` | api, worker, bot-runner |
 | `REDIS_URL` | api, worker, bot-runner |
-| `FINNHUB_API_KEY` | worker only |
+| `MASSIVE_API_KEY` | worker only (backfill) |
+| `FINNHUB_API_KEY` | worker only (daily price) |
 | `GOOGLE_OAUTH_CLIENT_ID/SECRET` | api |
 | `GITHUB_OAUTH_CLIENT_ID/SECRET` | api |
 | `SESSION_SIGNING_KEY` | api |
@@ -125,7 +125,7 @@ trades at portfolio seeding).
 
 | Job | Cadence | Effect |
 |---|---|---|
-| Bootstrap backfill | one-time at install (resumable) | for each `universe_symbol` with `backfilled = false`: `GET /stock/candle?resolution=5` for 5 y of 5-min bars; bulk-insert into `price_bar`; flip `backfilled = true` |
+| Bootstrap backfill | one-time at install (resumable) | for each `universe_symbol` with `backfilled = false`: Massive `GET /v2/aggs/ticker/{symbol}/range/1/day` for 2 y of daily bars; bulk-insert into `price_bar`; flip `backfilled = true` |
 | Daily price update | once daily after 16:00 ET | `GET /quote` for every backfilled `universe_symbol`; append one row to `price_bar`; respect 60 req/min Redis token bucket |
 | EOD valuation snapshot | once daily, immediately after the daily price update completes | read latest `price_bar.close` per held symbol; write `valuation_snapshot` rows; rank portfolios → `leaderboard_row`; refresh Redis leaderboard cache; emit `leaderboard.updated` WS event |
 | Index bot seeding | once at system bootstrap | create the `index` algo + portfolio; place 500 market buys (one per backfilled symbol); the bot does not trade again |
@@ -157,17 +157,17 @@ endpoint. No Prometheus/Grafana stack in v1; that's a v2+ expansion.
 - **Metrics:** counters and gauges exposed in-process and read via the admin
   ops endpoint below. The v1 set is intentionally small:
   - API: request count + latency p50/p95 per route; error rate by status.
-  - Finnhub REST: call count, 429 count (last 24h), backfill progress
-    (`universe_symbol where backfilled = false` count).
+  - Market data REST: call count and 429 count per provider (last 24h),
+    backfill progress (`universe_symbol where backfilled = false` count).
   - Daily price update: last-run timestamp, duration, count of bars written.
   - EOD snapshot: last-run timestamp, duration, snapshot lag
     (`now() - last_snapshot.taken_at`).
-  - Redis: queue depth (job count), Finnhub token-bucket remaining.
+  - Redis: queue depth (job count), market data token-bucket remaining (per provider).
 - **Admin ops view:** `GET /admin/ops` ([03-api §6](03-api.md#6-admin-v1))
-  surfaces snapshot lag, Finnhub 429s, queue depth, and backfill remaining
+  surfaces snapshot lag, market data 429s, queue depth, and backfill remaining
   for at-a-glance health checks.
 - **Alerts (TODO):** snapshot lag > 26 h (missed a day);
-  sustained Finnhub 429s; backfill stuck (no progress for > 1 h while rows
+  sustained market data 429s; backfill stuck (no progress for > 1 h while rows
   remain). v1 can do these as email/Discord webhooks from the worker;
   alerting infra is a v2+ concern.
 
@@ -179,25 +179,25 @@ endpoint. No Prometheus/Grafana stack in v1; that's a v2+ expansion.
 ## 7. Environments
 
 - **dev** — local Compose; separate OAuth app registrations + redirect URIs;
-  Finnhub free-tier key. To keep the bootstrap backfill fast, seed
-  `universe_symbol` with a small subset (5–10 symbols) instead of the full
-  S&P 500.
-- **prod** — the VPS; distinct OAuth registrations; production Finnhub key.
-  v1 stays on the free tier (REST-only). v2 evaluates the paid tier when
-  per-season WebSocket subscriptions become useful.
+  free-tier Massive and Finnhub keys. To keep the bootstrap backfill fast,
+  seed `universe_symbol` with a small subset (5–10 symbols) instead of the
+  full S&P 500.
+- **prod** — the VPS; distinct OAuth registrations; production market data
+  keys. v1 stays on free tiers (REST-only). v2 evaluates Finnhub paid tier
+  when per-season WebSocket subscriptions become useful.
 
 ## 8. Security posture
 
 - TLS everywhere; HSTS at the proxy.
 - Secrets server-side only; nothing sensitive reaches the browser.
 - DB/Redis bound to the internal Docker network, not publicly exposed.
-- Principle of least privilege: only the worker holds the Finnhub key; only
-  the API holds OAuth secrets.
+- Principle of least privilege: only the worker holds market data API keys;
+  only the API holds OAuth secrets.
 - See [05-auth](05-auth.md) for the auth-specific threat table.
 
 ## 9. Ops decisions
 
 Consolidated in [09-open-questions](09-open-questions.md) — see the
-**v1 deployment / Finnhub** and **all phases — backend language** sections
+**v1 deployment / market data** and **all phases — backend language** sections
 for the canonical record. This section used to duplicate that list; it now
 just points there to avoid drift.

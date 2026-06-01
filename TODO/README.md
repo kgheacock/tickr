@@ -35,14 +35,15 @@ of each file as you go.
 | 10 | [Observability + admin](10-observability-and-admin.md) | 04, 06, 08 | pending |
 | 11 | [Frontend SPA](11-frontend.md) | 02, 04, 07, 08, 09 | pending |
 | 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11 | pending |
-| 13 | [Switch backfill to Massive](13-massive-backfill.md) | 06 | pending |
+| 13 | [Massive client](13-massive-client.md) | 01 | pending |
 
 ## Dependency graph (at a glance)
 
 ```
 01 dev-environment ─┬─▶ 02 shared-contracts ─┐
                     ├─▶ 03 schema ──────────┐│
-                    └─▶ 05 finnhub-client ─┐││
+                    ├─▶ 05 finnhub-client ─┐││
+                    └─▶ 13 massive-client   │││
                                             │││
 03 ──▶ 06 backfill+daily ◀──────────────────┘│
        06 ──▶ 07 trading-engine ◀── 04 auth ◀┘
@@ -73,6 +74,6 @@ These belong to later phases — track separately when v2/v3 starts:
 - Themes (`theme`, `theme_symbol`, watch list view)
 - The 6-strategy bot registry beyond `index`
 - User-authored algos
-- Finnhub WebSocket integration
+- Finnhub WebSocket integration (v2)
 - Per-snapshot (5-min) cadence
 - Prometheus/Grafana metrics stack

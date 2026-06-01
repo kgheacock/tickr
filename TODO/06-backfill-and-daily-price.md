@@ -4,10 +4,11 @@
 
 ## Goal
 
-Load 5 years of 5-min OHLCV bars for every S&P 500 symbol (one-time
-bootstrap) and append one daily close bar per symbol after each US market
-close. Both jobs run only in the `worker` role, share the Finnhub bucket,
-and are restart-safe.
+Load 2 years of daily OHLCV bars for every S&P 500 symbol via Massive
+(one-time bootstrap) and append one daily close bar per symbol after each
+US market close via Finnhub `GET /quote`. Both jobs run only in the `worker`
+role and are restart-safe. Each job uses its own Redis token bucket (see
+TODO/13 for the Massive client; item 05 for the Finnhub client).
 
 ## Pre-reads
 
@@ -15,35 +16,30 @@ and are restart-safe.
   — both ingestion paths.
 - [docs/08-deployment.md §5](../docs/08-deployment.md#5-scheduled--background-jobs)
   — cadence + idempotency requirements.
-- [docs/09-open-questions.md T2b](../docs/09-open-questions.md#open-finnhub-questions)
-  — unresolved: Finnhub `/stock/candle` per-call window and free-tier
-  depth. Resolve this empirically as **the first thing** in implementation;
-  if the per-call window is shorter than 5 years, the backfill loop has to
-  paginate.
+- [docs/09-open-questions.md T2c](../docs/09-open-questions.md#open-market-data-questions)
+  — open: Massive rate limit and pagination behavior. Resolve via the probe
+  script in TODO/13 step 4 **before** implementing the backfill loop.
 
 ## Steps
 
-1. **Resolve T2b.** Write a one-off probe script
-   (`scripts/probe-finnhub-candles.ts`) that calls `GET /stock/candle?
-   symbol=AAPL&resolution=5&from=...&to=...` for varying windows. Record:
-   max window per call; whether `s` is `"ok"` or `"no_data"` past N years;
-   any free-tier ceiling. Pin findings in
-   [docs/09-open-questions.md](../docs/09-open-questions.md) before
-   continuing.
+1. **Resolve T2c.** Run `scripts/probe-massive-candles.ts` (see TODO/13
+   step 4) to determine Massive's rate limit and pagination behavior. Pin
+   findings in [docs/09-open-questions.md](../docs/09-open-questions.md)
+   (T2c) before continuing.
 2. **Bootstrap backfill job.** `apps/api/src/jobs/backfill.ts`:
    ```
    while exists universe_symbol with backfilled = false:
-     batch = next 4 symbols (concurrency cap from item 05)
+     batch = next 4 symbols (concurrency cap)
      for each symbol in parallel:
-       for each window in 5y/W chunks (W from step 1):
-         bars = finnhubGet('/stock/candle', { symbol, resolution: 5,
-                                              from, to })
+       for each window in 2y/365d chunks:
+         bars = massiveGet('/v2/aggs/ticker/{symbol}/range/1/day', { from, to })
          bulk INSERT ... ON CONFLICT (symbol, ts) DO NOTHING into price_bar
        UPDATE universe_symbol SET backfilled = true,
               backfilled_at = now() WHERE symbol = $1
    ```
    Restart-safe by the `backfilled` flag; per-chunk insertion is idempotent
-   via the PK conflict.
+   via the PK conflict. See TODO/13 for the Massive client and response
+   shape (millisecond timestamps, object array, `next_url` pagination).
 3. **Daily price update job.** `apps/api/src/jobs/daily-price.ts`:
    ```
    for each universe_symbol with backfilled = true:
@@ -54,11 +50,11 @@ and are restart-safe.
        volume = null  (Finnhub /quote doesn't return volume)
      ON CONFLICT (symbol, ts) DO NOTHING
    ```
-   Uses the shared Finnhub bucket (60/min). 500 symbols ≈ 8.5 min.
+   Uses the Finnhub bucket (60/min). 500 symbols ≈ 8.5 min.
    > **v1 approximation (O5):** `q.c` is Finnhub's current/delayed price,
    > not the official 4 PM close. `open/high/low` from `/quote` are
    > real-time snapshots, not true OHLC. This is documented and accepted
-   > for v1; switching to `GET /stock/candle?resolution=D` is a v2 option.
+   > for v1.
 4. **Scheduler.** Use `node-cron` in-process. Worker registers:
    - Backfill: runs at startup (and only if there are unbackfilled
      symbols); cancels itself when none remain.
@@ -66,7 +62,7 @@ and are restart-safe.
      US market holidays via a static `apps/api/src/market/holidays.ts`
      (NYSE holiday list; refresh annually).
 5. **Single-instance guard.** Both jobs grab a Redis lock
-   (`finnhub:job:backfill`, `finnhub:job:daily-price`) with TTL 30 min.
+   (`worker:job:backfill`, `worker:job:daily-price`) with TTL 30 min.
    If a previous run is still alive, skip this firing. This protects
    against accidental two-worker deployments.
 6. **Admin universe upsert.** `POST /admin/universe/upsert` (auth:admin)
@@ -76,7 +72,7 @@ and are restart-safe.
 7. **Admin manual backfill.** `POST /admin/universe/backfill` with
    `{ symbol }` flips `backfilled` back to `false` for that symbol so the
    next sweep refills it. Useful for stuck or corrupted symbols.
-8. **Tests.** Mock the Finnhub client; assert that:
+8. **Tests.** Mock the market data clients; assert that:
    - Backfill skips already-backfilled symbols.
    - On crash mid-symbol, restart resumes (the symbol stays `backfilled =
      false`, partial rows survive via ON CONFLICT).
@@ -91,17 +87,16 @@ and are restart-safe.
 - `apps/api/src/jobs/locks.ts`
 - `apps/api/src/market/holidays.ts`
 - `apps/api/src/routes/admin/universe.ts`
-- `scripts/probe-finnhub-candles.ts`
+- `scripts/probe-massive-candles.ts`
 - `apps/api/test/jobs/backfill.test.ts`
 - `apps/api/test/jobs/daily-price.test.ts`
 
 ## Definition of done
 
-- [ ] T2b is resolved and documented; backfill paginates accordingly.
+- [ ] T2c is resolved and documented; backfill paginates or windows accordingly.
 - [ ] On a fresh DB with 5 seeded symbols, backfill completes and
       `universe_symbol.backfilled = true` for all 5; `price_bar` has
-      `~5y × 252d × 78bars` rows per symbol (allowing for missing weekend
-      data).
+      `~2y × 252d × 1bar` rows per symbol (allowing for non-trading days).
 - [ ] Killing the worker mid-backfill and restarting completes without
       duplicate rows.
 - [ ] Daily-price job after a successful run inserts exactly N new rows
@@ -110,4 +105,4 @@ and are restart-safe.
       time.
 - [ ] `POST /admin/universe/upsert` adds new symbols; the next backfill
       sweep picks them up.
-- [ ] Holiday weekday: scheduler logs a skip; no Finnhub calls.
+- [ ] Holiday weekday: scheduler logs a skip; no market data calls.

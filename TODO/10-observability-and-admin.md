@@ -21,8 +21,8 @@ remaining admin endpoints (`/admin/universe/*`).
 
 1. **Structured logging.** Use `pino` with a child logger per request and
    per job. Required fields on every line: `level`, `ts`, `msg`, plus
-   `request_id` (HTTP) or `job_id` (worker). Redact `FINNHUB_API_KEY`,
-   OAuth secrets, and the session cookie via `pino.redact`.
+   `request_id` (HTTP) or `job_id` (worker). Redact `MASSIVE_API_KEY`,
+   `FINNHUB_API_KEY`, OAuth secrets, and the session cookie via `pino.redact`.
 2. **Request middleware.** Generate a `request_id` (UUID) per request;
    attach to `req.log`. Log `req.method`, `req.url`, status, and
    `duration_ms` on response. Skip body logging by default; gate behind
@@ -34,27 +34,30 @@ remaining admin endpoints (`/admin/universe/*`).
      middleware.
    - `http_request_duration_ms{route}` — last-N circular buffer for p50/p95.
    - `finnhub_calls_total`, `finnhub_429_total` — in the Finnhub client
-     (item 05).
+     (item 05, daily price path).
+   - `massive_calls_total`, `massive_429_total` — in the Massive client
+     (item 13, backfill path).
    - `backfill_remaining` — gauge updated by the backfill job (item 06).
    - `daily_price_last_run_at`, `daily_price_duration_ms` — set by the
      daily-price job (item 06).
    - `snapshot_last_run_at`, `snapshot_duration_ms`,
      `snapshot_lag_seconds` — set/computed by the snapshot job (item 08).
    - `redis_queue_depth` — gauge polled every 30 s.
-   - `finnhub_bucket_remaining` — gauge polled every 5 s.
+   - `finnhub_bucket_remaining`, `massive_bucket_remaining` — gauges polled
+     every 5 s.
 4. **`GET /admin/ops`.** Returns `OpsResponse` from
    [docs/03-api.md §6](../docs/03-api.md#6-admin-v1):
    ```ts
    {
      lastSnapshotAt: string | null;
      snapshotLagSec: number | null;
-     finnhubRest429sLast24h: number;
+     marketData429sLast24h: { massive: number; finnhub: number };
      jobQueueDepth: number;
      backfillRemaining: number;
    }
    ```
-   Reads from the metrics registry + a 24-hour rolling counter in Redis
-   for `finnhub_429_total`.
+   Reads from the metrics registry + 24-hour rolling counters in Redis
+   for `finnhub_429_total` and `massive_429_total`.
 5. **Rate limiting.** Redis-backed sliding-window counters via a Lua
    script. Wire as middleware:
    - Default per-IP cap: 60 req/min on all routes.
@@ -68,7 +71,7 @@ remaining admin endpoints (`/admin/universe/*`).
    5 min) checks:
    - `snapshot_lag_seconds > 26 * 3600` → alert.
    - `backfill_remaining > 0` and unchanged for 1 h → alert.
-   - `finnhub_429_total in last 5m > 0` → alert.
+   - `finnhub_429_total in last 5m > 0` or `massive_429_total in last 5m > 0` → alert.
    POSTs to a Discord webhook (`ALERT_WEBHOOK_URL`) if set; otherwise
    logs at `warn`.
 8. **Tests.**
@@ -95,7 +98,8 @@ remaining admin endpoints (`/admin/universe/*`).
 ## Definition of done
 
 - [ ] Every log line includes `request_id` or `job_id`; `FINNHUB_API_KEY`
-      never appears in stdout (grep verifies after a full flow).
+      and `MASSIVE_API_KEY` never appear in stdout (grep verifies after a
+      full flow).
 - [ ] `GET /admin/ops` (admin) returns realistic numbers after one full
       daily cycle has run.
 - [ ] Player calling `/admin/ops` → 403.

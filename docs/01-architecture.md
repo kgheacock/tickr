@@ -2,7 +2,7 @@
 
 > This doc describes **v1 architecture in the body** and previews v2+ at the
 > end. v1 is intentionally small: one image with three roles, Postgres +
-> TimescaleDB, Redis, and Finnhub over REST. v2 introduces seasons/themes and
+> TimescaleDB, Redis, and external market data APIs over REST. v2 introduces seasons/themes and
 > WebSocket streaming; v3 introduces user-authored algos. The component
 > boundaries below are chosen so each phase is additive.
 
@@ -26,7 +26,7 @@
     │                      │                            │
 ┌───▼──────────────────┐  ┌──────▼──────┐   outbound only (worker)
 │Postgres + TimescaleDB│  │   Redis     │   ┌──────────────┐
-│(SoR + price_bar)     │  │(cache/queue)│   │ Finnhub REST │
+│(SoR + price_bar)     │  │(cache/queue)│   │ Market data  │
 └──────────────────────┘  └─────────────┘   └──────────────┘
 ```
 
@@ -40,11 +40,12 @@ single Hetzner VPS.
   upgrade. See [08-deployment](08-deployment.md).
 - **API service** — Stateless HTTP + WebSocket: auth/session, order
   submission, portfolio reads, leaderboard reads, the `/me` endpoint, and the
-  small admin surface. Talks to Postgres and Redis; never calls Finnhub on
-  the request path.
+  small admin surface. Talks to Postgres and Redis; never calls market data
+  APIs on the request path.
 - **Worker service** — Scheduled background work: the one-time bootstrap
   backfill, the once-daily price update, and the daily EOD valuation
-  snapshot. Holds the only Finnhub API key.
+  snapshot. Holds market data API keys (Massive for backfill, Finnhub for
+  daily price).
 - **Bot runner** — Runs the single v1 house bot (`index`, a buy-and-hold of
   an equally-weighted S&P 500 basket) once at portfolio creation. There is no
   per-cycle bot loop in v1 — the bot's portfolio doesn't trade after seeding.
@@ -53,8 +54,8 @@ single Hetzner VPS.
   `valuation_snapshot`, `leaderboard_row`) plus the OHLCV `price_bar`
   hypertable. TimescaleDB runs as a Postgres extension (same service, same
   `DATABASE_URL`); no separate process.
-- **Redis** — Job queue, Finnhub rate-limit token bucket, leaderboard read
-  cache. Not used for price data — TimescaleDB is authoritative for all
+- **Redis** — Job queue, market data rate-limit token buckets, leaderboard
+  read cache. Not used for price data — TimescaleDB is authoritative for all
   pricing.
 
 > **Deployment note:** API service, worker, and bot runner run as three
@@ -73,10 +74,10 @@ universe, populated in `universe_symbol`. Two ingestion paths exist:
 ```
 Worker (on first boot, if any universe_symbol has backfilled = false):
   → for each unbackfilled symbol:
-      GET /stock/candle?resolution=5 — 5 years of 5-min bars
+      GET /v2/aggs/ticker/{symbol}/range/1/day (Massive) — 2 years of daily bars
       bulk-insert into price_bar
       set universe_symbol.backfilled = true (symbol becomes tradeable)
-  → respect 60 req/min token bucket (free tier)
+  → respect Massive rate-limit token bucket
   → restart-safe: re-run picks up where it left off
 ```
 
@@ -84,16 +85,15 @@ Worker (on first boot, if any universe_symbol has backfilled = false):
 ```
 Worker (daily after 16:00 ET):
   → for each universe_symbol with backfilled = true:
-      GET /quote
+      GET /quote (Finnhub)
       append one row to price_bar (ts = today's close)
   → 500 symbols ÷ 60 req/min ≈ 8.5 min total
 ```
 
-**~49 M rows** for the full 500-symbol corpus (500 × 5y × 252 trading days
-× 78 five-minute bars/day). Bootstrap is a one-shot cost; the daily update
-adds 500 rows/day. Finnhub historical depth + `/stock/candle` per-call
-window need verification — see
-[09-open-questions](09-open-questions.md#open-finnhub-questions).
+**~252 K rows** for the full 500-symbol corpus at bootstrap (500 × 2y × 252
+trading days × 1 daily bar). Bootstrap is a one-shot cost; the daily update
+adds 500 rows/day. See [09-open-questions](09-open-questions.md#open-market-data-questions)
+for the Massive rate-limit probe item (T2c).
 
 ### 2.2 Order submission
 
@@ -157,19 +157,19 @@ the official ranking until the next EOD snapshot.
 
 | Concern | Approach |
 |---|---|
-| **Rate limiting (Finnhub)** | Centralized in worker; token-bucket in Redis (60 req/min on free tier). Bootstrap backfill and daily price update share the bucket. No other component calls Finnhub. |
+| **Rate limiting (market data)** | Centralized in worker; separate Redis token buckets per provider. Massive bucket governs backfill; Finnhub bucket (60 req/min free tier) governs the daily price update. No other component calls external market data APIs. |
 | **Rate limiting (our API)** | Per-user + per-IP counters in Redis; stricter limits for order endpoints. Concrete numbers defined at implementation time. |
 | **Idempotency** | Order submission accepts a client idempotency key; duplicates return the original result. |
 | **Time** | All timestamps UTC, ISO-8601 at the boundary. EOD job uses the US/Eastern market close; the snapshot's `taken_at` is in UTC. |
 | **Auditability** | Orders, fills, and snapshots are append-only/immutable records. Leaderboard is derived and reproducible from snapshots. |
 | **Observability** | Structured JSON logs + a small metric set (snapshot lag, REST 429s, daily-job duration, queue depth). See [08-deployment §6](08-deployment.md#6-observability). |
-| **Config/secrets** | Env-injected; Finnhub key and OAuth client secrets never reach the client. See [05-auth](05-auth.md) and [08-deployment](08-deployment.md#3-configuration--secrets). |
+| **Config/secrets** | Env-injected; market data API keys and OAuth client secrets never reach the client. See [05-auth](05-auth.md) and [08-deployment](08-deployment.md#3-configuration--secrets). |
 
 ## 5. Trust boundaries
 
 1. **Browser ↔ API** — untrusted client; all validation server-side.
 2. **API/Worker ↔ Postgres/Redis** — trusted internal Docker network.
-3. **Worker ↔ Finnhub** — outbound only; credentials server-side only.
+3. **Worker ↔ market data APIs** — outbound only; credentials server-side only.
 4. **Bot runner ↔ strategy code** — in v1, the bot runs in-process from a
    trusted module; *the* sensitive boundary opens up in v3 with
    user-authored algos. See
@@ -193,7 +193,7 @@ v2 introduces **seasons** and **themes**:
 - The Finnhub WebSocket connection enters here: with smaller per-season
   watch lists and per-snapshot cadence, live quotes become useful. The REST
   path remains as a fallback for overflow symbols. See
-  [08-deployment §2](08-deployment.md#2-finnhub-integration).
+  [08-deployment §2](08-deployment.md#2-market-data-integration).
 
 v3 introduces **user-authored algos**: declarative strategy types
 parameterized by user config, capped per user per season. Arbitrary user

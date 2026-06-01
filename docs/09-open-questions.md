@@ -25,7 +25,7 @@ source doc where the decision is applied. Items split by **phase scope**:
 | G1 | Game window | **Perpetual** in v1; bounded seasons arrive in v2 (default 30 days) | Drops the season lifecycle from the v1 surface area |
 | G2 | Trading window | **24/7; fill at latest `price_bar.close`** | Simplest UX; fairness preserved (everyone within a day fills at the same close) |
 | G3 | Fees / commissions | **Zero in v1**; `season.commissionCents` reserved for v2+ | Legible results; can add later without re-architecting |
-| G4 | Snapshot cadence | **Daily EOD** in v1; v2 introduces `season.snapshotIntervalSec` (default 300 s) | Matches the once-daily Finnhub REST pull; ranking moves once a day |
+| G4 | Snapshot cadence | **Daily EOD** in v1; v2 introduces `season.snapshotIntervalSec` (default 300 s) | Matches the once-daily market data pull; ranking moves once a day |
 | G5 | Leaderboard tie-breaking | **`RANK() OVER (ORDER BY equity DESC)`** for the rank value (equal equity → same rank); **separate top-level `ORDER BY equity DESC, portfolio_id ASC`** for display order. Putting `portfolio_id` inside the `OVER` clause makes every tuple distinct — ranks would never tie. | Deterministic and simple; revisit with risk-adjusted metric later |
 | G6 | Stale prices | **Reject orders if latest `price_bar` is > 5 calendar days old** (`STALE_PRICE`) | Threshold survives a 3-day weekend + daily-update window; only fires on actually-stuck feeds (delistings, prolonged backfill failure) |
 | G7 | Shorting / margin / limit orders | **Out of scope** (schema reserves room) | Keeps invariants simple; `CHECK (quantity >= 0)` enforces no shorts |
@@ -90,16 +90,16 @@ source doc where the decision is applied. Items split by **phase scope**:
 | L1 | When to rewrite a hot path in Go | **Only after profiling shows need** — likely EOD snapshot loop (v1) or per-cycle bot runner (v2/v3) first |
 | L2 | Keep 3 backend roles as one image or split | **One image, `ROLE` env var** initially; split only if independent deploy cadences require it |
 
-## v1 deployment / Finnhub ([08](08-deployment.md))
+## v1 deployment / market data ([08](08-deployment.md))
 
 | # | Question | Decision |
 |---|---|---|
-| O1 | Market data provider + tier | **Finnhub Free ($0/mo)** sufficient in v1 (REST-only, ~500 calls/day + one-time backfill). v2 evaluates the paid tier once the WebSocket symbol limit (≤50) becomes binding |
+| O1 | Market data provider + tier | **Two free tiers in v1**: Massive Free for bootstrap backfill (2 years of daily bars); Finnhub Free ($0/mo) for daily price updates (~500 calls/day). v2 evaluates Finnhub paid tier once the WebSocket symbol limit (≤50) becomes binding |
 | O2 | Job-queue durability | **Re-enqueue on boot** using idempotency keys; no Redis persistence mode needed |
 | O3 | Backup cadence/retention + restore drill | **Daily `pg_dump` to off-VPS storage; 7-day retention; quarterly restore drill** (`pg_dump` includes TimescaleDB hypertable data) |
-| O4 | v1 Finnhub usage shape | **REST-only**: `GET /stock/candle` for bootstrap backfill, `GET /quote` for daily price update. **No WebSocket in v1** |
+| O4 | v1 market data usage shape | **REST-only, two providers**: Massive `GET /v2/aggs/ticker/{symbol}/range/1/day` for bootstrap backfill; Finnhub `GET /quote` for daily price update. **No WebSocket in v1** |
 | O5 | Daily price source for "official close" | **Accept `q.c` from `GET /quote` as v1's documented approximation** of the close. The daily-update row is timestamped `16:00 ET`; `open/high/low` from `/quote` are real-time snapshots, not true OHLC, and are written as-is. Switching to `GET /stock/candle?resolution=D` is deferred to v2 if accuracy becomes a concern. |
-| O6 | Swagger coverage for `/stock/candle` | **Add `/stock/candle` and its response schema** to `schema/finhub.io/swagger.json` so codegen covers the candle path — no second source of truth. Blocked on T2b (empirical probe of response shape and free-tier window); add the schema after T2b is resolved. Until then, `backfill.ts` hand-types the call with a `// TODO: replace with codegen once T2b resolved` comment. |
+| O6 | Schema coverage for Massive backfill endpoint | **Schema added** at `schema/massive.com/openapi.json` (Custom Bars endpoint). `npm run gen:massive` generates types; see TODO/13 for the integration steps. |
 
 ## All phases — timeseries & data architecture
 
@@ -108,18 +108,19 @@ source doc where the decision is applied. Items split by **phase scope**:
 | T1 | Timeseries DB choice | **TimescaleDB** (Postgres extension) | No new service on the VPS — same container, same `DATABASE_URL`, same `pg_dump` backup path. Hypertables + columnar compression handle OHLCV append workloads well. Alternatives considered: QuestDB (fast but another process + port, different query language), InfluxDB (separate service, Flux/InfluxQL instead of SQL), ClickHouse (excellent for analytics but heavy for a single-VPS game). TimescaleDB wins on operational simplicity for the single-VPS target. |
 | T2 | v1 polling scope | **Full S&P 500** (bootstrap backfill of all 500; daily `/quote` for all 500) | v1 has no themes/watch list. Daily 500-call burst fits the 60 req/min free-tier bucket (~8.5 min). v2 narrows to watch-list-only when themes land. |
 | T3 | Source of truth for in-game pricing | **TimescaleDB `price_bar`** — fills, snapshots, and bot context all read from here | Single source eliminates Redis-vs-Postgres divergence. Redis retains queue, rate-limit, session, and leaderboard-cache roles; it is not used for quote data. |
-| T4 | v1 backfill strategy | **Bootstrap backfill at install** — `GET /stock/candle?resolution=5` for 5 years of 5-min bars per `universe_symbol` | Loads ~49 M rows up front (one-time cost) so v1 doesn't need lazy/triggered backfill machinery. v2's theme-driven watch list reuses the same job, just triggered by theme membership instead of bootstrap. |
+| T4 | v1 backfill strategy | **Bootstrap backfill at install** — Massive `GET /v2/aggs/ticker/{symbol}/range/1/day` for 2 years of daily bars per `universe_symbol` | Loads ~252 K rows up front (one-time cost) so v1 doesn't need lazy/triggered backfill machinery. v2's theme-driven watch list reuses the same job, just triggered by theme membership instead of bootstrap. |
 | T5 | No-trade-until-backfill gate | **Symbol not tradeable until `universe_symbol.backfilled = true`** | Prevents orders from filling against a symbol with incomplete price history, which would break snapshot and backtest reproducibility. |
 | T6 | `universe_symbol` population | **Admin-managed (manual upsert)** in v1; periodic check job deferred | Keeps v1 simple. S&P 500 composition changes infrequently (~30–50 changes/year); admin can act on rebalance announcements without an automated feed. |
 
-## Open Finnhub questions
+## Open market data questions
 
 | # | Open question | Notes |
 |---|---|---|
-| T2b | Finnhub historical bar depth and per-call response window | **Resolved 2026-05-31.** `GET /stock/candle` returns HTTP 403 (`"You don't have access to this resource."`) for **all resolutions** (D, 5, etc.) on the free tier. The entire endpoint is premium-gated. `GET /quote` is free and confirmed working. The backfill job is correct but will 403 until the plan is upgraded. **Paths forward: (1) upgrade Finnhub plan, (2) seed from an alternative free source (Alpha Vantage, Polygon.io), (3) skip historical data and accumulate daily bars via `/quote` going forward.** Decision pending. |
-| F1 | Commercial licensing — does Finnhub's free tier permit a public game? | Free tier ToS must be reviewed before launch. "Commercial use" may require a paid plan regardless of symbol count or call volume. Verify with Finnhub support or legal terms. |
-| F2 | WebSocket symbol limit per plan (v2 concern) | Free tier: 50 simultaneous symbols. v2 themes are typically ≤50, so free tier should still fit; confirm at v2 implementation. |
-| F3 | REST rate limit under combined load (v2 concern) | At 60 req/min, simultaneous REST fallback + theme-triggered backfill could saturate the bucket. Backfill should run at reduced rate or off-peak. Not a v1 concern (REST is daily-burst only). |
+| T2b | Finnhub historical bar depth and per-call response window | **Resolved 2026-05-31.** `GET /stock/candle` returns HTTP 403 for all resolutions on the free tier (premium-gated). `GET /quote` is free and confirmed working. **Decision: use Massive for backfill (TODO/13); daily price stays on Finnhub `/quote`.** |
+| T2c | Massive free-tier rate limit and pagination behavior | **Open.** Run `scripts/probe-massive-candles.ts` (TODO/13 step 4) to determine req/min or req/day cap and whether responses paginate via `next_url`. Pin findings here before setting `MASSIVE_RPS_LIMIT`. |
+| F1 | Commercial licensing — do the free tiers of Massive and Finnhub permit a public game? | Both providers' ToS must be reviewed before launch. "Commercial use" may require paid plans. Verify with each provider's support or legal terms. |
+| F2 | Finnhub WebSocket symbol limit per plan (v2 concern) | Free tier: 50 simultaneous symbols. v2 themes are typically ≤50, so free tier should still fit; confirm at v2 implementation. |
+| F3 | Finnhub REST rate limit under combined load (v2 concern) | At 60 req/min, simultaneous REST fallback + theme-triggered backfill could saturate the bucket. Backfill should run at reduced rate or off-peak. Not a v1 concern (REST is daily-burst only). |
 
 ## Open design questions (from review)
 

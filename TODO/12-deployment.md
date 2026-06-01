@@ -85,8 +85,8 @@ restore drill, and a one-command deploy from a fresh git pull.
     - TLS + HSTS on; verified via `curl -I`.
     - Postgres + Redis bound to the Docker internal network; `nmap` from
       outside shows only 22/80/443.
-    - `tickr.env` permissions 600; logs free of `FINNHUB_API_KEY` and
-      OAuth secrets.
+    - `tickr.env` permissions 600; logs free of `MASSIVE_API_KEY`,
+      `FINNHUB_API_KEY`, and OAuth secrets.
 
 ## Files to create
 

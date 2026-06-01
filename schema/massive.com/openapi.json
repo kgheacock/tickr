@@ -1,0 +1,265 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "version": "1.0.0",
+        "title": "Massive API",
+        "description": "REST API for U.S. stock market data from Massive (formerly Polygon.io). Documentation: https://massive.com/docs/llms.txt"
+    },
+    "servers": [
+        {
+            "url": "https://api.massive.com"
+        }
+    ],
+    "paths": {
+        "/v2/aggs/ticker/{stocksTicker}/range/{multiplier}/{timespan}/{from}/{to}": {
+            "get": {
+                "summary": "Custom Bars (OHLC)",
+                "description": "Retrieve aggregated historical OHLC (Open, High, Low, Close) and volume data for a specified stock ticker over a custom date range and time interval in Eastern Time (ET). Aggregates are constructed exclusively from qualifying trades that meet specific conditions. If no eligible trades occur within a given timeframe, no aggregate bar is produced. Covers pre-market, regular market, and after-hours sessions.",
+                "operationId": "getAggregates",
+                "tags": [
+                    "Stocks"
+                ],
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "stocksTicker",
+                        "description": "A case-sensitive ticker symbol. For example, AAPL represents Apple Inc.",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "multiplier",
+                        "description": "The size of the timespan multiplier.",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "timespan",
+                        "description": "The size of the time window. Common values: minute, hour, day, week, month, quarter, year.",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "second",
+                                "minute",
+                                "hour",
+                                "day",
+                                "week",
+                                "month",
+                                "quarter",
+                                "year"
+                            ]
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "from",
+                        "description": "The start of the aggregate time window. Either a date with the format YYYY-MM-DD or a millisecond timestamp.",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "path",
+                        "name": "to",
+                        "description": "The end of the aggregate time window. Either a date with the format YYYY-MM-DD or a millisecond timestamp.",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "adjusted",
+                        "description": "Whether or not the results are adjusted for splits. By default, results are adjusted. Set this to false to get results that are NOT adjusted for splits.",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "sort",
+                        "description": "Sort the results by timestamp. asc returns results in ascending order (oldest first), desc returns results in descending order (newest first).",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "asc",
+                                "desc"
+                            ]
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "description": "Limits the number of base aggregates queried to create the aggregate results. Max 50000 and Default 5000.",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "default": 5000,
+                            "maximum": 50000
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful operation.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AggregatesResponse"
+                                },
+                                "example": {
+                                    "adjusted": true,
+                                    "next_url": "https://api.massive.com/v2/aggs/ticker/AAPL/range/1/day/1578114000000/2020-01-10?cursor=bGltaXQ9MiZzb3J0PWFzYw",
+                                    "queryCount": 2,
+                                    "request_id": "6a7e466379af0a71039d60cc78e72282",
+                                    "results": [
+                                        {
+                                            "c": 75.0875,
+                                            "h": 75.15,
+                                            "l": 73.7975,
+                                            "n": 1,
+                                            "o": 74.06,
+                                            "t": 1577941200000,
+                                            "v": 135647456,
+                                            "vw": 74.6099
+                                        },
+                                        {
+                                            "c": 74.3575,
+                                            "h": 75.145,
+                                            "l": 74.125,
+                                            "n": 1,
+                                            "o": 74.2875,
+                                            "t": 1578027600000,
+                                            "v": 146535512,
+                                            "vw": 74.7026
+                                        }
+                                    ],
+                                    "resultsCount": 2,
+                                    "status": "OK",
+                                    "ticker": "AAPL"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "api_key": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "api_key": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "Pass your Massive API key as a Bearer token in the Authorization header: Authorization: Bearer <MASSIVE_API_KEY>"
+            }
+        },
+        "schemas": {
+            "AggregateBar": {
+                "type": "object",
+                "properties": {
+                    "c": {
+                        "description": "The close price for the symbol in the given time period.",
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "h": {
+                        "description": "The highest price for the symbol in the given time period.",
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "l": {
+                        "description": "The lowest price for the symbol in the given time period.",
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "n": {
+                        "description": "The number of transactions in the aggregate window.",
+                        "type": "integer"
+                    },
+                    "o": {
+                        "description": "The open price for the symbol in the given time period.",
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "otc": {
+                        "description": "Whether or not this aggregate is for an OTC ticker. Omitted when false.",
+                        "type": "boolean"
+                    },
+                    "t": {
+                        "description": "The Unix millisecond timestamp for the start of the aggregate window.",
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "v": {
+                        "description": "The trading volume of the symbol in the given time period.",
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "vw": {
+                        "description": "The volume weighted average price.",
+                        "type": "number",
+                        "format": "double"
+                    }
+                },
+                "required": ["c", "h", "l", "o", "t", "v"]
+            },
+            "AggregatesResponse": {
+                "type": "object",
+                "properties": {
+                    "ticker": {
+                        "description": "The exchange symbol that this item is traded under.",
+                        "type": "string"
+                    },
+                    "adjusted": {
+                        "description": "Whether or not this response was adjusted for splits.",
+                        "type": "boolean"
+                    },
+                    "queryCount": {
+                        "description": "The number of aggregates (minute or day) used to generate the response.",
+                        "type": "integer"
+                    },
+                    "request_id": {
+                        "description": "A request id assigned by the server.",
+                        "type": "string"
+                    },
+                    "resultsCount": {
+                        "description": "The total number of results for this request.",
+                        "type": "integer"
+                    },
+                    "status": {
+                        "description": "The status of this request's response.",
+                        "type": "string"
+                    },
+                    "results": {
+                        "description": "An array of aggregate bars for the requested ticker and time range.",
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AggregateBar"
+                        }
+                    },
+                    "next_url": {
+                        "description": "If present, this value can be used to fetch the next page of data.",
+                        "type": "string",
+                        "format": "uri"
+                    }
+                },
+                "required": ["ticker", "queryCount", "resultsCount", "status", "results"]
+            }
+        }
+    }
+}
