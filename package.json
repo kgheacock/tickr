@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "description": "tickr — perpetual stock-trading leaderboard",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "workspaces": [
     "apps/*",
