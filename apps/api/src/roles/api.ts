@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
+import rateLimit from '@fastify/rate-limit';
 import { runMigrations } from '../db/migrate.js';
 import { requireEnv } from '../config.js';
 import { registerStartRoutes } from '../routes/auth/start.js';
@@ -18,6 +19,12 @@ export async function runApi(): Promise<void> {
   await runMigrations();
 
   const fastify = Fastify({ logger: true });
+
+  await fastify.register(rateLimit, {
+    global: true,
+    max: 100,
+    timeWindow: '1 minute',
+  });
 
   await fastify.register(cookie, {
     secret: requireEnv('SESSION_SIGNING_KEY'),

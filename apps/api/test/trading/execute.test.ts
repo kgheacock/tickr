@@ -67,8 +67,6 @@ vi.mock('../../src/db/pool.js', async () => {
   return { pool: proxy };
 });
 
-const SYSTEM_USER_ID = '00000000-0000-0000-0000-000000000001';
-
 async function seed({
   cash = 100_000_00,
   backfilled = true,
@@ -145,7 +143,10 @@ describe('executeTrade', () => {
     );
     expect(portRows[0]!.cash).toBe(10_000 - 5 * 1000);
 
-    const { rows: posRows } = await client.query<{ quantity: string; avg_cost: number }>(
+    const { rows: posRows } = await client.query<{
+      quantity: string;
+      avg_cost: number;
+    }>(
       `SELECT quantity, avg_cost FROM position WHERE portfolio_id = $1 AND symbol = 'TEST'`,
       [portfolioId],
     );
@@ -173,9 +174,8 @@ describe('executeTrade', () => {
     );
 
     vi.resetModules();
-    const { executeTrade: executeTrade2 } = await import(
-      '../../src/trading/execute.js'
-    );
+    const { executeTrade: executeTrade2 } =
+      await import('../../src/trading/execute.js');
     await executeTrade2({
       portfolioId,
       symbol: 'TEST',
@@ -212,9 +212,8 @@ describe('executeTrade', () => {
     });
 
     vi.resetModules();
-    const { executeTrade: executeSell } = await import(
-      '../../src/trading/execute.js'
-    );
+    const { executeTrade: executeSell } =
+      await import('../../src/trading/execute.js');
     await executeSell({
       portfolioId,
       symbol: 'TEST',
@@ -252,9 +251,8 @@ describe('executeTrade', () => {
     });
 
     vi.resetModules();
-    const { executeTrade: executeTrade2 } = await import(
-      '../../src/trading/execute.js'
-    );
+    const { executeTrade: executeTrade2 } =
+      await import('../../src/trading/execute.js');
     const second = await executeTrade2({
       portfolioId,
       symbol: 'TEST',
@@ -285,9 +283,8 @@ describe('executeTrade', () => {
     const { portfolioId } = await seed({ cash: 1000, priceCents: 1000 });
     vi.resetModules();
     const { executeTrade } = await import('../../src/trading/execute.js');
-    const { TradeRejectionError } = await import(
-      '../../src/trading/execute.js'
-    );
+    const { TradeRejectionError } =
+      await import('../../src/trading/execute.js');
 
     const results = await Promise.allSettled([
       executeTrade({
@@ -316,7 +313,11 @@ describe('executeTrade', () => {
       TradeRejectionError,
     );
     expect(
-      ((rejected[0] as PromiseRejectedResult).reason as InstanceType<typeof TradeRejectionError>).code,
+      (
+        (rejected[0] as PromiseRejectedResult).reason as InstanceType<
+          typeof TradeRejectionError
+        >
+      ).code,
     ).toBe('INSUFFICIENT_FUNDS');
 
     const { rows: portRows } = await client.query<{ cash: number }>(
@@ -329,9 +330,8 @@ describe('executeTrade', () => {
   it('rejects SYMBOL_NOT_TRADEABLE when backfilled=false', async () => {
     const { portfolioId } = await seed({ backfilled: false });
     vi.resetModules();
-    const { executeTrade, TradeRejectionError } = await import(
-      '../../src/trading/execute.js'
-    );
+    const { executeTrade, TradeRejectionError } =
+      await import('../../src/trading/execute.js');
 
     await expect(
       executeTrade({
