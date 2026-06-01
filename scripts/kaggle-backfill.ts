@@ -5,11 +5,11 @@
  *
  * Run BEFORE the Massive backfill job so that job only needs to fill the gap
  * from KAGGLE_CUTOFF_DATE (2024-07-06) to today:
- *   BACKFILL_START_DATE=2024-07-06 npm run backfill
+ *   BACKFILL_START_DATE=2024-07-06 pnpm run backfill
  *
  * Usage (from repo root):
- *   npm run kaggle:backfill
- *   npx tsx scripts/kaggle-backfill.ts
+ *   pnpm run kaggle:backfill
+ *   pnpm exec tsx scripts/kaggle-backfill.ts
  *
  * Reads DATABASE_URL, KAGGLE_USERNAME, and KAGGLE_API_KEY from the environment.
  * If DATABASE_URL is not set, the script attempts to load .env from the repo root.

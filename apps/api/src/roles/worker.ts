@@ -24,7 +24,7 @@ export async function runWorker(): Promise<void> {
   await bootstrapAdmins();
 
   const redis = getRedis();
-  // Pre-warm tip: before the first deploy, run `npm run kaggle:backfill` to
+  // Pre-warm tip: before the first deploy, run `pnpm run kaggle:backfill` to
   // bulk-load price history from the Kaggle dataset, then set
   // BACKFILL_START_DATE=2024-07-06 so the backfill job only covers the gap.
   registerScheduledJobs(redis);

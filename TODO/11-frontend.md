@@ -18,7 +18,7 @@ Live updates over the WS gateway. CSS Modules + hand-rolled components.
 
 ## Steps
 
-1. **Scaffold.** `apps/web` via Vite (`npm create vite@latest -- --template
+1. **Scaffold.** `apps/web` via Vite (`pnpm create vite -- --template
    react-ts`). Strict TS. Add: `react-router-dom`, `@tanstack/react-query`,
    `lightweight-charts`, `zod`, `@tickr/shared-types`. CSS Modules
    work out of the box with Vite.
@@ -94,7 +94,7 @@ Live updates over the WS gateway. CSS Modules + hand-rolled components.
 
 ## Definition of done
 
-- [ ] `npm run dev` in `apps/web` serves the SPA at http://localhost:5173
+- [ ] `pnpm run dev` in `apps/web` serves the SPA at http://localhost:5173
       and proxies `/api` + `/ws` to the api container.
 - [ ] Signing in with Google sets the cookie and lands on `/portfolio`.
 - [ ] Placing a market buy reflects in the positions table within 1 s

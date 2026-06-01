@@ -38,9 +38,9 @@ through a migration tool that is safe in dev and prod. Schema must match
 4. **Write `1700000000002_compression.sql`.** Enable compression and add
    the 7-day policy as in [docs/02-data-model.md §2.10](../docs/02-data-model.md#210-price_bar-timescaledb).
 5. **Migration runner entrypoint.** `apps/api/src/db/migrate.ts` invoked
-   via `npm run db:migrate` (also runs in the `api` container's startup
+   via `ppnpm run db:migrate` (also runs in the `api` container's startup
    for dev; production runs it as a one-shot `docker compose run --rm api
-   npm run db:migrate` before bringing api up — see item 12).
+   pnpm run db:migrate` before bringing api up — see item 12).
 6. **Connection pool.** `apps/api/src/db/pool.ts` exports a `pg.Pool` keyed
    off `DATABASE_URL`. Single shared pool per process. Use `parseInt8` to
    keep cents as `BigInt`-safe numbers (or `bigint` strings) — pick one and
@@ -71,7 +71,7 @@ through a migration tool that is safe in dev and prod. Schema must match
 
 ## Definition of done
 
-- [x] `npm run db:migrate` is idempotent (running it twice is a no-op).
+- [x] `ppnpm run db:migrate` is idempotent (running it twice is a no-op).
 - [x] `psql -c '\dt'` lists every v1 table from §2 of the data-model doc.
 - [x] `psql -c "SELECT hypertable_name FROM timescaledb_information.hypertables"`
       includes `price_bar`.
@@ -79,5 +79,5 @@ through a migration tool that is safe in dev and prod. Schema must match
       ('<U>', NULL, 100000000)` calls — the second raises a unique violation.
 - [x] Inserting `position` with a symbol absent from `universe_symbol`
       raises a FK violation.
-- [x] `npm run db:seed:universe` inserts ~500 rows; re-running is a no-op.
+- [x] `ppnpm run db:seed:universe` inserts ~500 rows; re-running is a no-op.
 - [x] Vitest passes against an ephemeral Postgres in CI.
