@@ -1,6 +1,6 @@
 # 07 — Trading engine
 
-> **Status:** pending • **Depends on:** 03, 04, 06
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/12) • **Depends on:** 03, 04, 06
 
 ## Goal
 
