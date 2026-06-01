@@ -55,6 +55,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  vi.unstubAllGlobals();
   await client?.end();
   await pool?.end();
   await container?.stop();
