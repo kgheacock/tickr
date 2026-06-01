@@ -7,10 +7,8 @@ export default defineConfig({
     hookTimeout: 120_000,
     // Run tests in a single fork to avoid competing container startups.
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
+    forks: {
+      singleFork: true,
     },
     include: ['test/**/*.test.ts'],
   },

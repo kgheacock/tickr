@@ -18,6 +18,7 @@
     "@fastify/cookie": "^11.0.2",
     "@tickr/shared-types": "*",
     "csv-parse": "^6.2.1",
+    "decimal.js": "^10.6.0",
     "fastify": "^5.8.5",
     "ioredis": "^5.11.0",
     "node-cron": "^4.2.1",
