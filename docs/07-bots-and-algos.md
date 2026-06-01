@@ -25,7 +25,7 @@ validation). No special-casing in the trade engine.
 
 Strategies run in the **bot runner** ([01-architecture](01-architecture.md)), on a
 schedule aligned to the quote/snapshot cadence — *not* on every tick. This keeps
-Finnhub load bounded and ranking fair.
+market data load bounded and ranking fair.
 
 ```
 Bot runner (each cycle, e.g. each snapshot interval):
@@ -139,7 +139,7 @@ on the leaderboard flagged `isBot: true`.
 |---|---|
 | Untrusted code | v1 forbids it; only registered strategy types run |
 | Runaway trading | Cycle cadence + per-type risk caps + API rate limits |
-| Finnhub load | Bots read the shared quote cache; they never call Finnhub |
+| Market data load | Bots read the shared quote cache; they never call market data APIs directly |
 | Determinism/audit | Seeded RNG for stochastic strategies; orders/fills are immutable |
 | Bad config | `validateConfig` rejects before an algo is enabled |
 

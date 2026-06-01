@@ -23,7 +23,7 @@ snapshot — never recomputed per request.
 1. **Snapshot job.** `apps/api/src/jobs/snapshot.ts`, scheduled to run as
    soon as the daily price update completes (item 06 chains them via a
    Redis pub/sub "daily-price.done" message). Single-instance via Redis
-   lock `finnhub:job:snapshot`.
+   lock `worker:job:snapshot`.
 2. **Compute snapshots.** Single pass per portfolio in a CTE:
    ```sql
    WITH latest AS (

@@ -55,14 +55,14 @@ clone the repo, run one command, and have api + worker + bot + Postgres
    OAuth accepts the redirect URI; `/etc/hosts` overrides DNS so no DNS record
    is needed.
 5. **Env wiring.** `.env.example` lists every var consumed by the api/worker:
-   `DATABASE_URL`, `REDIS_URL`, `FINNHUB_API_KEY`, `FINNHUB_WEBHOOK_SECRET`,
+   `DATABASE_URL`, `REDIS_URL`, `MASSIVE_API_KEY`, `FINNHUB_API_KEY`,
    `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`,
    `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`,
    `SESSION_SIGNING_KEY`, `ADMIN_BOOTSTRAP`, `PUBLIC_BASE_URL`, `LOG_LEVEL`.
    `ROLE` is set per-service in compose, not in `.env`. Compose loads `.env`
    via `env_file:` (path relative to the compose file).
-   `FINNHUB_WEBHOOK_SECRET` is the secret Finnhub uses to sign webhook
-   payloads — used by item 05 to verify inbound webhooks.
+   `MASSIVE_API_KEY` is the Massive REST API key (backfill; see TODO/13).
+   `FINNHUB_API_KEY` is the Finnhub key (daily price; see TODO/05).
 6. **One-shot dev script.** `scripts/dev-up.sh`:
    ```bash
    set -euo pipefail
@@ -148,6 +148,7 @@ Required values (get from 1Password / project secrets):
 | `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` | Google Cloud Console → tickr-497805 → APIs & Services → Credentials |
 | `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | github.com/settings/developers → tickr OAuth App |
 | `SESSION_SIGNING_KEY` | generate: `openssl rand -hex 32` |
+| `MASSIVE_API_KEY` | massive.com dashboard |
 | `FINNHUB_API_KEY` | finnhub.io dashboard |
 
 `PUBLIC_BASE_URL=https://local.tickr.keithheacock.com` is already the default

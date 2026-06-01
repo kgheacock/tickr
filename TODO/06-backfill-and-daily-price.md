@@ -1,50 +1,70 @@
 # 06 — Backfill + daily price update
 
-> **Status:** pending • **Depends on:** 03, 05
+> **Status:** done • **Depends on:** 03, 05, 13, 14 • **PR:** [#9](https://github.com/kgheacock/tickr/pull/9)
 
 ## Goal
 
-Load 5 years of 5-min OHLCV bars for every S&P 500 symbol (one-time
-bootstrap) and append one daily close bar per symbol after each US market
-close. Both jobs run only in the `worker` role, share the Finnhub bucket,
-and are restart-safe.
+Bootstrap `price_bar` for every S&P 500 symbol using a **two-phase backfill**,
+then append one daily close bar per symbol after each US market close via
+Finnhub `GET /quote`. All three sources run only in the `worker` role (or as
+the Kaggle CLI script for phase 1) and are restart-safe.
+
+### Backfill strategy
+
+| Phase | Source | Scope | How |
+|---|---|---|---|
+| 1 — historical bulk | Kaggle CSV dataset | Full history up to ~2024-07-06 | `npm run kaggle:backfill` (one-time CLI script; see TODO/14) |
+| 2 — gap fill | Massive REST API | 2024-07-06 → present | Worker backfill job with `BACKFILL_START_DATE=2024-07-06`; rate-limited via Redis token bucket (see TODO/13) |
+| 3 — live updates | Finnhub `/quote` | Daily after market close | Worker cron job (unchanged) |
+
+Run phases in order. The `universe_symbol.backfilled` flag coordinates all
+three: the Kaggle script sets it after each symbol; the Massive job skips
+symbols already marked `backfilled = true` that were fully covered by Kaggle.
 
 ## Pre-reads
 
 - [docs/01-architecture.md §2.1](../docs/01-architecture.md#21-market-data-ingestion-rest-only)
-  — both ingestion paths.
+  — ingestion paths.
 - [docs/08-deployment.md §5](../docs/08-deployment.md#5-scheduled--background-jobs)
   — cadence + idempotency requirements.
-- [docs/09-open-questions.md T2b](../docs/09-open-questions.md#open-finnhub-questions)
-  — unresolved: Finnhub `/stock/candle` per-call window and free-tier
-  depth. Resolve this empirically as **the first thing** in implementation;
-  if the per-call window is shorter than 5 years, the backfill loop has to
-  paginate.
+- [docs/09-open-questions.md T2c](../docs/09-open-questions.md#open-market-data-questions)
+  — Massive free-tier depth and rate limit (5 req/min; ~June 2024 cutoff).
+    Resolved; `MASSIVE_RPS_LIMIT=5` confirmed.
+- [TODO/14-kaggle-client.md](14-kaggle-client.md) — Kaggle download + CSV
+  streaming parser; `insertBars` shared helper.
+- [TODO/13-massive-client.md](13-massive-client.md) — Massive HTTP client and
+  Redis token bucket.
 
 ## Steps
 
-1. **Resolve T2b.** Write a one-off probe script
-   (`scripts/probe-finnhub-candles.ts`) that calls `GET /stock/candle?
-   symbol=AAPL&resolution=5&from=...&to=...` for varying windows. Record:
-   max window per call; whether `s` is `"ok"` or `"no_data"` past N years;
-   any free-tier ceiling. Pin findings in
-   [docs/09-open-questions.md](../docs/09-open-questions.md) before
-   continuing.
-2. **Bootstrap backfill job.** `apps/api/src/jobs/backfill.ts`:
+1. ~~**Resolve T2c.**~~ Resolved (2026-06-01). See
+   [docs/09-open-questions.md T2c](../docs/09-open-questions.md#open-market-data-questions).
+2. **Phase 1 — Kaggle bulk import.** Follow TODO/14. Run
+   `npm run kaggle:backfill` once against the real Kaggle API. The script
+   streams `history.csv` from the archive, inserts OHLCV bars for every
+   `universe_symbol` present in the dataset, and sets `backfilled = true`
+   per symbol.
+   ```
+   npx tsx scripts/kaggle-backfill.ts
+   ```
+   Restart-safe: already-backfilled symbols are skipped on re-run via
+   `ON CONFLICT DO NOTHING`; the `backfilled` flag prevents re-processing.
+3. **Phase 2 — Massive gap fill.** `apps/api/src/jobs/backfill.ts`:
    ```
    while exists universe_symbol with backfilled = false:
-     batch = next 4 symbols (concurrency cap from item 05)
+     batch = next 4 symbols (concurrency cap)
      for each symbol in parallel:
-       for each window in 5y/W chunks (W from step 1):
-         bars = finnhubGet('/stock/candle', { symbol, resolution: 5,
-                                              from, to })
+       for each window in BACKFILL_START_DATE→today in 365d chunks:
+         bars = massiveGet('/v2/aggs/ticker/{symbol}/range/1/day', { from, to })
          bulk INSERT ... ON CONFLICT (symbol, ts) DO NOTHING into price_bar
        UPDATE universe_symbol SET backfilled = true,
               backfilled_at = now() WHERE symbol = $1
    ```
+   Set `BACKFILL_START_DATE=2024-07-06` so Massive only covers the gap.
    Restart-safe by the `backfilled` flag; per-chunk insertion is idempotent
-   via the PK conflict.
-3. **Daily price update job.** `apps/api/src/jobs/daily-price.ts`:
+   via the PK conflict. See TODO/13 for the Massive client and TODO/14 step 7
+   for the `BACKFILL_START_DATE` env-var plumbing.
+4. **Phase 3 — daily price update job.** `apps/api/src/jobs/daily-price.ts`:
    ```
    for each universe_symbol with backfilled = true:
      q = finnhubGet('/quote', { symbol })
@@ -54,54 +74,61 @@ and are restart-safe.
        volume = null  (Finnhub /quote doesn't return volume)
      ON CONFLICT (symbol, ts) DO NOTHING
    ```
-   Uses the shared Finnhub bucket (60/min). 500 symbols ≈ 8.5 min.
+   Uses the Finnhub bucket (60/min). 500 symbols ≈ 8.5 min.
    > **v1 approximation (O5):** `q.c` is Finnhub's current/delayed price,
    > not the official 4 PM close. `open/high/low` from `/quote` are
    > real-time snapshots, not true OHLC. This is documented and accepted
-   > for v1; switching to `GET /stock/candle?resolution=D` is a v2 option.
-4. **Scheduler.** Use `node-cron` in-process. Worker registers:
+   > for v1.
+5. **Scheduler.** Use `node-cron` in-process. Worker registers:
    - Backfill: runs at startup (and only if there are unbackfilled
      symbols); cancels itself when none remain.
    - Daily price: `0 30 21 * * 1-5` UTC (16:30 ET) Mon–Fri. Skipped on
      US market holidays via a static `apps/api/src/market/holidays.ts`
      (NYSE holiday list; refresh annually).
-5. **Single-instance guard.** Both jobs grab a Redis lock
-   (`finnhub:job:backfill`, `finnhub:job:daily-price`) with TTL 30 min.
+6. **Single-instance guard.** Both jobs grab a Redis lock
+   (`worker:job:backfill`, `worker:job:daily-price`) with TTL 30 min.
    If a previous run is still alive, skip this firing. This protects
    against accidental two-worker deployments.
-6. **Admin universe upsert.** `POST /admin/universe/upsert` (auth:admin)
+7. **Admin universe upsert.** `POST /admin/universe/upsert` (auth:admin)
    accepts `{ symbols: string[] }` and `INSERT … ON CONFLICT (symbol) DO
    NOTHING`. New rows start with `backfilled = false`, picked up by the
    next backfill sweep.
-7. **Admin manual backfill.** `POST /admin/universe/backfill` with
+8. **Admin manual backfill.** `POST /admin/universe/backfill` with
    `{ symbol }` flips `backfilled` back to `false` for that symbol so the
    next sweep refills it. Useful for stuck or corrupted symbols.
-8. **Tests.** Mock the Finnhub client; assert that:
+9. **Tests.** Mock the market data clients; assert that:
    - Backfill skips already-backfilled symbols.
    - On crash mid-symbol, restart resumes (the symbol stays `backfilled =
      false`, partial rows survive via ON CONFLICT).
    - Daily-price re-run is a no-op (PK conflict).
    - Holiday days are skipped.
 
-## Files to create
+## Files to create / modify
 
-- `apps/api/src/jobs/backfill.ts`
-- `apps/api/src/jobs/daily-price.ts`
-- `apps/api/src/jobs/scheduler.ts`
-- `apps/api/src/jobs/locks.ts`
-- `apps/api/src/market/holidays.ts`
-- `apps/api/src/routes/admin/universe.ts`
-- `scripts/probe-finnhub-candles.ts`
-- `apps/api/test/jobs/backfill.test.ts`
-- `apps/api/test/jobs/daily-price.test.ts`
+- `apps/api/src/jobs/backfill.ts` — add `BACKFILL_START_DATE` support (see TODO/14 step 7)
+- `apps/api/src/jobs/daily-price.ts` — new
+- `apps/api/src/jobs/scheduler.ts` — new
+- `apps/api/src/jobs/locks.ts` — new
+- `apps/api/src/market/holidays.ts` — new
+- `apps/api/src/routes/admin/universe.ts` — new
+- `apps/api/test/jobs/backfill.test.ts` — update for `BACKFILL_START_DATE`
+- `apps/api/test/jobs/daily-price.test.ts` — new
+- *(Kaggle files in TODO/14)*
 
 ## Definition of done
 
-- [ ] T2b is resolved and documented; backfill paginates accordingly.
-- [ ] On a fresh DB with 5 seeded symbols, backfill completes and
-      `universe_symbol.backfilled = true` for all 5; `price_bar` has
-      `~5y × 252d × 78bars` rows per symbol (allowing for missing weekend
-      data).
+- [ ] T2c is resolved and documented (done — see 09-open-questions.md).
+- [ ] `npm run kaggle:backfill` on a fresh DB with 5 seeded symbols completes;
+      `universe_symbol.backfilled = true` for all 5; `price_bar` contains
+      bars from the dataset's full date range for each symbol.
+- [ ] Running the Kaggle script a second time inserts zero new rows.
+- [ ] With `BACKFILL_START_DATE=2024-07-06`, the worker Massive backfill job
+      picks up the 5 symbols (still `backfilled = false` from the worker's
+      perspective — or re-tested by temporarily resetting the flag), fetches
+      only bars from that date forward, and sets `backfilled = true`.
+- [ ] On a fresh DB with 5 seeded symbols (Kaggle skipped), the Massive
+      backfill alone completes and `universe_symbol.backfilled = true` for
+      all 5; `price_bar` has `~2y × 252d × 1bar` rows per symbol.
 - [ ] Killing the worker mid-backfill and restarting completes without
       duplicate rows.
 - [ ] Daily-price job after a successful run inserts exactly N new rows
@@ -110,4 +137,4 @@ and are restart-safe.
       time.
 - [ ] `POST /admin/universe/upsert` adds new symbols; the next backfill
       sweep picks them up.
-- [ ] Holiday weekday: scheduler logs a skip; no Finnhub calls.
+- [ ] Holiday weekday: scheduler logs a skip; no market data calls.

@@ -9,8 +9,9 @@
 tickr is a public **stock trading game**. Players manage a virtual portfolio of
 real S&P 500 names, competing on a leaderboard. Every player starts with the
 same virtual capital (**$1,000,000**). Market data — real-time quotes and
-historical OHLCV bars — comes from the [Finnhub API](https://finnhub.io/) and
-is stored permanently in TimescaleDB, which is the sole source of pricing for
+historical OHLCV bars — comes from external REST APIs (Massive for bootstrap
+backfill; Finnhub for daily price updates) and is stored permanently in
+TimescaleDB, which is the sole source of pricing for
 fills, valuations, and the leaderboard. No real money is ever involved.
 
 ## Phases
@@ -47,7 +48,7 @@ run end-to-end on a single VPS with the smallest possible surface area.
 v2 wraps the v1 portfolio + leaderboard in **seasons** (start/end,
 `draft → scheduled → active → settling → closed`) and constrains each season
 to a **theme** (Big 7, Top 50, Energy, …). The watch list narrows from "the
-S&P 500" to "the union of active seasons' themes," cutting Finnhub load and
+S&P 500" to "the union of active seasons' themes," cutting market data load and
 making each season feel distinct. The single v1 bot expands into the
 **registry** described in [07-bots-and-algos](07-bots-and-algos.md): `random`,
 `buy_and_hold`, `mixed`, `momentum`, `mean_reversion`, `cash_drip`. Admin
@@ -104,9 +105,10 @@ later it must be sandboxed (WASM/isolate) or webhook-based. See
 - **Data:** PostgreSQL + **TimescaleDB extension** (system of record + OHLCV
   `price_bar` hypertable; all in-game pricing served from here) + Redis (job
   queue, rate-limit counters, session helpers, leaderboard read cache).
-- **Market data:** Finnhub API — REST `/quote` for daily price updates and
-  `/stock/candle` for historical backfill in v1; WebSocket streaming enters
-  in v2 when intraday pricing becomes relevant.
+- **Market data:** two REST providers in v1 — Massive Custom Bars endpoint
+  for bootstrap backfill (2 years of daily OHLCV bars); Finnhub `GET /quote`
+  for daily price updates. WebSocket streaming enters in v2 when intraday
+  pricing becomes relevant.
 - **Hosting:** Single VPS (Hetzner), containerized via Docker Compose. See
   [08-deployment](08-deployment.md).
 
@@ -122,7 +124,7 @@ later it must be sandboxed (WASM/isolate) or webhook-based. See
 | [05-auth.md](05-auth.md) | All phases | Google + GitHub SSO, sessions, roles |
 | [06-frontend.md](06-frontend.md) | v2+ design | React/TS app structure; some routes are v2+ |
 | [07-bots-and-algos.md](07-bots-and-algos.md) | v2+ (registry) / v3+ (user algos) | The bot registry and algo execution model |
-| [08-deployment.md](08-deployment.md) | v1 body (§2, §5, §6) + general | VPS topology, Finnhub, jobs, ops |
+| [08-deployment.md](08-deployment.md) | v1 body (§2, §5, §6) + general | VPS topology, market data, jobs, ops |
 | [09-open-questions.md](09-open-questions.md) | All phases | Decisions record + open items |
 
 ## Glossary
@@ -139,9 +141,9 @@ later it must be sandboxed (WASM/isolate) or webhook-based. See
   Perpetual in v1; per-season in v2+.
 - **Universe** — The full S&P 500 symbol registry (`universe_symbol` table).
   The upper bound on what can ever be tradeable.
-- **Backfill** — The one-time load of 5 years of 5-minute OHLCV bars for a
-  symbol. In v1, bootstrap-loaded for all 500 symbols at install. In v2+,
-  triggered when a symbol first enters a theme's watch list.
+- **Backfill** — The one-time load of 2 years of daily OHLCV bars for a
+  symbol (via Massive). In v1, bootstrap-loaded for all 500 symbols at
+  install. In v2+, triggered when a symbol first enters a theme's watch list.
 - **Watch list** — *(v2+)* The union of symbols across all active seasons'
   themes. In v1 the watch list is implicit (the held set + the bot's basket).
 - **Theme** — *(v2+)* The constrained symbol universe for a season.

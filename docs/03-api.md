@@ -172,7 +172,7 @@ and an ops view.
 |---|---|---|
 | POST | `/admin/universe/upsert` | Add or update S&P 500 membership rows |
 | POST | `/admin/universe/backfill` | Manually re-trigger backfill for a symbol |
-| GET | `/admin/ops` | Operational view (snapshot lag, Finnhub REST 429s, queue depth) |
+| GET | `/admin/ops` | Operational view (snapshot lag, market data 429s, queue depth) |
 
 ```ts
 interface UpsertUniverseRequest {
@@ -182,7 +182,7 @@ interface UpsertUniverseRequest {
 interface OpsResponse {
   lastSnapshotAt: string | null;
   snapshotLagSec: number | null;
-  finnhubRest429sLast24h: number;
+  marketData429sLast24h: { massive: number; finnhub: number };
   jobQueueDepth: number;
   backfillRemaining: number;  // count of universe_symbol where backfilled = false
 }

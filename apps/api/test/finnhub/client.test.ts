@@ -131,7 +131,9 @@ describe('role guard', () => {
 });
 
 describe.skipIf(!REAL_API_KEY)('live integration', () => {
-  it('GET /quote returns a numeric current price for AAPL', async () => {
+  it('GET /quote returns a numeric current price for AAPL', async ({
+    skip,
+  }) => {
     // Use the real key for this suite only.
     process.env['FINNHUB_API_KEY'] = REAL_API_KEY!;
     const liveRedis = new Redis(REDIS_URL);
@@ -142,6 +144,10 @@ describe.skipIf(!REAL_API_KEY)('live integration', () => {
       });
       expect(typeof result.c).toBe('number');
       expect(result.c).toBeGreaterThan(0);
+    } catch (err) {
+      // Key is set but expired/invalid — skip rather than fail.
+      if (err instanceof Error && err.message === 'Finnhub HTTP 401') skip();
+      throw err;
     } finally {
       process.env['FINNHUB_API_KEY'] = 'test-key';
       await liveRedis.quit();
