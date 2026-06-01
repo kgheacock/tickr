@@ -155,7 +155,7 @@ insert, same as the Massive path). `Adj Close` is split/dividend adjusted; see
 
 ## Definition of done
 
-- [ ] `npm run kaggle:backfill` completes against the real Kaggle API;
+- [ ] `ppnpm run kaggle:backfill` completes against the real Kaggle API;
       `universe_symbol.backfilled = true` for every symbol present in the
       dataset.
 - [ ] `price_bar` rows for imported symbols span the dataset's full date range.
@@ -164,4 +164,4 @@ insert, same as the Massive path). `Adj Close` is split/dividend adjusted; see
       makes only the gap-window Massive calls (verified by log output).
 - [ ] `parseHistory` unit test passes with the 3-row fixture.
 - [ ] `KAGGLE_API_KEY` never appears in logs.
-- [ ] All existing tests pass (`npm test`).
+- [ ] All existing tests pass (`pnpm test`).

@@ -105,7 +105,7 @@ clone the repo, run one command, and have api + worker + bot + Postgres
 
 ## Local dev setup guide
 
-This section covers what `npm run dev` actually needs. Everything under
+This section covers what `pnpm run dev` actually needs. Everything under
 "One-time setup" only needs to be done once per machine.
 
 ### One-time setup
@@ -172,7 +172,7 @@ Register these exact URLs with each provider:
 ### Running the stack
 
 ```bash
-npm run dev          # builds images, starts all services, tails logs
+pnpm run dev         # builds images, starts all services, tails logs
 ```
 
 Equivalent to:

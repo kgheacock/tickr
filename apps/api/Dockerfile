@@ -10,14 +10,16 @@
 
 FROM node:20-alpine
 
+RUN corepack enable pnpm
+
 WORKDIR /app
 
-# Install workspace + api manifests first so `npm install` is cache-friendly.
-COPY package.json package-lock.json* ./
+# Install workspace + api manifests first so `pnpm install` is cache-friendly.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared-types/package.json ./packages/shared-types/
 
-RUN npm install --workspaces --include-workspace-root
+RUN pnpm install --frozen-lockfile
 
 # Copy the rest. In dev compose, the source dir is bind-mounted on top of this.
 COPY tsconfig.base.json ./
@@ -28,4 +30,4 @@ WORKDIR /app/apps/api
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev"]
+CMD ["pnpm", "run", "dev"]

@@ -17,7 +17,7 @@ limit. Caller code awaits a budget slot before each request.
 
 ## Steps
 
-1. **Generate types from Finnhub swagger.** `npm run gen:finnhub` produces
+1. **Generate types from Finnhub swagger.** `ppnpm run gen:finnhub` produces
    `apps/api/src/finnhub/finnhub.gen.ts` via `openapi-typescript` against
    the bundled swagger. Commit the generated file.
 2. **HTTP client.** `apps/api/src/finnhub/client.ts` exports
@@ -60,7 +60,7 @@ limit. Caller code awaits a budget slot before each request.
 
 ## Definition of done
 
-- [x] `npm run gen:finnhub` regenerates the types deterministically.
+- [x] `ppnpm run gen:finnhub` regenerates the types deterministically.
 - [x] Synthetic load of 120 calls completes in just over 60 s under the
       default bucket (timer-mocked test).
 - [x] No code path can call `axios`/`fetch` against `finnhub.io` outside

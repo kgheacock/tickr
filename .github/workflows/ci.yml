@@ -17,15 +17,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - run: npm ci
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
 
-      - run: npm run typecheck
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm run lint
+      - run: pnpm run typecheck
 
-      - run: npm run format:check
+      - run: pnpm run lint
+
+      - run: pnpm run format:check
 
   test:
     runs-on: ubuntu-latest
@@ -45,9 +48,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - run: npm ci
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - run: pnpm install --frozen-lockfile
 
       - name: Cache Docker layers
         uses: actions/cache@v4
@@ -67,7 +73,7 @@ jobs:
 
       - name: Run tests (schema, auth unit + integration)
         working-directory: apps/api
-        run: npm test
+        run: pnpm test
 
   codegen-check:
     runs-on: ubuntu-latest
@@ -77,16 +83,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
-      - run: npm ci
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
 
-      - run: npm run gen:types
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run gen:types
 
       - name: Fail if openapi.gen.ts is stale
         run: git diff --exit-code packages/shared-types/src/openapi.gen.ts
 
-      - run: npm run gen:finnhub
+      - run: pnpm run gen:finnhub
 
       - name: Fail if finnhub.gen.ts is stale
         run: git diff --exit-code apps/api/src/finnhub/finnhub.gen.ts

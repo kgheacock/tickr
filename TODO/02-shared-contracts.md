@@ -39,9 +39,9 @@ both import. No drift between server and client types.
    `apps/api/src/routes/*/schema.ts` and infer types via `z.infer<>` where
    you don't want the OpenAPI-generated form.
 5. **Wire it up.** `apps/api/package.json` and `apps/web/package.json` both
-   declare `"@tickr/shared-types": "workspace:*"`. npm workspaces resolves
+   declare `"@tickr/shared-types": "workspace:*"`. pnpm workspaces resolves
    the local package.
-6. **Codegen as a script, not a hook.** `npm run gen:types` regenerates the
+6. **Codegen as a script, not a hook.** `pnpm run gen:types` regenerates the
    openapi.gen.ts file; runs in CI; commit the generated file.
 
 ## Files to create
@@ -56,7 +56,7 @@ both import. No drift between server and client types.
 
 ## Definition of done
 
-- [ ] `npm run gen:types` regenerates `openapi.gen.ts` deterministically.
+- [ ] `pnpm run gen:types` regenerates `openapi.gen.ts` deterministically.
 - [ ] `apps/api` and `apps/web` both compile against
       `import { ... } from '@tickr/shared-types'`.
 - [ ] OpenAPI doc validates with `npx @redocly/cli lint

@@ -23,7 +23,7 @@ only the bootstrap backfill switches to Massive.
 
 ## Steps
 
-1. **Generate types from Massive schema.** `npm run gen:massive` produces
+1. **Generate types from Massive schema.** `ppnpm run gen:massive` produces
    `apps/api/src/massive/massive.gen.ts` via `openapi-typescript` against the
    bundled schema at `schema/massive.com/openapi.json`. Commit the generated
    file. Add the script to the root `package.json` following the `gen:finnhub`
@@ -82,7 +82,7 @@ only the bootstrap backfill switches to Massive.
 
 - `apps/api/src/massive/client.ts` — new
 - `apps/api/src/massive/bucket.ts` — new
-- `apps/api/src/massive/massive.gen.ts` — generated (`npm run gen:massive`)
+- `apps/api/src/massive/massive.gen.ts` — generated (`ppnpm run gen:massive`)
 - `apps/api/src/jobs/backfill.ts` — swap client call + response shape + lookback
 - `apps/api/src/roles/worker.ts` — add `MASSIVE_API_KEY` startup validation
 - `apps/api/test/massive/bucket.test.ts` — new
@@ -95,7 +95,7 @@ only the bootstrap backfill switches to Massive.
 
 ## Definition of done
 
-- [ ] `npm run gen:massive` regenerates types deterministically from
+- [ ] `ppnpm run gen:massive` regenerates types deterministically from
       `schema/massive.com/openapi.json`.
 - [ ] Probe findings documented in T2c; free-tier history depth and rate
       limit known; `MASSIVE_RPS_LIMIT` default set accordingly.
@@ -108,4 +108,4 @@ only the bootstrap backfill switches to Massive.
       with `universe_symbol.backfilled = true` for all 5.
 - [ ] `price_bar` contains daily OHLCV rows for each symbol spanning the
       available free-tier history.
-- [ ] All existing tests pass (`npm test`).
+- [ ] All existing tests pass (`pnpm test`).

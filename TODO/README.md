@@ -37,6 +37,7 @@ of each file as you go.
 | 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11 | pending |
 | 13 | [Massive client](13-massive-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/9) |
 | 14 | [Kaggle client](14-kaggle-client.md) | 03, 13 | [done](https://github.com/kgheacock/tickr/pull/9) |
+| 15 | [Migrate to pnpm](15-migrate-to-pnpm.md) | — | [done](https://github.com/kgheacock/tickr/pull/13) |
 
 ## Dependency graph (at a glance)
 

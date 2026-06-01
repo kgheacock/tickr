@@ -2,7 +2,7 @@
 #
 # Restore postgres from a local snapshot created by db-snapshot.sh.
 # Tears down the entire stack, wipes the volume, restores from tar, and exits.
-# Run `scripts/dev-up.sh` (or `npm run dev`) afterwards to bring the stack back up.
+# Run `scripts/dev-up.sh` (or `pnpm run dev`) afterwards to bring the stack back up.
 #
 # Usage:
 #   scripts/db-restore.sh                          # restore latest snapshot
@@ -46,4 +46,4 @@ docker run --rm \
   -v "$(dirname "$FILE_ABS"):/backup:ro" \
   alpine tar xzf "/backup/$(basename "$FILE_ABS")" -C /pgdata
 
-echo "[db-restore] Done. Run 'npm run dev' to bring the stack back up."
+echo "[db-restore] Done. Run 'pnpm run dev' to bring the stack back up."

@@ -13,7 +13,7 @@ the Kaggle CLI script for phase 1) and are restart-safe.
 
 | Phase | Source | Scope | How |
 |---|---|---|---|
-| 1 — historical bulk | Kaggle CSV dataset | Full history up to ~2024-07-06 | `npm run kaggle:backfill` (one-time CLI script; see TODO/14) |
+| 1 — historical bulk | Kaggle CSV dataset | Full history up to ~2024-07-06 | `ppnpm run kaggle:backfill` (one-time CLI script; see TODO/14) |
 | 2 — gap fill | Massive REST API | 2024-07-06 → present | Worker backfill job with `BACKFILL_START_DATE=2024-07-06`; rate-limited via Redis token bucket (see TODO/13) |
 | 3 — live updates | Finnhub `/quote` | Daily after market close | Worker cron job (unchanged) |
 
@@ -40,7 +40,7 @@ symbols already marked `backfilled = true` that were fully covered by Kaggle.
 1. ~~**Resolve T2c.**~~ Resolved (2026-06-01). See
    [docs/09-open-questions.md T2c](../docs/09-open-questions.md#open-market-data-questions).
 2. **Phase 1 — Kaggle bulk import.** Follow TODO/14. Run
-   `npm run kaggle:backfill` once against the real Kaggle API. The script
+   `ppnpm run kaggle:backfill` once against the real Kaggle API. The script
    streams `history.csv` from the archive, inserts OHLCV bars for every
    `universe_symbol` present in the dataset, and sets `backfilled = true`
    per symbol.
@@ -118,7 +118,7 @@ symbols already marked `backfilled = true` that were fully covered by Kaggle.
 ## Definition of done
 
 - [ ] T2c is resolved and documented (done — see 09-open-questions.md).
-- [ ] `npm run kaggle:backfill` on a fresh DB with 5 seeded symbols completes;
+- [ ] `ppnpm run kaggle:backfill` on a fresh DB with 5 seeded symbols completes;
       `universe_symbol.backfilled = true` for all 5; `price_bar` contains
       bars from the dataset's full date range for each symbol.
 - [ ] Running the Kaggle script a second time inserts zero new rows.

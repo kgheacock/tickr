@@ -43,7 +43,7 @@ export async function runMigrations(): Promise<void> {
   }
 }
 
-// Run directly when invoked as the entry module (npm run db:migrate).
+// Run directly when invoked as the entry module (pnpm run db:migrate).
 const thisFile = fileURLToPath(import.meta.url);
 const mainFile = process.argv[1] ? resolve(process.argv[1]) : '';
 

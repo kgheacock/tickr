@@ -40,14 +40,14 @@ restore drill, and a one-command deploy from a fresh git pull.
    docker compose -f compose/docker-compose.yml \
                   -f compose/docker-compose.prod.yml \
                   --env-file /srv/tickr/secrets/tickr.env \
-                  run --rm api npm run db:migrate
+                  run --rm api pnpm run db:migrate
    docker compose -f compose/docker-compose.yml \
                   -f compose/docker-compose.prod.yml \
                   --env-file /srv/tickr/secrets/tickr.env up -d
    ```
 5. **Deploy script.** `scripts/deploy.sh` runs on the VPS (or via SSH from
    CI): `git fetch && git checkout origin/main && docker compose build &&
-   docker compose run --rm api npm run db:migrate && docker compose up -d`.
+   docker compose run --rm api pnpm run db:migrate && docker compose up -d`.
    Pre-flight checks: working tree clean; current commit reachable from
    `origin/main`; `tickr.env` exists.
 6. **Backups.** `scripts/backup.sh` runs nightly via systemd timer (or

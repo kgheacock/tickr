@@ -99,7 +99,7 @@ source doc where the decision is applied. Items split by **phase scope**:
 | O3 | Backup cadence/retention + restore drill | **Daily `pg_dump` to off-VPS storage; 7-day retention; quarterly restore drill** (`pg_dump` includes TimescaleDB hypertable data) |
 | O4 | v1 market data usage shape | **REST-only, two providers**: Massive `GET /v2/aggs/ticker/{symbol}/range/1/day` for bootstrap backfill; Finnhub `GET /quote` for daily price update. **No WebSocket in v1** |
 | O5 | Daily price source for "official close" | **Accept `q.c` from `GET /quote` as v1's documented approximation** of the close. The daily-update row is timestamped `16:00 ET`; `open/high/low` from `/quote` are real-time snapshots, not true OHLC, and are written as-is. Switching to `GET /stock/candle?resolution=D` is deferred to v2 if accuracy becomes a concern. |
-| O6 | Schema coverage for Massive backfill endpoint | **Schema added** at `schema/massive.com/openapi.json` (Custom Bars endpoint). `npm run gen:massive` generates types; see TODO/13 for the integration steps. |
+| O6 | Schema coverage for Massive backfill endpoint | **Schema added** at `schema/massive.com/openapi.json` (Custom Bars endpoint). `pnpm run gen:massive` generates types; see TODO/13 for the integration steps. |
 
 ## All phases — timeseries & data architecture
 
