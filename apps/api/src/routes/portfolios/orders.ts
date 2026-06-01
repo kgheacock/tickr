@@ -1,14 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../../db/pool.js';
-import {
-  executeTrade,
-  TradeRejectionError,
-} from '../../trading/execute.js';
+import { executeTrade, TradeRejectionError } from '../../trading/execute.js';
 import { createOrderSchema, paginationSchema } from './schema.js';
-import {
-  requirePortfolioAccess,
-  requirePortfolioWrite,
-} from './middleware.js';
+import { requirePortfolioAccess, requirePortfolioWrite } from './middleware.js';
 
 type Cursor = { createdAt: string; id: string };
 
@@ -40,7 +34,9 @@ export async function registerOrderRoutes(
         });
       }
       const limit = parsed.data.limit ?? 50;
-      const cursor = parsed.data.cursor ? decodeCursor(parsed.data.cursor) : null;
+      const cursor = parsed.data.cursor
+        ? decodeCursor(parsed.data.cursor)
+        : null;
 
       const { rows } = await pool.query<{
         id: string;
@@ -146,7 +142,9 @@ export async function registerOrderRoutes(
         });
       }
       const limit = parsed.data.limit ?? 90;
-      const cursor = parsed.data.cursor ? decodeCursor(parsed.data.cursor) : null;
+      const cursor = parsed.data.cursor
+        ? decodeCursor(parsed.data.cursor)
+        : null;
 
       const { rows } = await pool.query<{
         id: string;

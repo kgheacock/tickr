@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { Decimal } from 'decimal.js';
 import { pool } from '../db/pool.js';
 import { isPriceStale } from './price.js';
-import { computeCostCents, computeNewAvgCost, subtractQuantity } from './money.js';
+import {
+  computeCostCents,
+  computeNewAvgCost,
+  subtractQuantity,
+} from './money.js';
 import { TradeRejectionError } from './validate.js';
 
 export interface TradeInput {
@@ -218,7 +222,10 @@ export async function executeTrade(input: TradeInput): Promise<TradeResult> {
         `SELECT quantity FROM position WHERE portfolio_id = $1 AND symbol = $2`,
         [input.portfolioId, input.symbol],
       );
-      const newQty = subtractQuantity(posResult.rows[0]!.quantity, input.quantity);
+      const newQty = subtractQuantity(
+        posResult.rows[0]!.quantity,
+        input.quantity,
+      );
       if (newQty.isZero()) {
         await client.query(
           `DELETE FROM position WHERE portfolio_id = $1 AND symbol = $2`,

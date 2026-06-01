@@ -17,9 +17,10 @@ export async function registerPortfolioViewRoute(
         algo_id: string | null;
         cash: number;
         joined_at: Date;
-      }>(`SELECT id, user_id, algo_id, cash, joined_at FROM portfolio WHERE id = $1`, [
-        portfolioId,
-      ]);
+      }>(
+        `SELECT id, user_id, algo_id, cash, joined_at FROM portfolio WHERE id = $1`,
+        [portfolioId],
+      );
       if (!portRows[0]) {
         return reply.code(404).send({
           error: { code: 'NOT_FOUND', message: 'Portfolio not found' },

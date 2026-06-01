@@ -31,6 +31,9 @@ export function computeNewAvgCost(
     .toNumber();
 }
 
-export function subtractQuantity(existingStr: string, delta: number | string): Decimal {
+export function subtractQuantity(
+  existingStr: string,
+  delta: number | string,
+): Decimal {
   return new Decimal(existingStr).minus(new Decimal(delta));
 }

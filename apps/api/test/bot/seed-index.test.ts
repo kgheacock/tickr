@@ -155,9 +155,8 @@ describe('seedIndexBot', () => {
     await redis.del('bot:seed-index:lock');
     vi.resetModules();
 
-    const { seedIndexBot: seedIndexBot2 } = await import(
-      '../../src/bot/seed-index.js'
-    );
+    const { seedIndexBot: seedIndexBot2 } =
+      await import('../../src/bot/seed-index.js');
     await seedIndexBot2(redis);
 
     const { rows: fills } = await client.query<{ cnt: string }>(
