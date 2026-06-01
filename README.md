@@ -9,6 +9,10 @@ Market data (real-time quotes and two years of historical OHLCV bars) is pulled
 from external REST providers, stored permanently in TimescaleDB, and used as the
 single source of truth for every fill, valuation, and ranking.
 
+> 🌐 **Landing page:** a richer HTML overview lives at
+> [`docs/index.html`](docs/index.html). Enable GitHub Pages (deploy from branch
+> → `/docs`) to publish it at `https://kgheacock.github.io/tickr/`.
+
 ---
 
 ## The game in one glance
