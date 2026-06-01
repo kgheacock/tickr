@@ -1,6 +1,6 @@
 # 01 — Dev environment
 
-> **Status:** [implemented](https://github.com/kgheacock/tickr/pull/3) • **Depends on:** —
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/3) • **Depends on:** —
 
 ## Goal
 

@@ -1,6 +1,6 @@
 # 15 — Migrate from npm workspaces to pnpm
 
-> **Status:** done • **PR:** https://github.com/kgheacock/tickr/pull/13 • **Depends on:** —
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/13) • **Depends on:** —
 
 ## Goal
 

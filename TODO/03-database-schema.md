@@ -1,6 +1,6 @@
 # 03 — Database schema
 
-> **Status:** done • **Depends on:** 01 • **PR:** [#6](https://github.com/kgheacock/tickr/pull/6)
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/6) • **Depends on:** 01
 
 ## Goal
 
