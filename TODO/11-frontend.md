@@ -1,6 +1,12 @@
 # 11 — Frontend SPA
 
-> **Status:** pending • **Depends on:** 02, 04, 07, 08, 09
+> **Status:** pending • **Depends on:** 16
+>
+> **Re-scoped by the platform pivot (item 16):** the portfolio view, order
+> ticket, and leaderboard below are game constructs that no longer exist.
+> This item now depends on item 16 (which delivers auth + the live WS spine)
+> and covers the platform frontend instead. See [18-display-logic.md](18-display-logic.md)
+> for the display work and keep the two consistent.
 
 ## Goal
 
