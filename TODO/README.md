@@ -33,11 +33,27 @@ of each file as you go.
 | 08 | [Snapshots + leaderboard](08-snapshots-and-leaderboard.md) | 06, 07 | pending |
 | 09 | [WebSocket gateway](09-websocket-gateway.md) | 04, 07, 08 | pending |
 | 10 | [Observability + admin](10-observability-and-admin.md) | 04, 06, 08 | pending |
-| 11 | [Frontend SPA](11-frontend.md) | 02, 04, 07, 08, 09 | pending |
+| 11 | [Frontend SPA](11-frontend.md) | 16 | pending |
 | 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11 | pending |
 | 13 | [Massive client](13-massive-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/9) |
 | 14 | [Kaggle client](14-kaggle-client.md) | 03, 13 | [done](https://github.com/kgheacock/tickr/pull/9) |
 | 15 | [Migrate to pnpm](15-migrate-to-pnpm.md) | — | [done](https://github.com/kgheacock/tickr/pull/13) |
+| 16 | [Platformize the API](16-platformize-api.md) | 03, 04, 06, 09 | pending |
+| 17 | [ETF over a weighted corpus](17-etf-weighted-corpus.md) | 16 | pending |
+| 18 | [Display: ETF editor, strategy & plot](18-display-logic.md) | 16, 17 | pending |
+
+> **Pivot (items 16–18):** the project is being re-scoped from a trading
+> *game* to a market-data + returns *platform*. Item 16 keeps the data corpus
+> core (`universe_symbol`, `price_bar`, the ingestion cron) **plus auth/SSO +
+> sessions + CSRF and a refocused WebSocket** that pushes live updates for the
+> platform endpoints; its DoD stops at the spine (auth + CSRF + sessions + WS
+> connection logging to console — **no display logic**). It removes the
+> game-only surface (portfolios, trading, snapshots, leaderboard, bots) with
+> prejudice and **supersedes items 07, 08** and the game parts of 09/11.
+> Item 17 adds ETFs as synthetic weighted baskets over the corpus. Item 18
+> builds the display layer on top: seed the S&P 500 as an ETF, let the user
+> fork/edit it, run a built-in SMA-crossover strategy through `/evaluate`, and
+> plot the performance. Items 11 and 18 both depend on 16.
 
 ## Dependency graph (at a glance)
 
