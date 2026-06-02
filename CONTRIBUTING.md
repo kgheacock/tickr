@@ -218,6 +218,3 @@ Get these green locally before pushing — they mirror the commands above.
 4. **Open a PR.** Keep CI green. Update the item's status line in
    `TODO/README.md` to link the PR when it merges.
 
-```
-
-```

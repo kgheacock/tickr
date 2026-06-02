@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tickr — technical overview</title>
+    <meta
+      name="description"
+      content="tickr — a stock-trading game built in TypeScript on Fastify, TimescaleDB, and Redis. Technical overview."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --panel: #f8fafc;
+        --panel-2: #f1f5f9;
+        --border: #e2e8f0;
+        --line: #cbd5e1;
+        --text: #0f172a;
+        --muted: #475569;
+        --faint: #64748b;
+        --accent: #2563eb;
+        --radius: 10px;
+        --maxw: 880px;
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+          monospace;
+        --sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .wrap {
+        max-width: var(--maxw);
+        margin: 0 auto;
+        padding: 56px 24px 72px;
+      }
+
+      header .brand {
+        margin: 0 0 6px;
+        line-height: 0;
+      }
+      header .brand img {
+        width: 200px;
+        height: auto;
+        display: block;
+      }
+      header .links {
+        display: flex;
+        gap: 16px;
+        font-size: 14px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+      }
+      .lead {
+        margin: 26px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+      }
+      .lead strong {
+        color: var(--text);
+      }
+
+      hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 40px 0;
+      }
+      h2 {
+        font-size: 12.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--faint);
+        font-weight: 500;
+        margin: 0 0 18px;
+      }
+
+      /* ============ file-tree component ============ */
+      .treebox {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--panel);
+        padding: 22px 24px;
+      }
+      .tree,
+      .tree ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .tree {
+        font-size: 14px;
+      }
+      .tree ul {
+        margin-left: 24px;
+      }
+      .tree li {
+        position: relative;
+        padding-left: 18px;
+      }
+      /* vertical guide */
+      .tree li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        border-left: 1px solid var(--line);
+      }
+      /* horizontal elbow into the node */
+      .tree li::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 21px;
+        width: 18px;
+        border-top: 1px solid var(--line);
+      }
+      /* last child: vertical guide stops at the elbow */
+      .tree li:last-child::before {
+        bottom: auto;
+        height: 21px;
+      }
+      /* root has no connectors */
+      .tree > li {
+        padding-left: 0;
+      }
+      .tree > li::before,
+      .tree > li::after {
+        display: none;
+      }
+      .tree li.collapsed > ul {
+        display: none;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 6px 0;
+      }
+      .handle {
+        flex: none;
+        width: 16px;
+        height: 16px;
+        display: grid;
+        place-items: center;
+      }
+      .toggle {
+        width: 15px;
+        height: 15px;
+        border: 1px solid #94a3b8;
+        border-radius: 3px;
+        background: #fff;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1;
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        user-select: none;
+      }
+      .toggle:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #94a3b8;
+      }
+      /* white splash chip behind every icon — guarantees contrast */
+      .chip {
+        flex: none;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        background: #fff;
+        border: 1px solid var(--border);
+        display: grid;
+        place-items: center;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+      }
+      .chip img {
+        width: 19px;
+        height: 19px;
+        object-fit: contain;
+        display: block;
+      }
+      .chip .emoji {
+        font-size: 17px;
+        line-height: 1;
+        filter: grayscale(1);
+        opacity: 0.85;
+      }
+      .label {
+        font-weight: 500;
+      }
+      .nsub {
+        color: var(--faint);
+        font-size: 12px;
+        margin-left: 2px;
+      }
+      @media (max-width: 520px) {
+        .nsub {
+          display: none;
+        }
+      }
+
+      footer {
+        margin-top: 48px;
+        color: var(--faint);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1 class="brand">
+          <img
+            src="tickr-logo.svg"
+            alt="tickr"
+            aria-label="tickr"
+            width="200"
+            height="60"
+          />
+        </h1>
+        <div class="links">
+          <a href="https://github.com/kgheacock/tickr">Source on GitHub</a>
+          <a href="https://github.com/kgheacock/tickr/tree/main/docs"
+            >Design docs</a
+          >
+        </div>
+        <p class="lead">
+          Players manage a virtual portfolio of real S&amp;P 500 names and
+          compete on a perpetual leaderboard. Quotes and historical OHLCV bars
+          are ingested from external REST providers into
+          <strong>TimescaleDB</strong>, which is the single source of truth for
+          every fill, valuation, and ranking. TypeScript end to end, with
+          contracts shared across the wire.
+        </p>
+      </header>
+
+      <hr />
+
+      <h2>Containers &amp; components</h2>
+      <div class="treebox">
+        <ul class="tree" role="tree">
+          <!-- Docker (root) -->
+          <li role="treeitem" aria-expanded="true">
+            <div class="row">
+              <span class="handle"><span class="toggle">−</span></span>
+              <span class="chip">
+                <img
+                  src="https://cdn.simpleicons.org/docker"
+                  alt="Docker"
+                  onerror="this.remove()"
+                />
+              </span>
+              <span class="label">Docker</span>
+              <span class="nsub">— Compose stack on one VPS</span>
+            </div>
+
+            <ul>
+              <!-- PostgreSQL -->
+              <li role="treeitem">
+                <div class="row">
+                  <span class="handle"><span class="dot"></span></span>
+                  <span class="chip">
+                    <img
+                      src="https://cdn.simpleicons.org/postgresql"
+                      alt="PostgreSQL"
+                      onerror="this.remove()"
+                    />
+                  </span>
+                  <span class="label">PostgreSQL</span>
+                  <span class="nsub">— system of record</span>
+                </div>
+              </li>
+
+              <!-- TimescaleDB -->
+              <li role="treeitem">
+                <div class="row">
+                  <span class="handle"><span class="dot"></span></span>
+                  <span class="chip">
+                    <img
+                      src="https://cdn.simpleicons.org/timescale"
+                      alt="TimescaleDB"
+                      onerror="this.remove()"
+                    />
+                  </span>
+                  <span class="label" style="font-weight: 400">TimescaleDB</span>
+                  <span class="nsub">— price_bar hypertable</span>
+                </div>
+              </li>
+
+              <!-- Redis -->
+              <li role="treeitem">
+                <div class="row">
+                  <span class="handle"><span class="dot"></span></span>
+                  <span class="chip">
+                    <img
+                      src="https://cdn.simpleicons.org/redis"
+                      alt="Redis"
+                      onerror="this.remove()"
+                    />
+                  </span>
+                  <span class="label">Redis</span>
+                  <span class="nsub">— queue · cache · rate limits</span>
+                </div>
+              </li>
+
+              <!-- Fastify (parent of the app) -->
+              <li role="treeitem" aria-expanded="true">
+                <div class="row">
+                  <span class="handle"><span class="toggle">−</span></span>
+                  <span class="chip">
+                    <img
+                      src="https://cdn.simpleicons.org/fastify"
+                      alt="Fastify"
+                      onerror="this.remove()"
+                    />
+                  </span>
+                  <span class="label">Fastify</span>
+                  <span class="nsub">— one image, three roles (ROLE env)</span>
+                </div>
+
+                <ul>
+                  <!-- React -->
+                  <li role="treeitem">
+                    <div class="row">
+                      <span class="handle"><span class="dot"></span></span>
+                      <span class="chip">
+                        <img
+                          src="https://cdn.simpleicons.org/react"
+                          alt="React"
+                          onerror="this.remove()"
+                        />
+                      </span>
+                      <span class="label">React</span>
+                      <span class="nsub">— Vite + TypeScript SPA</span>
+                    </div>
+                  </li>
+
+                  <!-- API -->
+                  <li role="treeitem">
+                    <div class="row">
+                      <span class="handle"><span class="dot"></span></span>
+                      <span class="chip"
+                        ><span class="emoji" role="img" aria-label="api"
+                          >🌐</span
+                        ></span
+                      >
+                      <span class="label">API</span>
+                      <span class="nsub">— auth · orders · reads · WS</span>
+                    </div>
+                  </li>
+
+                  <!-- Bot -->
+                  <li role="treeitem">
+                    <div class="row">
+                      <span class="handle"><span class="dot"></span></span>
+                      <span class="chip"
+                        ><span class="emoji" role="img" aria-label="bot"
+                          >🤖</span
+                        ></span
+                      >
+                      <span class="label">Bot runner</span>
+                      <span class="nsub">— seeds the index bot</span>
+                    </div>
+                  </li>
+
+                  <!-- Worker -->
+                  <li role="treeitem">
+                    <div class="row">
+                      <span class="handle"><span class="dot"></span></span>
+                      <span class="chip"
+                        ><span class="emoji" role="img" aria-label="worker"
+                          >⚙️</span
+                        ></span
+                      >
+                      <span class="label">Worker</span>
+                      <span class="nsub">— ingest · daily price · snapshot</span>
+                    </div>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+
+      <footer>
+        tickr — a portfolio project by Keith Heacock ·
+        <a href="https://github.com/kgheacock/tickr">github.com/kgheacock/tickr</a>
+      </footer>
+    </div>
+
+    <script>
+      // Collapsible tree: toggle the [-]/[+] box to show/hide children.
+      document.querySelectorAll(".tree .toggle").forEach((t) => {
+        t.addEventListener("click", () => {
+          const li = t.closest("li");
+          const collapsed = li.classList.toggle("collapsed");
+          t.textContent = collapsed ? "+" : "−";
+          li.setAttribute("aria-expanded", String(!collapsed));
+        });
+      });
+    </script>
+  </body>
+</html>

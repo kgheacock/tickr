@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/tickr-logo.svg" alt="tickr" aria-label="tickr" width="280" />
+</p>
+
 # tickr
 
 **A public stock-trading game.** Every player starts with **$1,000,000** in
@@ -8,6 +12,10 @@ fair, and genuinely fun way to play the market.
 Market data (real-time quotes and two years of historical OHLCV bars) is pulled
 from external REST providers, stored permanently in TimescaleDB, and used as the
 single source of truth for every fill, valuation, and ranking.
+
+> 🌐 **Landing page:** a richer HTML overview lives at
+> [`docs/index.html`](docs/index.html). Enable GitHub Pages (deploy from branch
+> → `/docs`) to publish it at `https://kgheacock.github.io/tickr/`.
 
 ---
 
@@ -136,7 +144,6 @@ filling in OAuth + market-data keys) lives in
 <!-- TODO: Once TODO/12-deployment.md lands, add a deployment / hosting section
      here — production URL, sizing, monitoring, and load-testing notes drawn from
      its findings. -->
-
 > **Hosting & deployment:** production runs the same Compose stack on a single
 > Hetzner VPS behind Caddy-issued TLS. Detailed sizing, monitoring, and
 > load-testing notes will be filled in from
