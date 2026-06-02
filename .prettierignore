@@ -9,3 +9,5 @@ packages/shared-types/src/openapi.gen.ts
 docs/
 TODO/
 schema/
+CONTRIBUTING.md
+README.md

@@ -21,16 +21,16 @@ single source of truth for every fill, valuation, and ranking.
 
 ## The game in one glance
 
-| Rule | How v1 works |
-|---|---|
-| **Starting capital** | $1,000,000 virtual cash, same for everyone |
-| **Tradeable universe** | The full S&P 500 (~500 symbols) |
-| **Order types** | Market orders only, filled immediately |
-| **Fill price** | The most recent end-of-day close from TimescaleDB |
-| **Leaderboard** | One perpetual board, ranked by total equity (cash + positions) |
-| **Ranking cadence** | Refreshed once a day after the US market close |
-| **House bot** | A built-in `index` bot holds an equal-weighted S&P 500 basket — a baseline to beat |
-| **Sign-in** | Google + GitHub SSO |
+| Rule                   | How v1 works                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------- |
+| **Starting capital**   | $1,000,000 virtual cash, same for everyone                                         |
+| **Tradeable universe** | The full S&P 500 (~500 symbols)                                                    |
+| **Order types**        | Market orders only, filled immediately                                             |
+| **Fill price**         | The most recent end-of-day close from TimescaleDB                                  |
+| **Leaderboard**        | One perpetual board, ranked by total equity (cash + positions)                     |
+| **Ranking cadence**    | Refreshed once a day after the US market close                                     |
+| **House bot**          | A built-in `index` bot holds an equal-weighted S&P 500 basket — a baseline to beat |
+| **Sign-in**            | Google + GitHub SSO                                                                |
 
 Because prices refresh once daily and orders fill at the latest close, there's no
 intraday latency edge — everyone trades on the same information. The official
@@ -80,7 +80,7 @@ flowchart TD
   historical backfill, the daily post-close price update, and the daily
   valuation snapshot.
 - **Bot runner** seeds the single `index` buy-and-hold bot once, at startup.
-- **Postgres + TimescaleDB** is the system of record *and* the OHLCV price store —
+- **Postgres + TimescaleDB** is the system of record _and_ the OHLCV price store —
   all in-game pricing is served from here, never from a live quote on the hot path.
 - **Redis** handles the job queue, market-data rate-limit token buckets, and the
   leaderboard read cache.
@@ -108,18 +108,18 @@ authoritative leaderboard.
 
 ## Tech stack
 
-| Layer | Choice |
-|---|---|
-| **Language** | TypeScript everywhere (Node 20) |
-| **Backend** | Fastify 5, `@fastify/cookie` + `@fastify/websocket` |
-| **Data** | PostgreSQL + TimescaleDB extension; Redis (ioredis) |
-| **Auth** | Google OIDC + GitHub OAuth2 (PKCE) via `openid-client` v6, cookie sessions |
-| **Trading math** | `decimal.js` for money; integer cents on the wire |
-| **Market data** | Massive REST (historical bulk backfill) + Finnhub `/quote` (daily updates) |
-| **Contracts** | OpenAPI → `@tickr/shared-types`, shared by api and web; `zod` at runtime |
-| **Frontend** | React + Vite + TypeScript, CSS Modules, TradingView Lightweight Charts |
-| **Infra** | Docker Compose, Caddy (auto-TLS), single Hetzner VPS |
-| **Tooling** | pnpm workspaces, ESLint + Prettier, Vitest + Testcontainers, Playwright e2e |
+| Layer            | Choice                                                                      |
+| ---------------- | --------------------------------------------------------------------------- |
+| **Language**     | TypeScript everywhere (Node 20)                                             |
+| **Backend**      | Fastify 5, `@fastify/cookie` + `@fastify/websocket`                         |
+| **Data**         | PostgreSQL + TimescaleDB extension; Redis (ioredis)                         |
+| **Auth**         | Google OIDC + GitHub OAuth2 (PKCE) via `openid-client` v6, cookie sessions  |
+| **Trading math** | `decimal.js` for money; integer cents on the wire                           |
+| **Market data**  | Massive REST (historical bulk backfill) + Finnhub `/quote` (daily updates)  |
+| **Contracts**    | OpenAPI → `@tickr/shared-types`, shared by api and web; `zod` at runtime    |
+| **Frontend**     | React + Vite + TypeScript, CSS Modules, TradingView Lightweight Charts      |
+| **Infra**        | Docker Compose, Caddy (auto-TLS), single Hetzner VPS                        |
+| **Tooling**      | pnpm workspaces, ESLint + Prettier, Vitest + Testcontainers, Playwright e2e |
 
 ---
 

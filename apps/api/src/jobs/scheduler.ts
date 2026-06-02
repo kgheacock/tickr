@@ -2,12 +2,14 @@ import cron from 'node-cron';
 import type { Redis } from 'ioredis';
 import { runBackfill } from './backfill.js';
 import { runDailyPrice } from './daily-price.js';
+import { runSnapshot } from './snapshot.js';
 import { tryAcquireLock, releaseLock } from './locks.js';
 import { isNyseHoliday } from '../market/holidays.js';
 
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const BACKFILL_LOCK = 'finnhub:job:backfill';
 const DAILY_PRICE_LOCK = 'finnhub:job:daily-price';
+const SNAPSHOT_LOCK = 'worker:job:snapshot';
 
 function log(
   level: 'info' | 'warn' | 'error',
@@ -54,12 +56,14 @@ export function registerScheduledJobs(redis: Redis): void {
       return;
     }
 
-    void withLock(redis, DAILY_PRICE_LOCK, () => runDailyPrice(redis)).catch(
-      (err: unknown) => {
-        log('error', 'daily-price failed', { err: String(err) });
-      },
-    );
+    void withLock(redis, DAILY_PRICE_LOCK, async () => {
+      await runDailyPrice(redis);
+      // Chain snapshot immediately after prices are updated.
+      await withLock(redis, SNAPSHOT_LOCK, () => runSnapshot(redis));
+    }).catch((err: unknown) => {
+      log('error', 'daily-price/snapshot failed', { err: String(err) });
+    });
   });
 
-  log('info', 'scheduler registered (backfill + daily-price)');
+  log('info', 'scheduler registered (backfill + daily-price + snapshot)');
 }

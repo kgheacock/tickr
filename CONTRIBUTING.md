@@ -1,18 +1,18 @@
 # Contributing to tickr
 
-This is the workshop. The [README](README.md) is the quick take on *what* tickr
-is; this file is *how to build and work on it*. The design lives in
+This is the workshop. The [README](README.md) is the quick take on _what_ tickr
+is; this file is _how to build and work on it_. The design lives in
 [`docs/`](docs/) (what to build) and the implementation playbooks live in
 [`TODO/`](TODO/) (how each slice gets built).
 
 ## Prerequisites
 
-| Tool | Version | Notes |
-|---|---|---|
-| Node | `20.19.6` (see `.nvmrc`) | `^20.19.0 \|\| >=22.12.0`. Use `nvm use` to match. |
-| pnpm | `10.11.0` | `corepack enable` picks this up from `packageManager`. |
-| Docker | recent | Compose v2 plugin; also required to run the test suite (Testcontainers). |
-| Caddy | 2.x | Only needed once, to trust the local CA (below). |
+| Tool   | Version                  | Notes                                                                    |
+| ------ | ------------------------ | ------------------------------------------------------------------------ |
+| Node   | `20.19.6` (see `.nvmrc`) | `^20.19.0 \|\| >=22.12.0`. Use `nvm use` to match.                       |
+| pnpm   | `10.11.0`                | `corepack enable` picks this up from `packageManager`.                   |
+| Docker | recent                   | Compose v2 plugin; also required to run the test suite (Testcontainers). |
+| Caddy  | 2.x                      | Only needed once, to trust the local CA (below).                         |
 
 ## One-time local setup
 
@@ -45,15 +45,15 @@ cp .env.example .env
 
 `.env.example` documents every variable. The ones you must supply:
 
-| Variable | Where to get it |
-|---|---|
-| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` | Google Cloud Console → APIs & Services → Credentials → Web Client |
-| `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | github.com/settings/developers → tickr OAuth App |
-| `SESSION_SIGNING_KEY` | generate: `openssl rand -hex 32` |
-| `MASSIVE_API_KEY` | massive.com dashboard (backfill) |
-| `FINNHUB_API_KEY` | finnhub.io dashboard (daily price) |
-| `KAGGLE_USERNAME` / `KAGGLE_API_KEY` | kaggle.com account settings (one-time bulk backfill) |
-| `ADMIN_BOOTSTRAP` | `provider:subject` pairs granted admin on first login, e.g. `github:42` |
+| Variable                             | Where to get it                                                         |
+| ------------------------------------ | ----------------------------------------------------------------------- |
+| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET` | Google Cloud Console → APIs & Services → Credentials → Web Client       |
+| `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | github.com/settings/developers → tickr OAuth App                        |
+| `SESSION_SIGNING_KEY`                | generate: `openssl rand -hex 32`                                        |
+| `MASSIVE_API_KEY`                    | massive.com dashboard (backfill)                                        |
+| `FINNHUB_API_KEY`                    | finnhub.io dashboard (daily price)                                      |
+| `KAGGLE_USERNAME` / `KAGGLE_API_KEY` | kaggle.com account settings (one-time bulk backfill)                    |
+| `ADMIN_BOOTSTRAP`                    | `provider:subject` pairs granted admin on first login, e.g. `github:42` |
 
 `PUBLIC_BASE_URL=https://local.tickr.keithheacock.com` is already the default.
 
@@ -65,10 +65,10 @@ cp .env.example .env
 The app builds callbacks as `${PUBLIC_BASE_URL}/api/v1/auth/{provider}/callback`.
 Register these exact URLs with each provider:
 
-| Provider | Redirect URI |
-|---|---|
-| Google | `https://local.tickr.keithheacock.com/api/v1/auth/google/callback` |
-| GitHub | `https://local.tickr.keithheacock.com/api/v1/auth/github/callback` |
+| Provider | Redirect URI                                                       |
+| -------- | ------------------------------------------------------------------ |
+| Google   | `https://local.tickr.keithheacock.com/api/v1/auth/google/callback` |
+| GitHub   | `https://local.tickr.keithheacock.com/api/v1/auth/github/callback` |
 
 ## Running the stack
 
@@ -139,17 +139,17 @@ via `workspace:*`.
 
 Run from the repo root unless noted.
 
-| Command | What it does |
-|---|---|
-| `pnpm run dev` | Bring up the full Compose stack. |
-| `pnpm run typecheck` | Recursive `tsc --noEmit` across workspaces. |
-| `pnpm run lint` | ESLint over the repo. |
-| `pnpm run format` / `format:check` | Prettier write / verify. |
-| `pnpm run gen:types` | Regenerate `shared-types` from `openapi.yaml`. |
-| `pnpm run gen:finnhub` / `gen:massive` | Regenerate vendored client types from `schema/`. |
-| `pnpm run lint:openapi` | Redocly lint of the public OpenAPI doc. |
-| `pnpm --filter @tickr/api run db:migrate` | Apply database migrations. |
-| `pnpm --filter @tickr/api run test` | Run the api test suite (needs Docker). |
+| Command                                   | What it does                                     |
+| ----------------------------------------- | ------------------------------------------------ |
+| `pnpm run dev`                            | Bring up the full Compose stack.                 |
+| `pnpm run typecheck`                      | Recursive `tsc --noEmit` across workspaces.      |
+| `pnpm run lint`                           | ESLint over the repo.                            |
+| `pnpm run format` / `format:check`        | Prettier write / verify.                         |
+| `pnpm run gen:types`                      | Regenerate `shared-types` from `openapi.yaml`.   |
+| `pnpm run gen:finnhub` / `gen:massive`    | Regenerate vendored client types from `schema/`. |
+| `pnpm run lint:openapi`                   | Redocly lint of the public OpenAPI doc.          |
+| `pnpm --filter @tickr/api run db:migrate` | Apply database migrations.                       |
+| `pnpm --filter @tickr/api run test`       | Run the api test suite (needs Docker).           |
 
 ## Testing
 
@@ -177,8 +177,8 @@ cases per item, and the **Definition of done** checklist is the bar to clear.
 - **Money is integer cents** on the wire and in storage; do financial math with
   `decimal.js`, never floats. Display-only conversions happen at the edge.
 - **Timestamps** are UTC, ISO-8601 at the boundary.
-- **Imports** — ioredis must use the *named* import (`import { Redis } from
-  'ioredis'`); the default import breaks types.
+- **Imports** — ioredis must use the _named_ import (`import { Redis } from
+'ioredis'`); the default import breaks types.
 
 ## Contract & codegen discipline
 
@@ -217,4 +217,4 @@ Get these green locally before pushing — they mirror the commands above.
    in the TODO.
 4. **Open a PR.** Keep CI green. Update the item's status line in
    `TODO/README.md` to link the PR when it merges.
-```
+

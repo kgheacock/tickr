@@ -11,6 +11,8 @@ import { registerAdminUniverseRoutes } from '../routes/admin/universe.js';
 import { registerPortfolioViewRoute } from '../routes/portfolios/view.js';
 import { registerOrderRoutes } from '../routes/portfolios/orders.js';
 import { registerCancelRoute } from '../routes/portfolios/cancel.js';
+import { registerPortfolioHistoryRoute } from '../routes/portfolios/history.js';
+import { registerLeaderboardRoute } from '../routes/leaderboard.js';
 
 const PORT = Number(process.env['PORT'] ?? 3000);
 const HOST = '0.0.0.0';
@@ -44,6 +46,8 @@ export async function runApi(): Promise<void> {
       await registerPortfolioViewRoute(api);
       await registerOrderRoutes(api);
       await registerCancelRoute(api);
+      await registerPortfolioHistoryRoute(api);
+      await registerLeaderboardRoute(api);
     },
     { prefix: '/api/v1' },
   );
