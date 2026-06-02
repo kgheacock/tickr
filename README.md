@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/tickr-logo.svg" alt="tickr" aria-label="tickr" width="280" />
+</p>
+
 # tickr
 
 **A public stock-trading game.** Every player starts with **$1,000,000** in

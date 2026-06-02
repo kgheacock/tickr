@@ -56,11 +56,14 @@
         padding: 56px 24px 72px;
       }
 
-      header h1 {
-        font-size: 32px;
-        letter-spacing: -0.015em;
+      header .brand {
         margin: 0 0 6px;
-        font-weight: 600;
+        line-height: 0;
+      }
+      header .brand img {
+        width: 200px;
+        height: auto;
+        display: block;
       }
       header .links {
         display: flex;
@@ -235,7 +238,15 @@
   <body>
     <div class="wrap">
       <header>
-        <h1>tickr</h1>
+        <h1 class="brand">
+          <img
+            src="tickr-logo.svg"
+            alt="tickr"
+            aria-label="tickr"
+            width="200"
+            height="60"
+          />
+        </h1>
         <div class="links">
           <a href="https://github.com/kgheacock/tickr">Source on GitHub</a>
           <a href="https://github.com/kgheacock/tickr/tree/main/docs"

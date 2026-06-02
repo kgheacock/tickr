@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 516 156" width="516" height="156" role="img" aria-label="tickr">
+  <defs>
+    <style>
+    .leaf { animation-duration: 0.85s; animation-iteration-count: 1;
+             animation-fill-mode: both; animation-timing-function: cubic-bezier(.45,.05,.35,1); }
+    .top  { animation-name: flapTop; }
+    .bot  { animation-name: flapBot; }
+    @keyframes flapTop {
+      0%   { transform: translate(0px,60px) scaleY(1) translate(0px,-60px); }
+      50%,100% { transform: translate(0px,60px) scaleY(0) translate(0px,-60px); }
+    }
+    @keyframes flapBot {
+      0%,50% { transform: translate(0px,60px) scaleY(0) translate(0px,-60px); }
+      100%   { transform: translate(0px,60px) scaleY(1) translate(0px,-60px); }
+    }
+    .t0 { animation-delay: 0.25s; }
+    .t1 { animation-delay: 0.70s; }
+    .t2 { animation-delay: 1.15s; }
+    .t3 { animation-delay: 1.60s; }
+    .t4 { animation-delay: 2.05s; }
+    </style>
+    <linearGradient id="seam" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".45" stop-color="#000" stop-opacity=".18"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>
+    <clipPath id="tileclip"><rect width="88" height="120" rx="8"/></clipPath>
+    <clipPath id="ct"><rect width="88" height="60"/></clipPath>
+    <clipPath id="cb"><rect y="60" width="88" height="60"/></clipPath>
+  </defs>
+  <g transform="translate(18,18)" clip-path="url(#tileclip)">
+    <rect width="88" height="120" fill="#FCFCFA"/>
+    <g clip-path="url(#ct)"><path d="M614 1438V1120H1032V977H614V369Q614 245 661.0 196.0Q708 147 825 147H1032V0H807Q600 0 515.0 83.0Q430 166 430 369V977H131V1120H430V1438Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-581.50,0)"/></g>
+    <rect class="leaf top t0" width="88" height="60" fill="#FCFCFA"/>
+    <g class="leaf bot t0">
+      <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+      <g clip-path="url(#cb)"><path d="M614 1438V1120H1032V977H614V369Q614 245 661.0 196.0Q708 147 825 147H1032V0H807Q600 0 515.0 83.0Q430 166 430 369V977H131V1120H430V1438Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-581.50,0)"/></g>
+    </g>
+    <rect y="57" width="88" height="6" fill="url(#seam)"/>
+  </g>
+  <rect x="19.0" y="19.0" width="86" height="118" rx="8" fill="none" stroke="#BCBCB6" stroke-width="2"/>
+  <g transform="translate(116,18)" clip-path="url(#tileclip)">
+    <rect width="88" height="120" fill="#FCFCFA"/>
+    <g clip-path="url(#ct)"><path d="M256 1120H727V143H1092V0H178V143H543V977H256ZM543 1556H727V1323H543Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-635.00,0)"/></g>
+    <rect class="leaf top t1" width="88" height="60" fill="#FCFCFA"/>
+    <g class="leaf bot t1">
+      <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+      <g clip-path="url(#cb)"><path d="M256 1120H727V143H1092V0H178V143H543V977H256ZM543 1556H727V1323H543Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-635.00,0)"/></g>
+    </g>
+    <rect y="57" width="88" height="6" fill="url(#seam)"/>
+  </g>
+  <rect x="117.0" y="19.0" width="86" height="118" rx="8" fill="none" stroke="#BCBCB6" stroke-width="2"/>
+  <g transform="translate(214,18)" clip-path="url(#tileclip)">
+    <rect width="88" height="120" fill="#FCFCFA"/>
+    <g clip-path="url(#ct)"><path d="M1061 57Q987 14 908.5 -7.5Q830 -29 748 -29Q488 -29 341.5 127.0Q195 283 195 559Q195 835 341.5 991.0Q488 1147 748 1147Q829 1147 906.0 1126.0Q983 1105 1061 1061V868Q988 933 914.5 962.0Q841 991 748 991Q575 991 482.0 879.0Q389 767 389 559Q389 352 482.5 239.5Q576 127 748 127Q844 127 920.0 156.5Q996 186 1061 248Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-628.00,0)"/></g>
+    <rect class="leaf top t2" width="88" height="60" fill="#FCFCFA"/>
+    <g class="leaf bot t2">
+      <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+      <g clip-path="url(#cb)"><path d="M1061 57Q987 14 908.5 -7.5Q830 -29 748 -29Q488 -29 341.5 127.0Q195 283 195 559Q195 835 341.5 991.0Q488 1147 748 1147Q829 1147 906.0 1126.0Q983 1105 1061 1061V868Q988 933 914.5 962.0Q841 991 748 991Q575 991 482.0 879.0Q389 767 389 559Q389 352 482.5 239.5Q576 127 748 127Q844 127 920.0 156.5Q996 186 1061 248Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-628.00,0)"/></g>
+    </g>
+    <rect y="57" width="88" height="6" fill="url(#seam)"/>
+  </g>
+  <rect x="215.0" y="19.0" width="86" height="118" rx="8" fill="none" stroke="#BCBCB6" stroke-width="2"/>
+  <g transform="translate(312,18)" clip-path="url(#tileclip)">
+    <rect width="88" height="120" fill="#FCFCFA"/>
+    <g clip-path="url(#ct)"><path d="M236 1556H426V655L909 1120H1133L692 698L1202 0H977L563 578L426 449V0H236Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-719.00,0)"/></g>
+    <rect class="leaf top t3" width="88" height="60" fill="#FCFCFA"/>
+    <g class="leaf bot t3">
+      <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+      <g clip-path="url(#cb)"><path d="M236 1556H426V655L909 1120H1133L692 698L1202 0H977L563 578L426 449V0H236Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-719.00,0)"/></g>
+    </g>
+    <rect y="57" width="88" height="6" fill="url(#seam)"/>
+  </g>
+  <rect x="313.0" y="19.0" width="86" height="118" rx="8" fill="none" stroke="#BCBCB6" stroke-width="2"/>
+  <g transform="translate(410,18)" clip-path="url(#tileclip)">
+    <rect width="88" height="120" fill="#FCFCFA"/>
+    <g clip-path="url(#ct)"><path d="M1155 889Q1096 935 1035.0 956.0Q974 977 901 977Q729 977 638.0 869.0Q547 761 547 557V0H362V1120H547V901Q593 1020 688.5 1083.5Q784 1147 915 1147Q983 1147 1042.0 1130.0Q1101 1113 1155 1077Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-758.50,0)"/></g>
+    <rect class="leaf top t4" width="88" height="60" fill="#FCFCFA"/>
+    <g class="leaf bot t4">
+      <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+      <g clip-path="url(#cb)"><path d="M1155 889Q1096 935 1035.0 956.0Q974 977 901 977Q729 977 638.0 869.0Q547 761 547 557V0H362V1120H547V901Q593 1020 688.5 1083.5Q784 1147 915 1147Q983 1147 1042.0 1130.0Q1101 1113 1155 1077Z" fill="#22242A" transform="translate(44.00,90.39) scale(0.03906,-0.03906) translate(-758.50,0)"/></g>
+    </g>
+    <rect y="57" width="88" height="6" fill="url(#seam)"/>
+  </g>
+  <rect x="411.0" y="19.0" width="86" height="118" rx="8" fill="none" stroke="#BCBCB6" stroke-width="2"/>
+</svg>
