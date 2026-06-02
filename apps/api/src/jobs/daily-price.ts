@@ -1,6 +1,8 @@
 import type { Redis } from 'ioredis';
+import type { QuotesResponse } from '@tickr/shared-types';
 import { pool } from '../db/pool.js';
 import { finnhubGet } from '../finnhub/client.js';
+import { publishQuotesUpdated } from '../events/publisher.js';
 
 interface QuoteResponse {
   c: number; // current price (used as close; v1 approximation per O5)
@@ -58,10 +60,12 @@ export async function runDailyPrice(redis: Redis): Promise<void> {
   const ts = marketCloseTs().toISOString();
   let inserted = 0;
   let skipped = 0;
+  const quotes: QuotesResponse['quotes'] = {};
 
   for (const { symbol } of rows) {
     const quote = await finnhubGet<QuoteResponse>(redis, '/quote', { symbol });
 
+    const closeCents = toCents(quote.c);
     const result = await pool.query(
       `INSERT INTO price_bar (symbol, ts, open, high, low, close, volume)
        VALUES ($1, $2, $3, $4, $5, $6, NULL)
@@ -72,15 +76,21 @@ export async function runDailyPrice(redis: Redis): Promise<void> {
         toCents(quote.o),
         toCents(quote.h),
         toCents(quote.l),
-        toCents(quote.c),
+        closeCents,
       ],
     );
 
     if ((result.rowCount ?? 0) > 0) {
       inserted++;
+      quotes[symbol] = { price: closeCents, ts };
     } else {
       skipped++;
     }
+  }
+
+  // Notify the WS gateway (item 09) with the freshly-updated symbols.
+  if (Object.keys(quotes).length > 0) {
+    await publishQuotesUpdated(redis, ts, quotes);
   }
 
   log('info', 'daily price update complete', { inserted, skipped });

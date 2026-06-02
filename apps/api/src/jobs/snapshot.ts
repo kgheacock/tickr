@@ -1,7 +1,7 @@
 import type { Redis } from 'ioredis';
 import { pool } from '../db/pool.js';
 import { writeLeaderboardCache, TOP_N } from '../cache/leaderboard.js';
-import { publish } from '../events/publisher.js';
+import { publishLeaderboardUpdated } from '../events/publisher.js';
 import type {
   LeaderboardResponse,
   LeaderboardRowItem,
@@ -126,7 +126,7 @@ export async function runSnapshot(redis: Redis): Promise<void> {
   await redis.set('metric:lastSnapshotAt', takenAt);
 
   // 5. Notify the WS gateway (item 09) so it can fan out to subscribed clients.
-  await publish(redis, 'ws:leaderboard.updated', payload);
+  await publishLeaderboardUpdated(redis, payload);
 
   log('info', 'snapshot complete', {
     takenAt,

@@ -82,6 +82,9 @@ importers:
       unzipper:
         specifier: ^0.12.3
         version: 0.12.3
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.0
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -95,6 +98,9 @@ importers:
       '@types/unzipper':
         specifier: ^0.10.11
         version: 0.10.11
+      '@types/ws':
+        specifier: ^8.5.12
+        version: 8.18.1
       testcontainers:
         specifier: ^12.0.1
         version: 12.0.1
@@ -1123,6 +1129,12 @@ packages:
     resolution:
       {
         integrity: sha512-D25im2zjyMCcgL9ag6N46+wbtJBnXIr7SI4zHf9eJD2Dw2tEB5e+p5MYkrxKIVRscs5QV0EhtU9rgXSPx90oJg==,
+      }
+
+  '@types/ws@8.18.1':
+    resolution:
+      {
+        integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==,
       }
 
   '@typescript-eslint/eslint-plugin@7.18.0':
@@ -4451,6 +4463,21 @@ packages:
       utf-8-validate:
         optional: true
 
+  ws@8.21.0:
+    resolution:
+      {
+        integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==,
+      }
+    engines: { node: '>=10.0.0' }
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   xml-naming@0.1.0:
     resolution:
       {
@@ -5128,6 +5155,10 @@ snapshots:
     optional: true
 
   '@types/unzipper@0.10.11':
+    dependencies:
+      '@types/node': 20.19.41
+
+  '@types/ws@8.18.1':
     dependencies:
       '@types/node': 20.19.41
 
@@ -7093,6 +7124,8 @@ snapshots:
   wrappy@1.0.2: {}
 
   ws@7.5.11: {}
+
+  ws@8.21.0: {}
 
   xml-naming@0.1.0: {}
 

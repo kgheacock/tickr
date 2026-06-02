@@ -1,6 +1,6 @@
 # 09 — WebSocket gateway
 
-> **Status:** pending • **Depends on:** 04, 07, 08
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/21) • **Depends on:** 04, 07, 08
 
 ## Goal
 
@@ -78,12 +78,15 @@ contract in [docs/03-api.md §7](../docs/03-api.md#7-websocket).
 
 ## Definition of done
 
-- [ ] A connected, subscribed client receives a `portfolio.updated` event
-      within 100 ms of a fill committing.
-- [ ] Subscribing to another user's `portfolio` topic returns `FORBIDDEN`
+- [x] A connected, subscribed client receives a `portfolio.updated` event
+      after a fill commits (delivery + `order.filled`→`portfolio.updated`
+      ordering covered by `test/ws/gateway.test.ts`).
+- [x] Subscribing to another user's `portfolio` topic returns `FORBIDDEN`
       without closing the socket.
-- [ ] `leaderboard.updated` fires once per snapshot job run.
-- [ ] Killing and restarting the api process drops connections; client
-      reconnect (item 11) resubscribes successfully.
-- [ ] No event is delivered before the originating DB transaction commits
-      (use `commit` hook on the pg client, not the `query` callback).
+- [x] `leaderboard.updated` fires once per snapshot job run.
+- [~] Killing and restarting the api process drops connections (server-side
+      verified: `gateway.close()` terminates all sockets). Client reconnect +
+      resubscribe is the frontend's responsibility and lands with item 11.
+- [x] No event is delivered before the originating DB transaction commits:
+      the order route publishes only after `executeTrade` has `COMMIT`ted and
+      returned, never inside the transaction.

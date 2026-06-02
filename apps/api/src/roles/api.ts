@@ -13,6 +13,8 @@ import { registerOrderRoutes } from '../routes/portfolios/orders.js';
 import { registerCancelRoute } from '../routes/portfolios/cancel.js';
 import { registerPortfolioHistoryRoute } from '../routes/portfolios/history.js';
 import { registerLeaderboardRoute } from '../routes/leaderboard.js';
+import { getRedis } from '../redis.js';
+import { attachWsGateway } from '../ws/server.js';
 
 const PORT = Number(process.env['PORT'] ?? 3000);
 const HOST = '0.0.0.0';
@@ -53,5 +55,10 @@ export async function runApi(): Promise<void> {
   );
 
   await fastify.listen({ port: PORT, host: HOST });
+
+  // Mount the WebSocket gateway on the same HTTP server (item 09). Caddy
+  // upgrades /ws through the proxy.
+  attachWsGateway(fastify.server, getRedis());
+
   console.log(`[api] listening on http://${HOST}:${PORT}`);
 }
