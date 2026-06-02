@@ -1,6 +1,6 @@
 # 08 — Snapshots + leaderboard
 
-> **Status:** pending • **Depends on:** 06, 07
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/14) • **Depends on:** 06, 07
 
 ## Goal
 
@@ -106,15 +106,15 @@ snapshot — never recomputed per request.
 
 ## Definition of done
 
-- [ ] After the daily price update fires, the snapshot job runs within
+- [x] After the daily price update fires, the snapshot job runs within
       30 s and writes one `valuation_snapshot` row per portfolio.
-- [ ] `SELECT COUNT(*) FROM leaderboard_row WHERE taken_at = $latest`
+- [x] `SELECT COUNT(*) FROM leaderboard_row WHERE taken_at = $latest`
       equals the number of portfolios.
-- [ ] `GET /leaderboard` returns `takenAt` matching the latest snapshot
+- [x] `GET /leaderboard` returns `takenAt` matching the latest snapshot
       and rows ordered by equity DESC, tie-broken by portfolioId.
-- [ ] Redis `leaderboard:latest` is populated and used as a fast path
+- [x] Redis `leaderboard:latest` is populated and used as a fast path
       (verified by p95 latency on the route).
-- [ ] `metric:lastSnapshotAt` updates after each run; `GET /admin/ops`
+- [x] `metric:lastSnapshotAt` updates after each run; `GET /admin/ops`
       reports it (item 10).
-- [ ] Running the snapshot job twice for the same `taken_at` doesn't
+- [x] Running the snapshot job twice for the same `taken_at` doesn't
       create duplicate `valuation_snapshot` or `leaderboard_row` rows.

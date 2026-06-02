@@ -115,3 +115,8 @@ restore drill, and a one-command deploy from a fresh git pull.
 - [ ] Deploy script rolls back automatically on smoke-test failure.
 - [ ] External `nmap` from a separate host shows only 22/80/443 open.
 - [ ] Review the app for unsafe defaults
+- [ ] Document sizing & hosting concerns surfaced during this work: monitoring
+      / alerting coverage, load-testing results, and VPS resource sizing
+      (CPU/mem headroom under realistic load, when to scale up off the CX22).
+- [ ] Feed those deployment findings back into `README.md` and
+      `CONTRIBUTING.md`, replacing the placeholder deployment TODOs in each.
