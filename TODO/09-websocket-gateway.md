@@ -1,6 +1,6 @@
 # 09 — WebSocket gateway
 
-> **Status:** pending • **Depends on:** 04, 07, 08
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/21) • **Depends on:** 04, 07, 08
 
 ## Goal
 
