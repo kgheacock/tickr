@@ -3,6 +3,12 @@ import { pool } from '../../db/pool.js';
 import { executeTrade, TradeRejectionError } from '../../trading/execute.js';
 import { createOrderSchema, paginationSchema } from './schema.js';
 import { requirePortfolioAccess, requirePortfolioWrite } from './middleware.js';
+import { getRedis } from '../../redis.js';
+import { getPortfolioView } from './view-query.js';
+import {
+  publishOrderFilled,
+  publishPortfolioUpdated,
+} from '../../events/publisher.js';
 
 type Cursor = { createdAt: string; id: string };
 
@@ -117,6 +123,24 @@ export async function registerOrderRoutes(
           idempotencyKey,
           source: 'human',
         });
+
+        // Publish realtime events only after executeTrade has committed.
+        // order.filled first, then portfolio.updated (the order the client
+        // contract expects). Failures here must not fail the HTTP response.
+        try {
+          const redis = getRedis();
+          await publishOrderFilled(
+            redis,
+            portfolioId,
+            result.order,
+            result.fill,
+          );
+          const view = await getPortfolioView(portfolioId);
+          if (view) await publishPortfolioUpdated(redis, portfolioId, view);
+        } catch (pubErr) {
+          req.log.warn({ err: pubErr }, 'ws publish after fill failed');
+        }
+
         return reply.code(201).send(result);
       } catch (err) {
         if (err instanceof TradeRejectionError) {
