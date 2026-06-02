@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- every link here points to GitHub; open them in a new tab -->
+    <base target="_blank" />
     <title>tickr — technical overview</title>
     <meta
       name="description"
@@ -217,6 +219,14 @@
       .label {
         font-weight: 500;
       }
+      a.label {
+        color: var(--text);
+        text-decoration: none;
+      }
+      a.label:hover {
+        color: var(--accent);
+        text-decoration: underline;
+      }
       .nsub {
         color: var(--faint);
         font-size: 12px;
@@ -252,6 +262,9 @@
           <a href="https://github.com/kgheacock/tickr/tree/main/docs"
             >Design docs</a
           >
+          <a href="https://github.com/kgheacock/tickr/blob/main/TODO/README.md"
+            >v1 plan (TODO)</a
+          >
         </div>
         <p class="lead">
           Players manage a virtual portfolio of real S&amp;P 500 names and
@@ -279,7 +292,11 @@
                   onerror="this.remove()"
                 />
               </span>
-              <span class="label">Docker</span>
+              <a
+                class="label"
+                href="https://github.com/kgheacock/tickr/tree/main/compose"
+                >Docker</a
+              >
               <span class="nsub">— Compose stack on one VPS</span>
             </div>
 
@@ -295,7 +312,11 @@
                       onerror="this.remove()"
                     />
                   </span>
-                  <span class="label">PostgreSQL</span>
+                  <a
+                    class="label"
+                    href="https://github.com/kgheacock/tickr/tree/main/apps/api/src/db"
+                    >PostgreSQL</a
+                  >
                   <span class="nsub">— system of record</span>
                 </div>
               </li>
@@ -311,7 +332,12 @@
                       onerror="this.remove()"
                     />
                   </span>
-                  <span class="label" style="font-weight: 400">TimescaleDB</span>
+                  <a
+                    class="label"
+                    style="font-weight: 400"
+                    href="https://github.com/kgheacock/tickr/blob/main/compose/postgres-init/01-timescaledb.sql"
+                    >TimescaleDB</a
+                  >
                   <span class="nsub">— price_bar hypertable</span>
                 </div>
               </li>
@@ -327,7 +353,11 @@
                       onerror="this.remove()"
                     />
                   </span>
-                  <span class="label">Redis</span>
+                  <a
+                    class="label"
+                    href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/redis.ts"
+                    >Redis</a
+                  >
                   <span class="nsub">— queue · cache · rate limits</span>
                 </div>
               </li>
@@ -343,7 +373,11 @@
                       onerror="this.remove()"
                     />
                   </span>
-                  <span class="label">Fastify</span>
+                  <a
+                    class="label"
+                    href="https://github.com/kgheacock/tickr/tree/main/apps/api"
+                    >Fastify</a
+                  >
                   <span class="nsub">— one image, three roles (ROLE env)</span>
                 </div>
 
@@ -373,7 +407,11 @@
                           >🌐</span
                         ></span
                       >
-                      <span class="label">API</span>
+                      <a
+                        class="label"
+                        href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/api.ts"
+                        >API</a
+                      >
                       <span class="nsub">— auth · orders · reads · WS</span>
                     </div>
                   </li>
@@ -387,7 +425,11 @@
                           >🤖</span
                         ></span
                       >
-                      <span class="label">Bot runner</span>
+                      <a
+                        class="label"
+                        href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/bot.ts"
+                        >Bot runner</a
+                      >
                       <span class="nsub">— seeds the index bot</span>
                     </div>
                   </li>
@@ -401,7 +443,11 @@
                           >⚙️</span
                         ></span
                       >
-                      <span class="label">Worker</span>
+                      <a
+                        class="label"
+                        href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/worker.ts"
+                        >Worker</a
+                      >
                       <span class="nsub">— ingest · daily price · snapshot</span>
                     </div>
                   </li>
