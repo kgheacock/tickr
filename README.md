@@ -171,14 +171,27 @@ surface, game mechanics, auth, and deployment.
 
 ## Roadmap
 
-v1 (everything above) is the shipped product: a single perpetual leaderboard over
-the full S&P 500. Later phases are designed to be **additive** — no rewrites.
+> **Direction change:** tickr is pivoting from a trading _game_ to a
+> market-data + returns _platform_. The game framing described above (perpetual
+> leaderboard, $1M portfolios, the `index` bot) is the current codebase; the
+> phases below re-scope it. The implementation playbooks live in
+> [`TODO/`](TODO/) items 16–18.
 
-- **v2 — Seasons + themes + bot registry.** Time-boxed competitions on a
-  constrained symbol universe ("Big 7", "Energy"), each seeded with a registry of
-  house bots, plus live intraday quotes over WebSocket.
-- **v3 — User-authored algos.** Players register parameterized algorithmic
-  strategies and attach them to a season as a portfolio driver.
+- **Platform core ([TODO 16](TODO/16-platformize-api.md)).** Keep the data
+  corpus core — the S&P 500 registry, a continuously-updating daily OHLCV time
+  series, and the ingestion cron — plus auth/SSO + sessions + CSRF and a
+  refocused WebSocket for live updates. Expose three endpoints: the corpus
+  (`/universe`), its pricing history (`/prices`), and a stateless returns
+  evaluator (`/evaluate`) that replays a series of orders against historical
+  prices. The game-only surface (portfolios, trading, snapshots, leaderboard,
+  bots) is removed with prejudice.
+- **ETFs ([TODO 17](TODO/17-etf-weighted-corpus.md)).** Define an ETF as a
+  named, weighted basket over the corpus that behaves as a synthetic symbol —
+  its price series flows through `/prices` and `/evaluate` like any stock.
+- **Strategies & display ([TODO 18](TODO/18-display-logic.md)).** Seed the
+  S&P 500 as an editable ETF, let users fork and reweight it, run a built-in
+  SMA-crossover strategy through `/evaluate`, and plot its performance against a
+  buy-and-hold baseline. User-authored strategies come later.
 
 ---
 
