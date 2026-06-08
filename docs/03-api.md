@@ -182,7 +182,7 @@ interface UpsertUniverseRequest {
 interface OpsResponse {
   lastSnapshotAt: string | null;
   snapshotLagSec: number | null;
-  marketData429sLast24h: { massive: number; finnhub: number };
+  marketData429sLast24h: { massive: number };
   jobQueueDepth: number;
   backfillRemaining: number;  // count of universe_symbol where backfilled = false
 }

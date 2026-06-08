@@ -55,24 +55,25 @@
 The only component that calls external market data APIs is the **worker**.
 This centralizes credentials and rate limiting.
 
-**v1 is REST-only.** Because v1 uses a daily EOD snapshot cadence, intraday
-streaming adds no game value. The worker uses two REST endpoints across two
-providers:
+**v1 is REST-only, single-provider (Massive).** Both the historical load and
+the live tail use the Massive aggregates endpoint at the same configurable
+resolution (default 15-minute), so the store stays uniform:
 
-- **Bootstrap backfill — Massive `GET /v2/aggs/ticker/{symbol}/range/1/day`:**
+- **Bootstrap backfill — Massive `GET /v2/aggs/ticker/{symbol}/range/{mult}/{span}`:**
   one-time at install, per `universe_symbol` row with `backfilled = false`.
-  Loads 2 years of daily OHLCV bars per symbol; bulk-inserts into `price_bar`;
-  sets `backfilled = true` on completion. Restart-safe — re-running the job
-  picks up where it left off. Total: ~252 K rows for a full 500-symbol corpus
-  (500 × 2 y × 252 trading days × 1 daily bar).
-- **Daily price update — Finnhub `GET /quote`:** once per day, just after the
-  US market close (16:00 ET). Fetches the latest quote per backfilled symbol
-  and appends one row to `price_bar`. At 60 req/min, 500 symbols ≈ 8.5 min.
-- **Rate limiting:** separate Redis token buckets per provider. Finnhub bucket:
-  60 req/min (free tier). Massive bucket: sized to free-tier limit after the
-  probe in TODO/13 step 4.
-- **Credentials:** `MASSIVE_API_KEY` (backfill) and `FINNHUB_API_KEY` (daily
-  price) are server-side env only, never sent to the browser.
+  Loads ~2 years of OHLCV bars per symbol; bulk-inserts into `price_bar`
+  (`ON CONFLICT DO NOTHING`); sets `backfilled = true` on completion.
+  Restart-safe and per-symbol fault-isolated — re-running picks up where it left
+  off. Total: ~16 M rows for a full 500-symbol corpus at 15-minute resolution
+  (~252 K at daily).
+- **Session update — Massive aggregates, same resolution:** once per day, just
+  after the US market close (16:00 ET). Fetches the just-closed session's bars
+  per backfilled symbol and appends them to `price_bar`. At ~5 req/min,
+  500 symbols ≈ 1.7 h.
+- **Rate limiting:** a single Redis token bucket throttles Massive to its
+  free-tier limit (~5 req/min), shared by backfill and the session update.
+- **Credentials:** `MASSIVE_API_KEY` (server-side env only) is used for both
+  jobs and is never sent to the browser.
 
 > **Market data tiers (v1): both free tiers** are sufficient. v1 has no
 > WebSocket usage. **Commercial licensing terms for both providers must be
@@ -81,10 +82,9 @@ providers:
 
 > **v2 adds WebSocket streaming.** When seasons + themes land, the watch
 > list narrows from "all 500" to "the union of active themes" — typically
-> ≤50 symbols, which fits the Finnhub free-tier WebSocket limit. The worker
-> grows a persistent WS connection (primary live path) with REST `/quote` as
-> overflow fallback. The token bucket above continues to govern REST; WS
-> traffic does not consume REST quota.
+> ≤50 symbols. The worker grows a persistent WS connection (primary live path)
+> with the REST aggregates path as overflow fallback. The token bucket above
+> continues to govern REST; WS traffic does not consume REST quota.
 
 ## 3. Configuration & secrets
 
@@ -95,8 +95,7 @@ committed to the repo):
 |---|---|
 | `DATABASE_URL` | api, worker, bot-runner |
 | `REDIS_URL` | api, worker, bot-runner |
-| `MASSIVE_API_KEY` | worker only (backfill) |
-| `FINNHUB_API_KEY` | worker only (daily price) |
+| `MASSIVE_API_KEY` | worker only (backfill + session update) |
 | `GOOGLE_OAUTH_CLIENT_ID/SECRET` | api |
 | `GITHUB_OAUTH_CLIENT_ID/SECRET` | api |
 | `SESSION_SIGNING_KEY` | api |
@@ -179,12 +178,12 @@ endpoint. No Prometheus/Grafana stack in v1; that's a v2+ expansion.
 ## 7. Environments
 
 - **dev** — local Compose; separate OAuth app registrations + redirect URIs;
-  free-tier Massive and Finnhub keys. To keep the bootstrap backfill fast,
+  a free-tier Massive key. To keep the bootstrap backfill fast,
   seed `universe_symbol` with a small subset (5–10 symbols) instead of the
   full S&P 500.
 - **prod** — the VPS; distinct OAuth registrations; production market data
-  keys. v1 stays on free tiers (REST-only). v2 evaluates Finnhub paid tier
-  when per-season WebSocket subscriptions become useful.
+  keys. v1 stays on the free tier (REST-only). v2 evaluates a paid market-data
+  tier when per-season WebSocket subscriptions become useful.
 
 ## 8. Security posture
 

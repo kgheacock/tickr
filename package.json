@@ -17,10 +17,10 @@
     "db:snapshot": "./scripts/db-snapshot.sh",
     "db:restore": "./scripts/db-restore.sh",
     "gen:types": "openapi-typescript packages/shared-types/openapi.yaml -o packages/shared-types/src/openapi.gen.ts",
-    "gen:finnhub": "openapi-typescript schema/finhub.io/openapi.json -o apps/api/src/finnhub/finnhub.gen.ts && prettier --write apps/api/src/finnhub/finnhub.gen.ts",
     "gen:massive": "openapi-typescript schema/massive.com/openapi.json -o apps/api/src/massive/massive.gen.ts && prettier --write apps/api/src/massive/massive.gen.ts",
     "lint:openapi": "redocly lint packages/shared-types/openapi.yaml",
-    "kaggle:backfill": "tsx scripts/kaggle-backfill.ts"
+    "kaggle:backfill": "tsx scripts/kaggle-backfill.ts",
+    "backfill": "pnpm --filter @tickr/api run backfill"
   },
   "devDependencies": {
     "@redocly/cli": "^2.31.5",

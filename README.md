@@ -25,7 +25,7 @@ flowchart TD
 
     PG[("Postgres + TimescaleDB<br/>system of record + price_bar hypertable")]
     Redis[("Redis<br/>queue, rate limits, leaderboard cache")]
-    Market["External market data<br/>Massive + Finnhub (REST)"]
+    Market["External market data<br/>Massive (REST aggregates)"]
 
     Browser --> Caddy
     Caddy --> API
@@ -66,7 +66,7 @@ flowchart TD
 | **Data**         | PostgreSQL + TimescaleDB extension; Redis (ioredis)                         |
 | **Auth**         | Google OIDC + GitHub OAuth2 (PKCE) via `openid-client` v6, cookie sessions  |
 | **Trading math** | `decimal.js` for money; integer cents on the wire                           |
-| **Market data**  | Massive REST (historical bulk backfill) + Finnhub `/quote` (daily updates)  |
+| **Market data**  | Massive REST aggregates — historical backfill + post-close session updates  |
 | **Contracts**    | OpenAPI → `@tickr/shared-types`, shared by api and web; `zod` at runtime    |
 | **Frontend**     | React + Vite + TypeScript, CSS Modules, TradingView Lightweight Charts      |
 | **Infra**        | Docker Compose, Caddy (auto-TLS), single Hetzner VPS                        |

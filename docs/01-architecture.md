@@ -43,9 +43,9 @@ single Hetzner VPS.
   small admin surface. Talks to Postgres and Redis; never calls market data
   APIs on the request path.
 - **Worker service** — Scheduled background work: the one-time bootstrap
-  backfill, the once-daily price update, and the daily EOD valuation
-  snapshot. Holds market data API keys (Massive for backfill, Finnhub for
-  daily price).
+  backfill, the post-close session update, and the daily EOD valuation
+  snapshot. Holds the market data API key (Massive, for both backfill and
+  session updates).
 - **Bot runner** — Runs the single v1 house bot (`index`, a buy-and-hold of
   an equally-weighted S&P 500 basket) once at portfolio creation. There is no
   per-cycle bot loop in v1 — the bot's portfolio doesn't trade after seeding.
@@ -81,18 +81,20 @@ Worker (on first boot, if any universe_symbol has backfilled = false):
   → restart-safe: re-run picks up where it left off
 ```
 
-**Daily price update (cron, once per US market close):**
+**Session update (cron, once per US market close):**
 ```
 Worker (daily after 16:00 ET):
   → for each universe_symbol with backfilled = true:
-      GET /quote (Finnhub)
-      append one row to price_bar (ts = today's close)
-  → 500 symbols ÷ 60 req/min ≈ 8.5 min total
+      GET /v2/aggs/.../range/15/minute/... (Massive, configurable resolution)
+      append the session's bars to price_bar (ON CONFLICT DO NOTHING)
+  → 500 symbols ÷ 5 req/min ≈ 1.7 h total (shared Massive bucket)
 ```
 
-**~252 K rows** for the full 500-symbol corpus at bootstrap (500 × 2y × 252
-trading days × 1 daily bar). Bootstrap is a one-shot cost; the daily update
-adds 500 rows/day. See [09-open-questions](09-open-questions.md#open-market-data-questions)
+**~16 M rows** for the full 500-symbol corpus at bootstrap with 15-minute bars
+(500 × 2y × ~504 trading days × ~64 extended-hours bars). Resolution is
+configurable (`jobs/granularity.ts`); daily would be ~252 K rows. Bootstrap is a
+one-shot cost; the session update appends one trading day's bars per symbol. See
+[09-open-questions](09-open-questions.md#open-market-data-questions)
 for the Massive rate-limit probe item (T2c).
 
 ### 2.2 Order submission
@@ -157,7 +159,7 @@ the official ranking until the next EOD snapshot.
 
 | Concern | Approach |
 |---|---|
-| **Rate limiting (market data)** | Centralized in worker; separate Redis token buckets per provider. Massive bucket governs backfill; Finnhub bucket (60 req/min free tier) governs the daily price update. No other component calls external market data APIs. |
+| **Rate limiting (market data)** | Centralized in worker; a Redis token bucket throttles Massive calls. The Massive bucket (~5 req/min free tier) governs both the backfill and the post-close session update. No other component calls external market data APIs. |
 | **Rate limiting (our API)** | Per-user + per-IP counters in Redis; stricter limits for order endpoints. Concrete numbers defined at implementation time. |
 | **Idempotency** | Order submission accepts a client idempotency key; duplicates return the original result. |
 | **Time** | All timestamps UTC, ISO-8601 at the boundary. EOD job uses the US/Eastern market close; the snapshot's `taken_at` is in UTC. |
@@ -190,9 +192,9 @@ v2 introduces **seasons** and **themes**:
 - The single v1 bot expands into the **strategy registry** in
   [07-bots-and-algos](07-bots-and-algos.md). The bot runner gains a per-cycle
   loop (one cycle = one snapshot interval).
-- The Finnhub WebSocket connection enters here: with smaller per-season
-  watch lists and per-snapshot cadence, live quotes become useful. The REST
-  path remains as a fallback for overflow symbols. See
+- A live WebSocket feed enters here: with smaller per-season watch lists and
+  per-snapshot cadence, real-time quotes become useful. The Massive REST path
+  remains as a fallback for overflow symbols. See
   [08-deployment §2](08-deployment.md#2-market-data-integration).
 
 v3 introduces **user-authored algos**: declarative strategy types

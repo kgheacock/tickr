@@ -95,15 +95,15 @@ jobs:
       - name: Fail if openapi.gen.ts is stale
         run: git diff --exit-code packages/shared-types/src/openapi.gen.ts
 
-      - run: pnpm run gen:finnhub
+      - run: pnpm run gen:massive
 
-      - name: Fail if finnhub.gen.ts is stale
-        run: git diff --exit-code apps/api/src/finnhub/finnhub.gen.ts
+      - name: Fail if massive.gen.ts is stale
+        run: git diff --exit-code apps/api/src/massive/massive.gen.ts
 
-      - name: Enforce no finnhub.io references outside finnhub/client.ts
+      - name: Enforce no massive.com references outside massive/client.ts
         run: |
-          if grep -r 'finnhub\.io' apps/api/src --include='*.ts' \
-               | grep -v -E 'finnhub/(client|finnhub\.gen)\.ts'; then
-            echo "ERROR: finnhub.io referenced in a file other than finnhub/client.ts"
+          if grep -r 'api\.massive\.com' apps/api/src --include='*.ts' \
+               | grep -v -E 'massive/(client|massive\.gen)\.ts'; then
+            echo "ERROR: api.massive.com referenced in a file other than massive/client.ts"
             exit 1
           fi
