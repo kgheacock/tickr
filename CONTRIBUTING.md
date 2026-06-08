@@ -9,7 +9,7 @@ is; this file is _how to build and work on it_. The design lives in
 
 | Tool   | Version                  | Notes                                                                    |
 | ------ | ------------------------ | ------------------------------------------------------------------------ |
-| Node   | `20.19.6` (see `.nvmrc`) | `^20.19.0 \|\| >=22.12.0`. Use `nvm use` to match.                       |
+| Node   | `22.22.3` (see `.nvmrc`) | `>=22.12.0`. Use `nvm use` to match.                                     |
 | pnpm   | `10.11.0`                | `corepack enable` picks this up from `packageManager`.                   |
 | Docker | recent                   | Compose v2 plugin; also required to run the test suite (Testcontainers). |
 | Caddy  | 2.x                      | Only needed once, to trust the local CA (below).                         |

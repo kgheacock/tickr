@@ -8,7 +8,7 @@
 # Dev cadence: bind-mount source over /app/apps/api/src and run `tsx watch`
 # via the compose `command:`. Production builds are layered on in item 12.
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 RUN corepack enable pnpm
 

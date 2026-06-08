@@ -110,7 +110,7 @@ authoritative leaderboard.
 
 | Layer            | Choice                                                                      |
 | ---------------- | --------------------------------------------------------------------------- |
-| **Language**     | TypeScript everywhere (Node 20)                                             |
+| **Language**     | TypeScript everywhere (Node 22)                                             |
 | **Backend**      | Fastify 5, `@fastify/cookie`; realtime over a low-level `ws` gateway        |
 | **Data**         | PostgreSQL + TimescaleDB extension; Redis (ioredis)                         |
 | **Auth**         | Google OIDC + GitHub OAuth2 (PKCE) via `openid-client` v6, cookie sessions  |
