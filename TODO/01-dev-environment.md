@@ -21,7 +21,7 @@ clone the repo, run one command, and have api + worker + bot + Postgres
 1. **Monorepo layout.** Create the workspace skeleton:
    ```
    /apps
-     /api          # Node 20 + TS, runs ROLE=api|worker|bot via env
+     /api          # Node 22 + TS, runs ROLE=api|worker|bot via env
      /web          # Vite + React + TS (scaffolded in item 11)
    /packages
      /shared-types # @tickr/shared-types (filled in item 02)
