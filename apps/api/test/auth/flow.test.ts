@@ -96,7 +96,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await pgPool.query('DELETE FROM identity');
-  await pgPool.query('DELETE FROM portfolio');
   await pgPool.query(
     "DELETE FROM app_user WHERE id != '00000000-0000-0000-0000-000000000001'",
   );
@@ -220,14 +219,12 @@ describe('GitHub sign-in → /me → logout flow', () => {
     const me = meRes.json<{
       user: { email: string; displayName: string; role: string };
       identities: Array<{ provider: string }>;
-      portfolioId: string;
       csrfToken: string;
     }>();
 
     expect(me.user.email).toBe('flowtest@example.com');
     expect(me.user.displayName).toBe('Flow Test User');
     expect(me.user.role).toBe('player');
-    expect(me.portfolioId).toBeTruthy();
     expect(me.csrfToken).toBeTruthy();
     expect(me.identities).toHaveLength(1);
     expect(me.identities[0]!.provider).toBe('github');

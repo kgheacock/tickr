@@ -1,8 +1,8 @@
 import type { Redis } from 'ioredis';
-import type { QuotesResponse } from '@tickr/shared-types';
+import type { PricesResponse } from '@tickr/shared-types';
 import { pool } from '../db/pool.js';
 import { finnhubGet } from '../finnhub/client.js';
-import { publishQuotesUpdated } from '../events/publisher.js';
+import { publishPricesUpdated } from '../events/publisher.js';
 
 interface QuoteResponse {
   c: number; // current price (used as close; v1 approximation per O5)
@@ -29,7 +29,7 @@ function toCents(usd: number): number {
 /**
  * Returns today's market-close timestamp at 21:00 UTC (≈16:00 ET standard).
  * Deterministic for the calendar day so a second run produces the same ts
- * and the ON CONFLICT (symbol, ts) guard makes it a no-op.
+ * and the upsert refreshes the same row.
  */
 export function marketCloseTs(now: Date = new Date()): Date {
   return new Date(
@@ -58,40 +58,40 @@ export async function runDailyPrice(redis: Redis): Promise<void> {
   log('info', 'starting daily price update', { symbols: rows.length });
 
   const ts = marketCloseTs().toISOString();
-  let inserted = 0;
-  let skipped = 0;
-  const quotes: QuotesResponse['quotes'] = {};
+  let written = 0;
+  const series: PricesResponse['series'] = {};
 
   for (const { symbol } of rows) {
     const quote = await finnhubGet<QuoteResponse>(redis, '/quote', { symbol });
 
-    const closeCents = toCents(quote.c);
-    const result = await pool.query(
+    const open = toCents(quote.o);
+    const high = toCents(quote.h);
+    const low = toCents(quote.l);
+    const close = toCents(quote.c);
+
+    // Best-available precedence (D4): Finnhub provides the current/most-recent
+    // day, so on conflict it WINS over any historical (Massive) bar for the
+    // same (symbol, ts). Backfill (insertBars.ts) uses DO NOTHING so it never
+    // clobbers a Finnhub bar.
+    await pool.query(
       `INSERT INTO price_bar (symbol, ts, open, high, low, close, volume)
        VALUES ($1, $2, $3, $4, $5, $6, NULL)
-       ON CONFLICT (symbol, ts) DO NOTHING`,
-      [
-        symbol,
-        ts,
-        toCents(quote.o),
-        toCents(quote.h),
-        toCents(quote.l),
-        closeCents,
-      ],
+       ON CONFLICT (symbol, ts) DO UPDATE SET
+         open = EXCLUDED.open,
+         high = EXCLUDED.high,
+         low = EXCLUDED.low,
+         close = EXCLUDED.close`,
+      [symbol, ts, open, high, low, close],
     );
 
-    if ((result.rowCount ?? 0) > 0) {
-      inserted++;
-      quotes[symbol] = { price: closeCents, ts };
-    } else {
-      skipped++;
-    }
+    written++;
+    series[symbol] = [{ ts, open, high, low, close, volume: null }];
   }
 
-  // Notify the WS gateway (item 09) with the freshly-updated symbols.
-  if (Object.keys(quotes).length > 0) {
-    await publishQuotesUpdated(redis, ts, quotes);
+  // Notify the WS gateway (prices topic) with the freshly-written bars.
+  if (Object.keys(series).length > 0) {
+    await publishPricesUpdated(redis, ts, series);
   }
 
-  log('info', 'daily price update complete', { inserted, skipped });
+  log('info', 'daily price update complete', { written });
 }

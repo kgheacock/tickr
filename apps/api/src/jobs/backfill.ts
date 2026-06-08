@@ -4,6 +4,8 @@ import { pool } from '../db/pool.js';
 import { massiveGet } from '../massive/client.js';
 import type { components } from '../massive/massive.gen.js';
 import { insertBars } from './insertBars.js';
+import { loadUniverse } from '../routes/universe.js';
+import { publishUniverseUpdated } from '../events/publisher.js';
 
 type AggregatesResponse = components['schemas']['AggregatesResponse'];
 
@@ -94,6 +96,10 @@ export async function runBackfill(redis: Redis): Promise<void> {
   await Promise.all(
     rows.map((row) => limit(() => backfillSymbol(redis, row.symbol))),
   );
+
+  // Symbols flipped to backfilled — push the refreshed corpus to the WS
+  // gateway's `universe` topic (step 4).
+  await publishUniverseUpdated(redis, await loadUniverse(false));
 
   log('info', 'backfill complete', { total: rows.length });
 }

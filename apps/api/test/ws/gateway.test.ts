@@ -13,7 +13,6 @@ import { runner } from 'node-pg-migrate';
 import pg from 'pg';
 import { Redis } from 'ioredis';
 import Fastify from 'fastify';
-import cookie from '@fastify/cookie';
 import { WebSocket } from 'ws';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +35,7 @@ let container: StartedPostgreSqlContainer;
 let client: pg.Client;
 let pool: pg.Pool;
 
-// Shared singleton used by routes + gateway (getRedis()).
+// Shared singleton used by gateway + publisher (getRedis()).
 let redis: Redis;
 
 beforeAll(async () => {
@@ -85,24 +84,11 @@ vi.mock('../../src/db/pool.js', async () => {
 });
 
 const USER_A = '00000000-0000-0000-0000-0000000000a1';
-const USER_B = '00000000-0000-0000-0000-0000000000a2';
-const PORT_A = '00000000-0000-0000-0000-0000000000b1';
-const PORT_B = '00000000-0000-0000-0000-0000000000b2';
 
 async function seedUser(id: string, name: string): Promise<void> {
   await client.query(
     `INSERT INTO app_user (id, display_name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
     [id, name],
-  );
-}
-async function seedPortfolio(
-  id: string,
-  userId: string,
-  cash: number,
-): Promise<void> {
-  await client.query(
-    `INSERT INTO portfolio (id, user_id, cash) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
-    [id, userId, cash],
   );
 }
 async function seedSymbol(symbol: string): Promise<void> {
@@ -111,29 +97,9 @@ async function seedSymbol(symbol: string): Promise<void> {
     [symbol],
   );
 }
-async function seedPrice(symbol: string, closeCents: number): Promise<void> {
-  const ts = new Date();
-  ts.setUTCHours(21, 0, 0, 0);
-  await client.query(
-    `INSERT INTO price_bar (symbol, ts, open, high, low, close)
-     VALUES ($1, $2, $3, $3, $3, $3)
-     ON CONFLICT (symbol, ts) DO UPDATE SET close = $3`,
-    [symbol, ts.toISOString(), closeCents],
-  );
-}
 
 beforeEach(async () => {
-  for (const t of [
-    'fill',
-    'trade_order',
-    'valuation_snapshot',
-    'leaderboard_row',
-    'position',
-    'price_bar',
-    'portfolio',
-    'app_user',
-    'universe_symbol',
-  ]) {
+  for (const t of ['price_bar', 'app_user', 'universe_symbol']) {
     await client.query(`DELETE FROM ${t}`);
   }
   await redis.flushdb();
@@ -141,27 +107,13 @@ beforeEach(async () => {
 
 // --- test app + helpers ------------------------------------------------------
 
-interface TestApp {
+async function startApp(heartbeatIntervalMs = 30_000): Promise<{
   port: number;
   close: () => Promise<void>;
-}
-
-async function startApp(heartbeatIntervalMs = 30_000): Promise<TestApp> {
-  const { registerOrderRoutes } =
-    await import('../../src/routes/portfolios/orders.js');
+}> {
   const { attachWsGateway } = await import('../../src/ws/server.js');
 
   const app = Fastify({ logger: false });
-  await app.register(cookie, {
-    secret: process.env['SESSION_SIGNING_KEY']!,
-    parseOptions: {},
-  });
-  await app.register(
-    async (api) => {
-      await registerOrderRoutes(api);
-    },
-    { prefix: '/api/v1' },
-  );
   await app.listen({ port: 0, host: '127.0.0.1' });
   const gateway = attachWsGateway(app.server, redis, { heartbeatIntervalMs });
   const { port } = app.server.address() as AddressInfo;
@@ -175,13 +127,10 @@ async function startApp(heartbeatIntervalMs = 30_000): Promise<TestApp> {
   };
 }
 
-async function makeSession(userId: string): Promise<{
-  token: string;
-  csrfToken: string;
-}> {
+async function makeSession(userId: string): Promise<string> {
   const { createSession } = await import('../../src/auth/session.js');
-  const { token, record } = await createSession(redis, userId);
-  return { token, csrfToken: record.csrfToken };
+  const { token } = await createSession(redis, userId);
+  return token;
 }
 
 function connect(port: number, token?: string): WebSocket {
@@ -202,7 +151,6 @@ interface ServerMsg {
   [k: string]: unknown;
 }
 
-/** Collect every server message in arrival order. */
 function collect(ws: WebSocket): {
   messages: ServerMsg[];
   waitFor: (pred: (m: ServerMsg) => boolean, ms?: number) => Promise<ServerMsg>;
@@ -251,13 +199,10 @@ function settle(ms = 150): Promise<void> {
 
 // --- tests -------------------------------------------------------------------
 
-describe('ws gateway', () => {
-  it('delivers order.filled then portfolio.updated after a fill', async () => {
+describe('ws gateway (platform topics)', () => {
+  it('delivers universe.updated to a universe subscriber', async () => {
     await seedUser(USER_A, 'Alice');
-    await seedPortfolio(PORT_A, USER_A, 100_000_000);
-    await seedSymbol('AAPL');
-    await seedPrice('AAPL', 20_000);
-    const { token, csrfToken } = await makeSession(USER_A);
+    const token = await makeSession(USER_A);
 
     const app = await startApp();
     try {
@@ -265,44 +210,27 @@ describe('ws gateway', () => {
       await onceOpen(ws);
       const inbox = collect(ws);
       ws.send(
-        JSON.stringify({
-          type: 'subscribe',
-          topic: { kind: 'portfolio', portfolioId: PORT_A },
-        }),
+        JSON.stringify({ type: 'subscribe', topic: { kind: 'universe' } }),
       );
       await settle();
 
-      const res = await fetch(
-        `http://127.0.0.1:${app.port}/api/v1/portfolios/${PORT_A}/orders`,
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            cookie: `tickr_sid=${token}`,
-            'x-csrf-token': csrfToken,
-          },
-          body: JSON.stringify({
+      const { publishUniverseUpdated } =
+        await import('../../src/events/publisher.js');
+      await publishUniverseUpdated(redis, {
+        items: [
+          {
             symbol: 'AAPL',
-            side: 'buy',
-            type: 'market',
-            quantity: 10,
-            idempotencyKey: 'ws-test-1',
-          }),
-        },
-      );
-      expect(res.status).toBe(201);
+            backfilled: true,
+            backfilledAt: null,
+            firstBarAt: null,
+            lastBarAt: null,
+          },
+        ],
+      });
 
-      await inbox.waitFor((m) => m.type === 'portfolio.updated');
-
-      const types = inbox.messages.map((m) => m.type);
-      const filledAt = types.indexOf('order.filled');
-      const updatedAt = types.indexOf('portfolio.updated');
-      expect(filledAt).toBeGreaterThanOrEqual(0);
-      expect(updatedAt).toBeGreaterThanOrEqual(0);
-      expect(filledAt).toBeLessThan(updatedAt);
-
-      const filled = inbox.messages.find((m) => m.type === 'order.filled')!;
-      expect(filled['portfolioId']).toBe(PORT_A);
+      const msg = await inbox.waitFor((m) => m.type === 'universe.updated');
+      const data = msg['data'] as { items: Array<{ symbol: string }> };
+      expect(data.items[0]!.symbol).toBe('AAPL');
 
       ws.close();
     } finally {
@@ -310,11 +238,11 @@ describe('ws gateway', () => {
     }
   });
 
-  it("rejects subscribing to another user's portfolio with FORBIDDEN, keeps socket open", async () => {
+  it('delivers prices.updated narrowed to the subscribed symbols', async () => {
     await seedUser(USER_A, 'Alice');
-    await seedUser(USER_B, 'Bob');
-    await seedPortfolio(PORT_B, USER_B, 100_000_000);
-    const { token } = await makeSession(USER_A);
+    await seedSymbol('AAPL');
+    await seedSymbol('MSFT');
+    const token = await makeSession(USER_A);
 
     const app = await startApp();
     try {
@@ -324,42 +252,49 @@ describe('ws gateway', () => {
       ws.send(
         JSON.stringify({
           type: 'subscribe',
-          topic: { kind: 'portfolio', portfolioId: PORT_B },
+          topic: { kind: 'prices', symbols: ['AAPL'] },
+        }),
+      );
+      await settle();
+
+      const ts = new Date().toISOString();
+      const { publishPricesUpdated } =
+        await import('../../src/events/publisher.js');
+      await publishPricesUpdated(redis, ts, {
+        AAPL: [{ ts, open: 1, high: 1, low: 1, close: 18400, volume: null }],
+        MSFT: [{ ts, open: 1, high: 1, low: 1, close: 41000, volume: null }],
+      });
+
+      const msg = await inbox.waitFor((m) => m.type === 'prices.updated');
+      const series = msg['series'] as Record<string, unknown>;
+      // Narrowed to the subscribed symbol only.
+      expect(Object.keys(series)).toEqual(['AAPL']);
+
+      ws.close();
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('rejects a prices subscription with an unknown symbol, keeps socket open', async () => {
+    await seedUser(USER_A, 'Alice');
+    const token = await makeSession(USER_A);
+
+    const app = await startApp();
+    try {
+      const ws = connect(app.port, token);
+      await onceOpen(ws);
+      const inbox = collect(ws);
+      ws.send(
+        JSON.stringify({
+          type: 'subscribe',
+          topic: { kind: 'prices', symbols: ['NOPE'] },
         }),
       );
 
       const err = await inbox.waitFor((m) => m.type === 'error');
-      expect((err['error'] as { code: string }).code).toBe('FORBIDDEN');
-      // Socket remains open after a rejected subscription.
+      expect((err['error'] as { code: string }).code).toBe('VALIDATION');
       expect(ws.readyState).toBe(WebSocket.OPEN);
-
-      ws.close();
-    } finally {
-      await app.close();
-    }
-  });
-
-  it('fans out leaderboard.updated when the snapshot job runs', async () => {
-    await seedUser(USER_A, 'Alice');
-    await seedPortfolio(PORT_A, USER_A, 100_000_000);
-    const { token } = await makeSession(USER_A);
-
-    const app = await startApp();
-    try {
-      const ws = connect(app.port, token);
-      await onceOpen(ws);
-      const inbox = collect(ws);
-      ws.send(
-        JSON.stringify({ type: 'subscribe', topic: { kind: 'leaderboard' } }),
-      );
-      await settle();
-
-      const { runSnapshot } = await import('../../src/jobs/snapshot.js');
-      await runSnapshot(redis);
-
-      const msg = await inbox.waitFor((m) => m.type === 'leaderboard.updated');
-      const data = msg['data'] as { rows: unknown[] };
-      expect(Array.isArray(data.rows)).toBe(true);
 
       ws.close();
     } finally {
@@ -385,7 +320,7 @@ describe('ws gateway', () => {
 
   it('closes the socket when the session expires mid-connection', async () => {
     await seedUser(USER_A, 'Alice');
-    const { token } = await makeSession(USER_A);
+    const token = await makeSession(USER_A);
 
     // Short heartbeat so the session re-check fires quickly.
     const app = await startApp(150);
@@ -397,7 +332,6 @@ describe('ws gateway', () => {
         ws.once('close', (code) => resolve(code));
       });
 
-      // Revoke the session out from under the live connection.
       await redis.del(`session:${token}`);
 
       const code = await closed;

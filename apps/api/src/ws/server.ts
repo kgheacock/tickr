@@ -9,7 +9,7 @@ import { getSession } from '../auth/session.js';
 import {
   topicKey,
   channelToTopicKey,
-  MAX_QUOTE_SYMBOLS,
+  MAX_PRICE_SYMBOLS,
   type TopicKey,
 } from './topics.js';
 import { startSubscriber, type Subscriber } from './subscriber.js';
@@ -42,8 +42,8 @@ function log(
 /** Per-connection state attached alongside the raw socket. */
 class Connection {
   readonly topics = new Set<TopicKey>();
-  /** Symbols requested on the (singular) quotes subscription, if any. */
-  quoteSymbols = new Set<string>();
+  /** Symbols requested on the (singular) prices subscription, if any. */
+  priceSymbols = new Set<string>();
   lastPongAt = Date.now();
   /** Bounded outbound queue; drained sequentially to apply backpressure. */
   private readonly outbox: string[] = [];
@@ -124,26 +124,10 @@ export function attachWsGateway(
 
   // --- topic subscription validation ---------------------------------------
 
-  async function authorizePortfolio(
-    userId: string,
-    portfolioId: string,
-  ): Promise<boolean> {
-    const { rows } = await pool.query<{ user_id: string }>(
-      `SELECT user_id FROM portfolio WHERE id = $1`,
-      [portfolioId],
-    );
-    if (rows[0]?.user_id === userId) return true;
-    const { rows: u } = await pool.query<{ role: string }>(
-      `SELECT role FROM app_user WHERE id = $1`,
-      [userId],
-    );
-    return u[0]?.role === 'admin';
-  }
-
-  async function validateQuoteSymbols(
+  async function validatePriceSymbols(
     symbols: string[],
   ): Promise<string[] | null> {
-    if (symbols.length === 0 || symbols.length > MAX_QUOTE_SYMBOLS) return null;
+    if (symbols.length === 0 || symbols.length > MAX_PRICE_SYMBOLS) return null;
     const upper = symbols.map((s) => s.toUpperCase());
     const { rows } = await pool.query<{ symbol: string }>(
       `SELECT symbol FROM universe_symbol WHERE symbol = ANY($1)`,
@@ -157,25 +141,16 @@ export function attachWsGateway(
     conn: Connection,
     topic: WsTopic,
   ): Promise<void> {
-    if (topic.kind === 'portfolio') {
-      const ok = await authorizePortfolio(conn.userId, topic.portfolioId);
-      if (!ok) {
-        sendError(conn.socket, {
-          code: 'FORBIDDEN',
-          message: 'You do not have access to this portfolio',
-        });
-        return;
-      }
-    } else if (topic.kind === 'quotes') {
-      const valid = await validateQuoteSymbols(topic.symbols);
+    if (topic.kind === 'prices') {
+      const valid = await validatePriceSymbols(topic.symbols);
       if (!valid) {
         sendError(conn.socket, {
           code: 'VALIDATION',
-          message: `quotes topic requires 1–${MAX_QUOTE_SYMBOLS} known symbols`,
+          message: `prices topic requires 1–${MAX_PRICE_SYMBOLS} known symbols`,
         });
         return;
       }
-      conn.quoteSymbols = new Set(valid);
+      conn.priceSymbols = new Set(valid);
     }
     conn.topics.add(topicKey(topic));
   }
@@ -183,7 +158,7 @@ export function attachWsGateway(
   function handleUnsubscribe(conn: Connection, topic: WsTopic): void {
     const key = topicKey(topic);
     conn.topics.delete(key);
-    if (topic.kind === 'quotes') conn.quoteSymbols.clear();
+    if (topic.kind === 'prices') conn.priceSymbols.clear();
   }
 
   async function handleMessage(conn: Connection, data: Buffer): Promise<void> {
@@ -293,8 +268,8 @@ export function attachWsGateway(
     fanOut(key: TopicKey, raw: string): void {
       for (const conn of connections.values()) {
         if (!conn.topics.has(key)) continue;
-        if (key === 'quotes') {
-          conn.enqueue(filterQuotes(raw, conn.quoteSymbols));
+        if (key === 'prices') {
+          conn.enqueue(filterPrices(raw, conn.priceSymbols));
         } else {
           conn.enqueue(raw);
         }
@@ -319,22 +294,22 @@ export function attachWsGateway(
 }
 
 /**
- * Narrow a `quotes.updated` message to the symbols a connection subscribed to.
- * Returns the original payload unchanged if it isn't a quotes message.
+ * Narrow a `prices.updated` message to the symbols a connection subscribed to.
+ * Returns the original payload unchanged if it isn't a prices message.
  */
-function filterQuotes(raw: string, symbols: Set<string>): string {
+function filterPrices(raw: string, symbols: Set<string>): string {
   try {
     const msg = JSON.parse(raw) as {
       type: string;
       asOf: string;
-      quotes: Record<string, unknown>;
+      series: Record<string, unknown>;
     };
-    if (msg.type !== 'quotes.updated') return raw;
+    if (msg.type !== 'prices.updated') return raw;
     const filtered: Record<string, unknown> = {};
     for (const sym of symbols) {
-      if (sym in msg.quotes) filtered[sym] = msg.quotes[sym];
+      if (sym in msg.series) filtered[sym] = msg.series[sym];
     }
-    return JSON.stringify({ ...msg, quotes: filtered });
+    return JSON.stringify({ ...msg, series: filtered });
   } catch {
     return raw;
   }

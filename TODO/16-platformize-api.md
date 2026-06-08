@@ -1,6 +1,6 @@
 # 16 — Platformize the API (game → market-data platform)
 
-> **Status:** pending • **Depends on:** 03, 04, 06, 09
+> **Status:** done • **Depends on:** 03, 04, 06, 09
 
 ## Goal
 
@@ -243,35 +243,35 @@ only thing explicitly out** (item 18 / item 11).
 
 **Spine — auth + CSRF + sessions + WS + console:**
 
-- [ ] **Auth + sessions** — SSO login (Google + GitHub) establishes a session
+- [x] **Auth + sessions** — SSO login (Google + GitHub) establishes a session
       cookie; `/me` returns the user + linked identities (no `portfolioId`).
-- [ ] **CSRF** — the session issues a rotating `csrfToken`; state-changing
+- [x] **CSRF** — the session issues a rotating `csrfToken`; state-changing
       requests require a valid `X-CSRF-Token`.
-- [ ] **WS connection** — an authenticated client connects to `/ws`,
+- [x] **WS connection** — an authenticated client connects to `/ws`,
       subscribes to `universe` / `prices`, and the cron's
       `universe.updated` / `prices.updated` events reach it.
-- [ ] **Log to console** — the reference client logs each received
+- [x] **Log to console** — the reference client logs each received
       `WsServerMessage` to the console; no UI is built in this item.
 
 **Endpoints + cron:**
 
-- [ ] **`GET /universe`** returns the corpus with `backfilled` and bar-coverage
+- [x] **`GET /universe`** returns the corpus with `backfilled` and bar-coverage
       bounds (`firstBarAt` / `lastBarAt`); `?backfilled=true` filters.
-- [ ] **`GET /prices`** returns bars within the resolved window for the
+- [x] **`GET /prices`** returns bars within the resolved window for the
       requested corpus; unknown symbols land in `missing` (not a 400); the
       documented size/window caps are enforced.
-- [ ] **`POST /evaluate`** fills each order at the **point-in-time** close
+- [x] **`POST /evaluate`** fills each order at the **point-in-time** close
       (not the latest), computes `totalReturnPct` correctly for a known
       buy/sell pair, emits every reject code
       (`SYMBOL_NOT_TRADEABLE`/`STALE_PRICE`/`INSUFFICIENT_FUNDS`/
       `INSUFFICIENT_POSITION`), and writes nothing to the DB.
-- [ ] **Cron** still ingests EOD bars for the corpus (no snapshot job runs),
+- [x] **Cron** still ingests EOD bars for the corpus (no snapshot job runs),
       applies the best-available source-precedence rule on conflict, and
       publishes the WS updates after a successful run.
-- [ ] **Schema** — `portfolio`, `position`, `trade_order`, `fill`,
+- [x] **Schema** — `portfolio`, `position`, `trade_order`, `fill`,
       `valuation_snapshot`, `leaderboard_row`, `algo` are dropped;
       `app_user`, `identity`, `universe_symbol`, `price_bar` intact.
-- [ ] **Contracts/OpenAPI** reflect only the platform endpoints + the
+- [x] **Contracts/OpenAPI** reflect only the platform endpoints + the
       refocused WS topics; game types removed.
 
 ## Files

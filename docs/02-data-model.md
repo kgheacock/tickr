@@ -342,11 +342,12 @@ In v1 the worker's bootstrap-backfill job iterates over rows where
 
 ### 2.10 `price_bar` (TimescaleDB)
 
-OHLCV bars for S&P 500 symbols. Written by the worker's bootstrap backfill
-(5 years of 5-min bars per symbol) and the daily price update (one
-end-of-day bar per symbol per day). **This is the sole source of price
-truth for the game** — order fills, valuation snapshots, and the bot
-seeding all read from here.
+OHLCV bars for the corpus symbols. Written by the worker's bootstrap backfill
+(≈2 years of daily bars per symbol — a 730-day lookback at one daily bar per
+symbol, see D2 in [TODO/16-platformize-api.md](../TODO/16-platformize-api.md))
+and the daily price update (one end-of-day bar per symbol per day). **This is
+the sole source of price truth for the platform** — `/prices`, `/evaluate`,
+and the WS `prices` topic all read from here.
 
 ```ts
 interface PriceBar {

@@ -7,18 +7,17 @@ import type { WsTopic } from '@tickr/shared-types';
  */
 export type TopicKey = string;
 
-export const MAX_QUOTE_SYMBOLS = 100;
+/** Cap on the symbols a single `prices` subscription may name. */
+export const MAX_PRICE_SYMBOLS = 100;
 
 export function topicKey(topic: WsTopic): TopicKey {
   switch (topic.kind) {
-    case 'portfolio':
-      return `portfolio:${topic.portfolioId}`;
-    case 'leaderboard':
-      return 'leaderboard';
-    case 'quotes':
+    case 'universe':
+      return 'universe';
+    case 'prices':
       // Symbols are tracked per-connection separately; the topic itself is
       // singular so re-subscribing replaces the symbol set.
-      return 'quotes';
+      return 'prices';
   }
 }
 
@@ -26,12 +25,8 @@ export function topicKey(topic: WsTopic): TopicKey {
  * Redis pub/sub channel names. The publisher writes a complete `WsServerMessage`
  * to one of these; the subscriber routes by channel name alone.
  */
-export const LEADERBOARD_CHANNEL = 'ws:leaderboard';
-export const QUOTES_CHANNEL = 'ws:quotes';
-
-export function portfolioChannel(portfolioId: string): string {
-  return `ws:portfolio:${portfolioId}`;
-}
+export const UNIVERSE_CHANNEL = 'ws:universe';
+export const PRICES_CHANNEL = 'ws:prices';
 
 /** Pattern covering every gateway channel, for `psubscribe`. */
 export const CHANNEL_PATTERN = 'ws:*';
@@ -41,10 +36,7 @@ export const CHANNEL_PATTERN = 'ws:*';
  * should receive the message. Returns null for unrecognized channels.
  */
 export function channelToTopicKey(channel: string): TopicKey | null {
-  if (channel === LEADERBOARD_CHANNEL) return 'leaderboard';
-  if (channel === QUOTES_CHANNEL) return 'quotes';
-  if (channel.startsWith('ws:portfolio:')) {
-    return `portfolio:${channel.slice('ws:portfolio:'.length)}`;
-  }
+  if (channel === UNIVERSE_CHANNEL) return 'universe';
+  if (channel === PRICES_CHANNEL) return 'prices';
   return null;
 }

@@ -4,7 +4,6 @@ import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { runner } from 'node-pg-migrate';
 import pg from 'pg';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
 
 // OID 20 = int8/BIGINT — parse as number, consistent with pool.ts.
 pg.types.setTypeParser(20, Number);
@@ -42,90 +41,55 @@ afterAll(async () => {
   await container?.stop();
 });
 
-// Helper: insert a minimal app_user and return its id.
-async function insertUser(): Promise<string> {
-  const id = randomUUID();
-  await client.query(
-    `INSERT INTO app_user (id, display_name, role) VALUES ($1, $2, 'player')`,
-    [id, `User-${id.slice(0, 8)}`],
+async function tableExists(name: string): Promise<boolean> {
+  const { rows } = await client.query<{ exists: boolean }>(
+    `SELECT to_regclass($1) IS NOT NULL AS exists`,
+    [`public.${name}`],
   );
-  return id;
+  return rows[0]!.exists;
 }
 
-// Helper: insert a human portfolio (algo_id = NULL) and return its id.
-async function insertHumanPortfolio(userId: string): Promise<string> {
-  const id = randomUUID();
-  await client.query(
-    `INSERT INTO portfolio (id, user_id, algo_id, cash) VALUES ($1, $2, NULL, 100000000)`,
-    [id, userId],
-  );
-  return id;
-}
-
-describe('portfolio_one_human_per_user partial unique index', () => {
-  it('allows a single human portfolio (algo_id IS NULL) per user', async () => {
-    const userId = await insertUser();
-    await insertHumanPortfolio(userId); // must not throw
+describe('platformize migration (item 16)', () => {
+  it('drops the game-only tables', async () => {
+    for (const t of [
+      'portfolio',
+      'position',
+      'trade_order',
+      'fill',
+      'valuation_snapshot',
+      'leaderboard_row',
+      'algo',
+    ]) {
+      expect(await tableExists(t), `${t} should be dropped`).toBe(false);
+    }
   });
 
-  it('rejects a second human portfolio for the same user', async () => {
-    const userId = await insertUser();
-    await insertHumanPortfolio(userId);
-
-    const secondId = randomUUID();
-    await expect(
-      client.query(
-        `INSERT INTO portfolio (id, user_id, algo_id, cash) VALUES ($1, $2, NULL, 100000000)`,
-        [secondId, userId],
-      ),
-    ).rejects.toMatchObject({ code: '23505' }); // unique_violation
+  it('keeps the platform-core tables', async () => {
+    for (const t of ['app_user', 'identity', 'universe_symbol', 'price_bar']) {
+      expect(await tableExists(t), `${t} should survive`).toBe(true);
+    }
   });
 });
 
-describe('universe_symbol FK on position', () => {
-  it('rejects a position referencing a symbol absent from universe_symbol', async () => {
-    const userId = await insertUser();
-    const portfolioId = await insertHumanPortfolio(userId);
-
+describe('universe_symbol FK on price_bar', () => {
+  it('rejects a bar referencing a symbol absent from universe_symbol', async () => {
     await expect(
       client.query(
-        `INSERT INTO position (portfolio_id, symbol, quantity, avg_cost)
-         VALUES ($1, 'DOESNOTEXIST', 1.0, 100)`,
-        [portfolioId],
+        `INSERT INTO price_bar (symbol, ts, open, high, low, close)
+         VALUES ('DOESNOTEXIST', now(), 1, 1, 1, 1)`,
       ),
     ).rejects.toMatchObject({ code: '23503' }); // foreign_key_violation
   });
 
-  it('accepts a position for a known universe_symbol', async () => {
-    const userId = await insertUser();
-    const portfolioId = await insertHumanPortfolio(userId);
-
-    // Seed a known symbol first.
+  it('accepts a bar for a known universe_symbol', async () => {
     await client.query(
       `INSERT INTO universe_symbol (symbol) VALUES ('AAPL') ON CONFLICT DO NOTHING`,
     );
-
     await client.query(
-      `INSERT INTO position (portfolio_id, symbol, quantity, avg_cost)
-       VALUES ($1, 'AAPL', '10.00000000', 18500)`,
-      [portfolioId],
+      `INSERT INTO price_bar (symbol, ts, open, high, low, close)
+       VALUES ('AAPL', now(), 18000, 18500, 17900, 18400)
+       ON CONFLICT DO NOTHING`,
     );
-  });
-});
-
-describe('trade_order FK on universe_symbol', () => {
-  it('rejects an order for an unknown symbol', async () => {
-    const userId = await insertUser();
-    const portfolioId = await insertHumanPortfolio(userId);
-
-    await expect(
-      client.query(
-        `INSERT INTO trade_order
-           (id, portfolio_id, symbol, side, type, quantity, status, idempotency_key, source)
-         VALUES ($1, $2, 'UNKNOWN', 'buy', 'market', 1.0, 'accepted', $3, 'human')`,
-        [randomUUID(), portfolioId, randomUUID()],
-      ),
-    ).rejects.toMatchObject({ code: '23503' });
   });
 });
 

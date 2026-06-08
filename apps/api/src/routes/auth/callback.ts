@@ -6,11 +6,7 @@ import { verifyState } from '../../auth/hmac.js';
 import { consumeOAuthAttempt, createSession } from '../../auth/session.js';
 import { buildGoogleConfig, exchangeGoogleCode } from '../../auth/google.js';
 import { exchangeGitHubCode } from '../../auth/github.js';
-import {
-  upsertUserAndIdentity,
-  attachIdentity,
-  ensurePortfolio,
-} from '../../auth/upsert.js';
+import { upsertUserAndIdentity, attachIdentity } from '../../auth/upsert.js';
 
 const SESSION_COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
 
@@ -113,7 +109,7 @@ async function handleCallback(
         path: '/',
         maxAge: SESSION_COOKIE_MAX_AGE,
       });
-      return reply.redirect(`${baseUrl}/portfolio`);
+      return reply.redirect(`${baseUrl}/`);
     }
 
     const { userId } = await upsertUserAndIdentity(client, {
@@ -124,7 +120,6 @@ async function handleCallback(
       displayName: profile.name,
     });
 
-    await ensurePortfolio(client, userId);
     await client.query('COMMIT');
 
     const { token } = await createSession(redis, userId);
@@ -135,7 +130,7 @@ async function handleCallback(
       path: '/',
       maxAge: SESSION_COOKIE_MAX_AGE,
     });
-    return reply.redirect(`${baseUrl}/portfolio`);
+    return reply.redirect(`${baseUrl}/`);
   } catch (err) {
     await client.query('ROLLBACK');
     const e = err as NodeJS.ErrnoException;

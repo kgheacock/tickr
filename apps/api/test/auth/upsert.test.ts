@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import {
   upsertUserAndIdentity,
   attachIdentity,
-  ensurePortfolio,
 } from '../../src/auth/upsert.js';
 import { seedSystemUser } from '../../src/bootstrap/system-user.js';
 import { bootstrapAdmins } from '../../src/bootstrap/admin.js';
@@ -56,7 +55,6 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await client.query(`DELETE FROM identity`);
-  await client.query(`DELETE FROM portfolio`);
   await client.query(
     `DELETE FROM app_user WHERE id != '00000000-0000-0000-0000-000000000001'`,
   );
@@ -186,28 +184,6 @@ describe('attachIdentity', () => {
         email: null,
       }),
     ).rejects.toMatchObject({ code: 'IDENTITY_CONFLICT' });
-  });
-});
-
-describe('ensurePortfolio', () => {
-  it('creates a portfolio on first call and is idempotent', async () => {
-    const { userId } = await upsertUserAndIdentity(client, {
-      provider: 'google',
-      providerSubject: 'g-portfolio',
-      email: null,
-      emailVerified: false,
-      displayName: 'PortUser',
-    });
-
-    const id1 = await ensurePortfolio(client, userId);
-    const id2 = await ensurePortfolio(client, userId);
-    expect(id1).toBe(id2);
-
-    const row = await client.query<{ cash: number }>(
-      `SELECT cash FROM portfolio WHERE id = $1`,
-      [id1],
-    );
-    expect(row.rows[0]!.cash).toBe(100_000_000);
   });
 });
 

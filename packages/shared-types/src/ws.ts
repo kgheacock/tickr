@@ -1,24 +1,14 @@
-import type {
-  PortfolioView,
-  Order,
-  Fill,
-  LeaderboardResponse,
-  QuotesResponse,
-  ApiError,
-} from './index.js';
+import type { UniverseResponse, PricesResponse, ApiError } from './index.js';
 
 export type WsTopic =
-  | { kind: 'portfolio'; portfolioId: string }
-  | { kind: 'leaderboard' }
-  | { kind: 'quotes'; symbols: string[] };
+  | { kind: 'universe' } // corpus membership / backfill state changes
+  | { kind: 'prices'; symbols: string[] }; // new bars for the named symbols
 
 export type WsClientMessage =
   | { type: 'subscribe'; topic: WsTopic }
   | { type: 'unsubscribe'; topic: WsTopic };
 
 export type WsServerMessage =
-  | { type: 'portfolio.updated'; portfolioId: string; view: PortfolioView }
-  | { type: 'order.filled'; portfolioId: string; order: Order; fill: Fill }
-  | { type: 'leaderboard.updated'; data: LeaderboardResponse }
-  | { type: 'quotes.updated'; asOf: string; quotes: QuotesResponse['quotes'] }
+  | { type: 'universe.updated'; data: UniverseResponse }
+  | { type: 'prices.updated'; asOf: string; series: PricesResponse['series'] }
   | { type: 'error'; error: ApiError['error'] };
