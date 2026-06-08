@@ -71,7 +71,7 @@ jobs:
             docker save timescale/timescaledb-ha:pg16 -o /tmp/.docker-cache/timescaledb-ha-pg16.tar
           fi
 
-      - name: Run tests (schema, auth unit + integration)
+      - name: Run tests (schema, auth, jobs, audit unit + integration)
         working-directory: apps/api
         run: pnpm test
 
