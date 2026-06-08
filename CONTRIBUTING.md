@@ -51,7 +51,6 @@ cp .env.example .env
 | `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | github.com/settings/developers → tickr OAuth App                        |
 | `SESSION_SIGNING_KEY`                | generate: `openssl rand -hex 32`                                        |
 | `MASSIVE_API_KEY`                    | massive.com dashboard (backfill)                                        |
-| `FINNHUB_API_KEY`                    | finnhub.io dashboard (daily price)                                      |
 | `KAGGLE_USERNAME` / `KAGGLE_API_KEY` | kaggle.com account settings (one-time bulk backfill)                    |
 | `ADMIN_BOOTSTRAP`                    | `provider:subject` pairs granted admin on first login, e.g. `github:42` |
 
@@ -103,8 +102,8 @@ pnpm run kaggle:backfill     # one-time historical bulk import (CSV → price_ba
 # then set BACKFILL_START_DATE=2024-07-06 so the worker's Massive job fills only the gap
 ```
 
-The worker runs the Massive gap-fill and the daily Finnhub price update on its
-own schedule once symbols are seeded.
+The worker runs the Massive backfill and the post-close session update (also
+Massive) on its own schedule once symbols are seeded.
 
 ## Deployment
 
@@ -126,7 +125,7 @@ apps/api/            # backend; one image, runs as api | worker | bot via ROLE
 apps/web/            # React + Vite SPA
 packages/shared-types/  # OpenAPI doc + generated TS types, shared across the wire
 compose/             # docker-compose.yml + Caddyfile
-schema/              # vendored upstream OpenAPI specs (finnhub, massive)
+schema/              # vendored upstream OpenAPI specs (massive)
 scripts/             # dev-up, kaggle-backfill, deploy, backup helpers
 docs/                # design documents
 TODO/                # per-slice implementation playbooks
@@ -146,7 +145,7 @@ Run from the repo root unless noted.
 | `pnpm run lint`                           | ESLint over the repo.                            |
 | `pnpm run format` / `format:check`        | Prettier write / verify.                         |
 | `pnpm run gen:types`                      | Regenerate `shared-types` from `openapi.yaml`.   |
-| `pnpm run gen:finnhub` / `gen:massive`    | Regenerate vendored client types from `schema/`. |
+| `pnpm run gen:massive`                    | Regenerate vendored client types from `schema/`. |
 | `pnpm run lint:openapi`                   | Redocly lint of the public OpenAPI doc.          |
 | `pnpm --filter @tickr/api run db:migrate` | Apply database migrations.                       |
 | `pnpm --filter @tickr/api run test`       | Run the api test suite (needs Docker).           |
@@ -186,10 +185,10 @@ Generated files are committed, and CI fails on drift:
 
 - `packages/shared-types/src/openapi.gen.ts` is generated from `openapi.yaml`.
   Regenerate with `pnpm run gen:types` and commit the result.
-- `apps/api/src/finnhub/finnhub.gen.ts` is generated from `schema/`. Regenerate
-  with `pnpm run gen:finnhub`.
-- Provider references are walled off: `finnhub.io` may only appear in
-  `finnhub/client.ts` (CI enforces this). Keep external API surface behind its
+- `apps/api/src/massive/massive.gen.ts` is generated from `schema/`. Regenerate
+  with `pnpm run gen:massive`.
+- Provider references are walled off: `api.massive.com` may only appear in
+  `massive/client.ts` (CI enforces this). Keep external API surface behind its
   client module.
 
 ## CI

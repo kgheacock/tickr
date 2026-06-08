@@ -1,13 +1,13 @@
 import cron from 'node-cron';
 import type { Redis } from 'ioredis';
 import { runBackfill } from './backfill.js';
-import { runDailyPrice } from './daily-price.js';
+import { runIntradayUpdate } from './intraday-update.js';
 import { tryAcquireLock, releaseLock } from './locks.js';
 import { isNyseHoliday } from '../market/holidays.js';
 
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const BACKFILL_LOCK = 'finnhub:job:backfill';
-const DAILY_PRICE_LOCK = 'finnhub:job:daily-price';
+const BACKFILL_LOCK = 'massive:job:backfill';
+const SESSION_UPDATE_LOCK = 'massive:job:session-update';
 
 function log(
   level: 'info' | 'warn' | 'error',
@@ -45,23 +45,24 @@ export function registerScheduledJobs(redis: Redis): void {
     },
   );
 
-  // Daily price: 21:30 UTC Mon–Fri (≈16:30 ET). Appends one EOD bar/symbol/day
-  // and publishes prices.updated for the freshly-written bars.
+  // Session update: 21:30 UTC Mon–Fri (≈16:30 ET, after the close). Appends the
+  // just-closed session's intraday bars per symbol (Massive, at the configured
+  // resolution) and publishes prices.updated for the freshly-written bars.
   cron.schedule('0 30 21 * * 1-5', () => {
     const now = new Date();
     if (isNyseHoliday(now)) {
-      log('info', 'holiday — skipping daily price update', {
+      log('info', 'holiday — skipping session update', {
         date: now.toISOString().slice(0, 10),
       });
       return;
     }
 
-    void withLock(redis, DAILY_PRICE_LOCK, () => runDailyPrice(redis)).catch(
-      (err: unknown) => {
-        log('error', 'daily-price failed', { err: String(err) });
-      },
-    );
+    void withLock(redis, SESSION_UPDATE_LOCK, () =>
+      runIntradayUpdate(redis),
+    ).catch((err: unknown) => {
+      log('error', 'session-update failed', { err: String(err) });
+    });
   });
 
-  log('info', 'scheduler registered (backfill + daily-price)');
+  log('info', 'scheduler registered (backfill + session-update)');
 }

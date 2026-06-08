@@ -99,6 +99,41 @@ describe('massiveGet', () => {
     expect(mockFetch).toHaveBeenCalledTimes(4);
   });
 
+  it('retries when its own request timeout aborts, then throws', async () => {
+    vi.useFakeTimers();
+    try {
+      // Never resolves on its own; rejects with an AbortError when the client's
+      // internal TIMEOUT_MS timer fires and aborts the request.
+      const mockFetch = vi.fn().mockImplementation(
+        (_url: string, init: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            (init.signal as AbortSignal).addEventListener('abort', () => {
+              reject(
+                new DOMException('This operation was aborted', 'AbortError'),
+              );
+            });
+          }),
+      );
+
+      const promise = massiveGet(
+        redis,
+        '/v2/aggs/ticker/AAPL/range/1/day/2024-01-01/2024-12-31',
+        {},
+        mockFetch,
+      ).catch((err: unknown) => err);
+
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toBeInstanceOf(DOMException);
+      expect((result as DOMException).name).toBe('AbortError');
+      // 1 initial + 3 retries = 4 total attempts (timeout is retryable)
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('does not retry on non-network errors', async () => {
     const mockFetch = vi
       .fn()

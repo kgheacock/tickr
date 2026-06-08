@@ -8,9 +8,9 @@
 
 tickr is a public **stock trading game**. Players manage a virtual portfolio of
 real S&P 500 names, competing on a leaderboard. Every player starts with the
-same virtual capital (**$1,000,000**). Market data — real-time quotes and
-historical OHLCV bars — comes from external REST APIs (Massive for bootstrap
-backfill; Finnhub for daily price updates) and is stored permanently in
+same virtual capital (**$1,000,000**). Market data — historical and intraday
+OHLCV bars — comes from the Massive REST aggregates API (bulk backfill plus a
+post-close session update) and is stored permanently in
 TimescaleDB, which is the sole source of pricing for
 fills, valuations, and the leaderboard. No real money is ever involved.
 
@@ -105,10 +105,10 @@ later it must be sandboxed (WASM/isolate) or webhook-based. See
 - **Data:** PostgreSQL + **TimescaleDB extension** (system of record + OHLCV
   `price_bar` hypertable; all in-game pricing served from here) + Redis (job
   queue, rate-limit counters, session helpers, leaderboard read cache).
-- **Market data:** two REST providers in v1 — Massive Custom Bars endpoint
-  for bootstrap backfill (2 years of daily OHLCV bars); Finnhub `GET /quote`
-  for daily price updates. WebSocket streaming enters in v2 when intraday
-  pricing becomes relevant.
+- **Market data:** Massive REST aggregates in v1 — bulk backfill (≈2 years of
+  OHLCV bars at a configurable resolution, default 15-minute) plus a post-close
+  session update that appends each trading day's bars. WebSocket streaming
+  enters in v2 when real-time pricing becomes relevant.
 - **Hosting:** Single VPS (Hetzner), containerized via Docker Compose. See
   [08-deployment](08-deployment.md).
 

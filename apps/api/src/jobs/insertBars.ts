@@ -16,9 +16,10 @@ export interface InsertableBar {
 // Uses unnest to pass all rows as parallel arrays — avoids the 65,535
 // bind-parameter limit that chunked multi-row VALUES would hit.
 //
-// Best-available precedence (D4): backfill supplies historical depth (Massive).
-// On conflict it DOES NOTHING, so it never overwrites a bar Finnhub already
-// wrote for the current/most-recent day (daily-price.ts upserts and wins).
+// Both the historical backfill and the per-session updater source bars from
+// Massive at the same resolution and write through here. ON CONFLICT DO NOTHING
+// makes overlapping writes idempotent — a closed session's bars are immutable,
+// so first-writer-wins is correct and re-runs never clobber or duplicate.
 export async function insertBars(
   symbol: string,
   rows: InsertableBar[],

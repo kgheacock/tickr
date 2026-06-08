@@ -185,7 +185,10 @@ describe('backfill', () => {
     vi.stubGlobal('fetch', mockFetch);
 
     const { runBackfill } = await import('../../src/jobs/backfill.js');
-    await expect(runBackfill(redis)).rejects.toThrow('simulated crash');
+    // A mid-symbol failure no longer aborts the whole run: the error is caught
+    // per-symbol and the symbol is deferred (left backfilled = false) so the
+    // next run retries it. The run itself resolves.
+    await runBackfill(redis);
 
     const { rows: beforeRows } = await client.query<{ backfilled: boolean }>(
       `SELECT backfilled FROM universe_symbol WHERE symbol = 'GOOG'`,
@@ -226,5 +229,67 @@ describe('backfill', () => {
       `SELECT backfilled FROM universe_symbol WHERE symbol = 'GOOG'`,
     );
     expect(finalRows[0]?.backfilled).toBe(true);
+  });
+});
+
+describe('widen-history (script-only re-arm)', () => {
+  async function seedBar(symbol: string, oldestIso: string): Promise<void> {
+    await client.query(
+      `INSERT INTO universe_symbol (symbol, backfilled) VALUES ($1, true)`,
+      [symbol],
+    );
+    await client.query(
+      `INSERT INTO price_bar (symbol, ts, open, high, low, close, volume)
+       VALUES ($1, $2, 15000, 15200, 14900, 15100, 1000)`,
+      [symbol, oldestIso],
+    );
+  }
+
+  it('re-arms a backfilled symbol whose history starts after the requested date', async () => {
+    await seedBar('IPO', '2022-01-03T00:00:00Z');
+
+    const { resetSymbolsMissingHistory } =
+      await import('../../src/jobs/widen-history.js');
+    const reset = await resetSymbolsMissingHistory(
+      Date.parse('2015-01-01T00:00:00Z'),
+    );
+
+    expect(reset).toBe(1);
+    const { rows } = await client.query<{ backfilled: boolean }>(
+      `SELECT backfilled FROM universe_symbol WHERE symbol = 'IPO'`,
+    );
+    expect(rows[0]?.backfilled).toBe(false);
+  });
+
+  it('leaves a symbol covered to the requested date (within tolerance) alone', async () => {
+    // Earliest bar is 4 days after the requested start — a weekend/holiday gap,
+    // not missing history — so it stays backfilled.
+    await seedBar('FULL', '2015-01-05T00:00:00Z');
+
+    const { resetSymbolsMissingHistory } =
+      await import('../../src/jobs/widen-history.js');
+    const reset = await resetSymbolsMissingHistory(
+      Date.parse('2015-01-01T00:00:00Z'),
+    );
+
+    expect(reset).toBe(0);
+    const { rows } = await client.query<{ backfilled: boolean }>(
+      `SELECT backfilled FROM universe_symbol WHERE symbol = 'FULL'`,
+    );
+    expect(rows[0]?.backfilled).toBe(true);
+  });
+
+  it('does not touch symbols that are not yet backfilled', async () => {
+    await client.query(
+      `INSERT INTO universe_symbol (symbol, backfilled) VALUES ('PENDING', false)`,
+    );
+
+    const { resetSymbolsMissingHistory } =
+      await import('../../src/jobs/widen-history.js');
+    const reset = await resetSymbolsMissingHistory(
+      Date.parse('2015-01-01T00:00:00Z'),
+    );
+
+    expect(reset).toBe(0);
   });
 });

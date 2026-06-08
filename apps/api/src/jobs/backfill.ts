@@ -6,16 +6,32 @@ import type { components } from '../massive/massive.gen.js';
 import { insertBars } from './insertBars.js';
 import { loadUniverse } from '../routes/universe.js';
 import { publishUniverseUpdated } from '../events/publisher.js';
+import {
+  aggPath,
+  safeWindowDays,
+  MULTIPLIER,
+  TIMESPAN,
+} from './granularity.js';
 
 type AggregatesResponse = components['schemas']['AggregatesResponse'];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const CONCURRENCY = parseInt(process.env['BACKFILL_CONCURRENCY'] ?? '4', 10);
-const WINDOW_DAYS = parseInt(process.env['BACKFILL_WINDOW_DAYS'] ?? '365', 10);
+// Requested window is clamped to the configured resolution's safe size so a
+// single request stays under the 50k-result cap (see granularity.ts).
+const WINDOW_DAYS = safeWindowDays(
+  parseInt(process.env['BACKFILL_WINDOW_DAYS'] ?? '365', 10),
+);
 const LOOKBACK_DAYS = parseInt(
   process.env['BACKFILL_LOOKBACK_DAYS'] ?? '730',
   10,
 );
 const BACKFILL_START_DATE = process.env['BACKFILL_START_DATE'];
+// How often to emit a progress line (complete / remaining / ETA) during a run.
+const PROGRESS_INTERVAL_MS = parseInt(
+  process.env['BACKFILL_PROGRESS_MS'] ?? '30000',
+  10,
+);
 
 function log(
   level: 'info' | 'warn' | 'error',
@@ -31,12 +47,29 @@ function toDateStr(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+// The earliest date the backfill will fetch to: an explicit BACKFILL_START_DATE
+// if set, otherwise LOOKBACK_DAYS before now. Exported so the widen-history
+// reset (run-backfill.ts) compares against the exact same window this job uses.
+export function resolveStartMs(nowMs: number = Date.now()): number {
+  return BACKFILL_START_DATE
+    ? new Date(BACKFILL_START_DATE).getTime()
+    : nowMs - LOOKBACK_DAYS * DAY_MS;
+}
+
+function formatDuration(ms: number): string {
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 async function backfillSymbol(redis: Redis, symbol: string): Promise<void> {
   const nowMs = Date.now();
-  const startMs = BACKFILL_START_DATE
-    ? new Date(BACKFILL_START_DATE).getTime()
-    : nowMs - LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
-  const windowMs = WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const startMs = resolveStartMs(nowMs);
+  const windowMs = WINDOW_DAYS * DAY_MS;
 
   log('info', 'symbol start', { symbol });
 
@@ -48,7 +81,7 @@ async function backfillSymbol(redis: Redis, symbol: string): Promise<void> {
 
     const response = await massiveGet<AggregatesResponse>(
       redis,
-      `/v2/aggs/ticker/${symbol}/range/1/day/${from}/${to}`,
+      aggPath(symbol, from, to),
       { sort: 'asc' },
     );
 
@@ -87,19 +120,80 @@ export async function runBackfill(redis: Redis): Promise<void> {
     return;
   }
 
+  const total = rows.length;
   log('info', 'starting backfill', {
-    total: rows.length,
+    total,
+    multiplier: MULTIPLIER,
+    timespan: TIMESPAN,
     windowDays: WINDOW_DAYS,
     lookbackDays: LOOKBACK_DAYS,
   });
 
-  await Promise.all(
-    rows.map((row) => limit(() => backfillSymbol(redis, row.symbol))),
-  );
+  // Periodically report progress. ETA is extrapolated from the observed
+  // completion rate so far (robust to the Massive token-bucket throttle, which
+  // dominates throughput) rather than a fixed per-symbol estimate.
+  const startedAt = Date.now();
+  let completed = 0;
+  const failedSymbols: string[] = [];
+
+  const reportProgress = (): void => {
+    const processed = completed + failedSymbols.length;
+    const remaining = total - processed;
+    const elapsedMs = Date.now() - startedAt;
+    const etaMs = processed > 0 ? (elapsedMs / processed) * remaining : null;
+    log('info', 'progress', {
+      completed,
+      failed: failedSymbols.length,
+      remaining,
+      total,
+      percent: Math.round((processed / total) * 100),
+      elapsed: formatDuration(elapsedMs),
+      eta: etaMs === null ? 'estimating…' : formatDuration(etaMs),
+    });
+  };
+
+  const progressTimer = setInterval(reportProgress, PROGRESS_INTERVAL_MS);
+  // Don't let the timer keep the event loop alive on its own.
+  progressTimer.unref();
+
+  try {
+    await Promise.all(
+      rows.map((row) =>
+        limit(async () => {
+          // Isolate per-symbol failures: a single timeout/error must not abort
+          // the whole run. A failed symbol stays backfilled = false and is
+          // retried on the next (idempotent) run.
+          try {
+            await backfillSymbol(redis, row.symbol);
+            completed++;
+          } catch (err) {
+            failedSymbols.push(row.symbol);
+            log('error', 'symbol failed — deferring to next run', {
+              symbol: row.symbol,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }),
+      ),
+    );
+  } finally {
+    clearInterval(progressTimer);
+  }
+
+  reportProgress(); // final line
 
   // Symbols flipped to backfilled — push the refreshed corpus to the WS
   // gateway's `universe` topic (step 4).
   await publishUniverseUpdated(redis, await loadUniverse(false));
 
-  log('info', 'backfill complete', { total: rows.length });
+  if (failedSymbols.length > 0) {
+    log('warn', 'backfill finished with failures — re-run to retry', {
+      total,
+      completed,
+      failed: failedSymbols.length,
+      symbols: failedSymbols,
+    });
+  } else {
+    log('info', 'backfill complete', { total });
+  }
 }

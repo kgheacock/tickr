@@ -29,7 +29,7 @@ const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379';
 
 beforeAll(async () => {
   vi.stubEnv('ROLE', 'worker');
-  vi.stubEnv('FINNHUB_API_KEY', process.env['FINNHUB_API_KEY'] ?? 'test-key');
+  vi.stubEnv('MASSIVE_API_KEY', process.env['MASSIVE_API_KEY'] ?? 'test-key');
 
   container = await new PostgreSqlContainer('timescale/timescaledb-ha:pg16')
     .withDatabase('tickr_test')
@@ -81,96 +81,99 @@ vi.mock('../../src/db/pool.js', async () => {
   return { pool: proxy };
 });
 
-vi.mock('../../src/finnhub/bucket.js', () => ({
+vi.mock('../../src/massive/bucket.js', () => ({
   acquire: vi.fn().mockResolvedValue(undefined),
-  BUCKET_KEY: 'finnhub:bucket',
+  BUCKET_KEY: 'massive:bucket',
 }));
 
-const QUOTE = { c: 175.5, h: 177.0, l: 174.0, o: 175.0, pc: 174.5 };
+// Two 15-minute bars; o/h/l/c in dollars (the job converts to cents).
+const BARS = {
+  status: 'OK',
+  ticker: 'TEST',
+  queryCount: 2,
+  resultsCount: 2,
+  results: [
+    { t: 1780000200000, o: 175.0, h: 177.0, l: 174.0, c: 175.5, v: 1000 },
+    { t: 1780001100000, o: 175.5, h: 178.0, l: 175.0, c: 176.25, v: 2000 },
+  ],
+};
 
-function mockFetchQuote() {
+function mockFetchBars() {
   return vi
     .fn()
     .mockImplementation(() =>
-      Promise.resolve(new Response(JSON.stringify(QUOTE), { status: 200 })),
+      Promise.resolve(new Response(JSON.stringify(BARS), { status: 200 })),
     );
 }
 
-describe('daily-price', () => {
-  it('inserts one row per backfilled symbol', async () => {
+describe('intraday session update', () => {
+  it('inserts the session bars for each backfilled symbol only', async () => {
     await client.query(`
       INSERT INTO universe_symbol (symbol, backfilled)
       VALUES ('AAPL', true), ('MSFT', true), ('GOOG', false)
     `);
 
-    vi.stubGlobal('fetch', mockFetchQuote());
+    vi.stubGlobal('fetch', mockFetchBars());
 
-    const { runDailyPrice } = await import('../../src/jobs/daily-price.js');
-    await runDailyPrice(redis);
+    const { runIntradayUpdate } =
+      await import('../../src/jobs/intraday-update.js');
+    await runIntradayUpdate(redis);
 
     const { rows } = await client.query<{ count: string }>(
       `SELECT count(*) FROM price_bar`,
     );
-    expect(Number(rows[0]?.count)).toBe(2); // GOOG (not backfilled) excluded
+    // 2 backfilled symbols × 2 bars; GOOG (not backfilled) excluded.
+    expect(Number(rows[0]?.count)).toBe(4);
   });
 
-  it('stores prices as cents and volume as NULL', async () => {
+  it('stores prices as cents', async () => {
     await client.query(
       `INSERT INTO universe_symbol (symbol, backfilled) VALUES ('AAPL', true)`,
     );
 
-    vi.stubGlobal('fetch', mockFetchQuote());
+    vi.stubGlobal('fetch', mockFetchBars());
 
-    const { runDailyPrice } = await import('../../src/jobs/daily-price.js');
-    await runDailyPrice(redis);
+    const { runIntradayUpdate } =
+      await import('../../src/jobs/intraday-update.js');
+    await runIntradayUpdate(redis);
 
     const { rows } = await client.query<{
       open: number;
       high: number;
       low: number;
       close: number;
-      volume: string | null;
     }>(
-      `SELECT open, high, low, close, volume FROM price_bar WHERE symbol = 'AAPL'`,
+      `SELECT open, high, low, close FROM price_bar
+        WHERE symbol = 'AAPL' ORDER BY ts ASC LIMIT 1`,
     );
 
     expect(rows[0]?.open).toBe(17500); // 175.00 × 100
     expect(rows[0]?.high).toBe(17700); // 177.00 × 100
     expect(rows[0]?.low).toBe(17400); // 174.00 × 100
     expect(rows[0]?.close).toBe(17550); // 175.50 × 100
-    expect(rows[0]?.volume).toBeNull();
   });
 
-  it('running twice inserts zero new rows the second time (ON CONFLICT)', async () => {
+  it('running twice inserts no duplicates (ON CONFLICT)', async () => {
     await client.query(
       `INSERT INTO universe_symbol (symbol, backfilled) VALUES ('AAPL', true)`,
     );
 
-    const mockFetch = mockFetchQuote();
-    vi.stubGlobal('fetch', mockFetch);
+    vi.stubGlobal('fetch', mockFetchBars());
 
-    const { runDailyPrice } = await import('../../src/jobs/daily-price.js');
-    await runDailyPrice(redis);
-    await runDailyPrice(redis);
+    const { runIntradayUpdate } =
+      await import('../../src/jobs/intraday-update.js');
+    await runIntradayUpdate(redis);
+    await runIntradayUpdate(redis);
 
     const { rows } = await client.query<{ count: string }>(
       `SELECT count(*) FROM price_bar WHERE symbol = 'AAPL'`,
     );
-    expect(Number(rows[0]?.count)).toBe(1); // idempotent
-  });
-
-  it('marketCloseTs is deterministic for the same calendar day', async () => {
-    const { marketCloseTs } = await import('../../src/jobs/daily-price.js');
-
-    const t1 = marketCloseTs(new Date('2025-06-10T21:05:00Z'));
-    const t2 = marketCloseTs(new Date('2025-06-10T21:59:59Z'));
-    expect(t1.toISOString()).toBe(t2.toISOString());
-    expect(t1.toISOString()).toBe('2025-06-10T21:00:00.000Z');
+    expect(Number(rows[0]?.count)).toBe(2); // idempotent
   });
 });
 
 describe('holiday skip', () => {
-  it('skips daily price update on NYSE holidays', async () => {
+  it('recognizes NYSE holidays vs trading days', async () => {
     const { isNyseHoliday } = await import('../../src/market/holidays.js');
 
     // 2025-01-01 is New Year's Day

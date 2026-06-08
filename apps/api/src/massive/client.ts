@@ -65,7 +65,11 @@ export async function massiveGet<T>(
     }
 
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ctrl.abort();
+    }, TIMEOUT_MS);
     try {
       const res = await fetchFn(url, {
         signal: ctrl.signal,
@@ -87,14 +91,19 @@ export async function massiveGet<T>(
     } catch (err) {
       clearTimeout(timer);
       if (err instanceof MassiveRateLimitError) throw err;
-      if (isRetryable(err)) {
+      // Our own TIMEOUT_MS abort surfaces as an AbortError with no errno cause;
+      // treat it as a transient, retryable failure (slow response, not fatal).
+      const retryable = timedOut || isRetryable(err);
+      if (retryable) {
         log('warn', 'massive retryable error', {
           path,
           attempt,
-          code: (err as { cause?: { code?: string } }).cause?.code,
+          code: timedOut
+            ? 'TIMEOUT'
+            : (err as { cause?: { code?: string } }).cause?.code,
         });
       }
-      if (!isRetryable(err) || attempt >= MAX_RETRIES) {
+      if (!retryable || attempt >= MAX_RETRIES) {
         log('error', 'massive request failed', {
           path,
           attempt,
