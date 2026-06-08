@@ -46,6 +46,8 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-tickr}:${POSTGRES_PASSWORD:-tickr}@postgres:5432/${POSTGRES_DB:-tickr}
       REDIS_URL: redis://redis:6379
       PORT: '3000'
+    ports:
+      - '3000:3000'
     depends_on:
       postgres:
         condition: service_healthy
@@ -109,6 +111,7 @@ services:
     ports:
       - '80:80'
       - '443:443'
+      - '2019:2019'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

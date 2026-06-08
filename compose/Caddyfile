@@ -1,7 +1,10 @@
 {
 	# Local dev: use Caddy's internal CA. Trust the root once with:
-	#   caddy trust
+	#   caddy trust  (requires the stack to be running)
 	local_certs
+	admin 0.0.0.0:2019 {
+		origins localhost:2019
+	}
 }
 
 local.tickr.keithheacock.com {
@@ -16,6 +19,6 @@ local.tickr.keithheacock.com {
 	}
 
 	handle {
-		respond "tickr — web not built yet (run item 11 frontend scaffold)" 200
+		reverse_proxy host.docker.internal:5173
 	}
 }

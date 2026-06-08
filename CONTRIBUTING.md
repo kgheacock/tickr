@@ -140,7 +140,7 @@ Run from the repo root unless noted.
 
 | Command                                   | What it does                                     |
 | ----------------------------------------- | ------------------------------------------------ |
-| `pnpm run dev`                            | Bring up the full Compose stack.                 |
+| `pnpm run dev`                            | Bring up the full Compose stack. Errors if port 5173 is already in use; pass `-- -y` to kill it automatically. |
 | `pnpm run typecheck`                      | Recursive `tsc --noEmit` across workspaces.      |
 | `pnpm run lint`                           | ESLint over the repo.                            |
 | `pnpm run format` / `format:check`        | Prettier write / verify.                         |
