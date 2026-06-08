@@ -158,6 +158,7 @@ export async function registerCallbackRoutes(
 
   fastify.get<{ Params: { provider: string } }>(
     '/auth/:provider/callback',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const { provider } = req.params;
       if (provider !== 'google' && provider !== 'github') {
@@ -176,6 +177,7 @@ export async function registerCallbackRoutes(
 
   fastify.get<{ Params: { provider: string } }>(
     '/auth/link/:provider/callback',
+    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const { provider } = req.params;
       if (provider !== 'google' && provider !== 'github') {
