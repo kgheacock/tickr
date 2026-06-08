@@ -8,11 +8,9 @@ import { registerCallbackRoutes } from '../routes/auth/callback.js';
 import { registerLogoutRoute } from '../routes/auth/logout.js';
 import { registerMeRoute } from '../routes/me.js';
 import { registerAdminUniverseRoutes } from '../routes/admin/universe.js';
-import { registerPortfolioViewRoute } from '../routes/portfolios/view.js';
-import { registerOrderRoutes } from '../routes/portfolios/orders.js';
-import { registerCancelRoute } from '../routes/portfolios/cancel.js';
-import { registerPortfolioHistoryRoute } from '../routes/portfolios/history.js';
-import { registerLeaderboardRoute } from '../routes/leaderboard.js';
+import { registerUniverseRoute } from '../routes/universe.js';
+import { registerPricesRoute } from '../routes/prices.js';
+import { registerEvaluateRoute } from '../routes/evaluate.js';
 import { getRedis } from '../redis.js';
 import { attachWsGateway } from '../ws/server.js';
 
@@ -45,11 +43,9 @@ export async function runApi(): Promise<void> {
       await registerLogoutRoute(api);
       await registerMeRoute(api);
       await registerAdminUniverseRoutes(api);
-      await registerPortfolioViewRoute(api);
-      await registerOrderRoutes(api);
-      await registerCancelRoute(api);
-      await registerPortfolioHistoryRoute(api);
-      await registerLeaderboardRoute(api);
+      await registerUniverseRoute(api);
+      await registerPricesRoute(api);
+      await registerEvaluateRoute(api);
     },
     { prefix: '/api/v1' },
   );

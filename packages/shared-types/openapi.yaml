@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: tickr API
   version: v1
-  description: Perpetual stock-trading leaderboard — v1 REST surface
+  description: Market-data + returns platform — v1 REST surface
 servers:
   - url: /api/v1
     description: API v1
@@ -18,20 +18,6 @@ components:
       name: session
 
   parameters:
-    portfolioId:
-      name: id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-    orderId:
-      name: orderId
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
     provider:
       name: provider
       in: path
@@ -39,21 +25,6 @@ components:
       schema:
         type: string
         enum: [google, github]
-    limitParam:
-      name: limit
-      in: query
-      required: false
-      schema:
-        type: integer
-        default: 50
-        minimum: 1
-        maximum: 200
-    cursorParam:
-      name: cursor
-      in: query
-      required: false
-      schema:
-        type: string
 
   responses:
     Unauthorized:
@@ -80,16 +51,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
-    TooManyRequests:
-      description: Rate limited
-      headers:
-        Retry-After:
-          schema:
-            type: integer
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
     InternalServerError:
       description: Internal server error
       content:
@@ -103,14 +64,6 @@ components:
     OrderSide:
       type: string
       enum: [buy, sell]
-
-    OrderType:
-      type: string
-      enum: [market]
-
-    OrderStatus:
-      type: string
-      enum: [accepted, rejected, filled, cancelled]
 
     # --- Error envelope ---
 
@@ -161,173 +114,9 @@ components:
         emailAtLink:
           type: ['string', 'null']
 
-    Portfolio:
-      type: object
-      required: [id, userId, algoId, cash, joinedAt]
-      properties:
-        id:
-          type: string
-          format: uuid
-        userId:
-          type: string
-          format: uuid
-        algoId:
-          type: ['string', 'null']
-          format: uuid
-        cash:
-          type: integer
-          format: int64
-          description: Cents available
-        joinedAt:
-          type: string
-          format: date-time
-
-    Order:
-      type: object
-      required:
-        [
-          id,
-          portfolioId,
-          symbol,
-          side,
-          type,
-          quantity,
-          status,
-          rejectReason,
-          idempotencyKey,
-          source,
-          createdAt,
-        ]
-      properties:
-        id:
-          type: string
-          format: uuid
-        portfolioId:
-          type: string
-          format: uuid
-        symbol:
-          type: string
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        type:
-          $ref: '#/components/schemas/OrderType'
-        quantity:
-          type: number
-          description: Fractional shares (NUMERIC 20,8)
-        status:
-          $ref: '#/components/schemas/OrderStatus'
-        rejectReason:
-          type: ['string', 'null']
-        idempotencyKey:
-          type: string
-        source:
-          type: string
-          enum: [human, algo]
-        createdAt:
-          type: string
-          format: date-time
-
-    Fill:
-      type: object
-      required: [id, orderId, symbol, side, quantity, price, filledAt]
-      properties:
-        id:
-          type: string
-          format: uuid
-        orderId:
-          type: string
-          format: uuid
-        symbol:
-          type: string
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        quantity:
-          type: number
-          description: Fractional shares (NUMERIC 20,8)
-        price:
-          type: integer
-          format: int64
-          description: Cents per share at fill
-        filledAt:
-          type: string
-          format: date-time
-
-    ValuationSnapshot:
-      type: object
-      required: [id, portfolioId, takenAt, cash, positionsValue, equity]
-      properties:
-        id:
-          type: string
-          format: uuid
-        portfolioId:
-          type: string
-          format: uuid
-        takenAt:
-          type: string
-          format: date-time
-        cash:
-          type: integer
-          format: int64
-          description: Cents
-        positionsValue:
-          type: integer
-          format: int64
-          description: Cents (sum of qty × price)
-        equity:
-          type: integer
-          format: int64
-          description: Cents (cash + positionsValue)
-
-    # --- View / response types ---
-
-    PositionView:
-      type: object
-      required: [symbol, quantity, avgCost, lastPrice, marketValue]
-      properties:
-        symbol:
-          type: string
-        quantity:
-          type: number
-          description: Fractional shares
-        avgCost:
-          type: integer
-          format: int64
-          description: Cents per share (cost basis)
-        lastPrice:
-          type: ['integer', 'null']
-          format: int64
-          description: Latest price_bar.close in cents; null if not yet backfilled
-        marketValue:
-          type: ['integer', 'null']
-          format: int64
-          description: Cents (quantity × lastPrice); null if lastPrice is null
-
-    PortfolioView:
-      type: object
-      required: [portfolio, positions, equity, buyingPower, lastSnapshotAt]
-      properties:
-        portfolio:
-          $ref: '#/components/schemas/Portfolio'
-        positions:
-          type: array
-          items:
-            $ref: '#/components/schemas/PositionView'
-        equity:
-          type: ['integer', 'null']
-          format: int64
-          description: Cents (cash + sum of marketValues); best-effort live
-        buyingPower:
-          type: integer
-          format: int64
-          description: Cents; equals cash in v1 (no margin)
-        lastSnapshotAt:
-          type: ['string', 'null']
-          format: date-time
-          description: When the official ranking last refreshed
-
     MeResponse:
       type: object
-      required: [user, identities, portfolioId]
+      required: [user, identities, csrfToken]
       properties:
         user:
           $ref: '#/components/schemas/User'
@@ -335,145 +124,216 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Identity'
-        portfolioId:
+        csrfToken:
           type: string
-          format: uuid
-          description: v1 — each user has exactly one portfolio
+          description: Rotating token required in X-CSRF-Token on state-changing requests
 
-    CreateOrderRequest:
-      type: object
-      required: [symbol, side, type, quantity, idempotencyKey]
-      properties:
-        symbol:
-          type: string
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        type:
-          $ref: '#/components/schemas/OrderType'
-        quantity:
-          type: number
-          exclusiveMinimum: 0
-          description: Fractional shares; must be > 0
-        idempotencyKey:
-          type: string
-          description: Client-generated deduplication key
+    # --- Universe ---
 
-    CreateOrderResponse:
+    UniverseItem:
       type: object
-      required: [order, fill]
-      properties:
-        order:
-          $ref: '#/components/schemas/Order'
-        fill:
-          oneOf:
-            - $ref: '#/components/schemas/Fill'
-            - type: 'null'
-          description: Present if immediately filled (v1 model)
-
-    OrdersPage:
-      type: object
-      required: [items, nextCursor]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/Order'
-        nextCursor:
-          type: ['string', 'null']
-
-    HistoryPage:
-      type: object
-      required: [items, nextCursor]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/ValuationSnapshot'
-        nextCursor:
-          type: ['string', 'null']
-
-    LeaderboardRowItem:
-      type: object
-      required: [rank, portfolioId, displayName, isBot, equity, returnPct]
-      properties:
-        rank:
-          type: integer
-        portfolioId:
-          type: string
-          format: uuid
-        displayName:
-          type: string
-          description: User display name; "index" for the bot
-        isBot:
-          type: boolean
-        equity:
-          type: integer
-          format: int64
-          description: Cents
-        returnPct:
-          type: number
-          description: Return vs starting capital
-
-    LeaderboardResponse:
-      type: object
-      required: [takenAt, rows, nextCursor]
-      properties:
-        takenAt:
-          type: string
-          format: date-time
-          description: Snapshot this ranking reflects
-        rows:
-          type: array
-          items:
-            $ref: '#/components/schemas/LeaderboardRowItem'
-        nextCursor:
-          type: ['string', 'null']
-
-    QuoteEntry:
-      type: object
-      required: [price, ts]
-      properties:
-        price:
-          type: ['integer', 'null']
-          format: int64
-          description: Latest price_bar.close in cents
-        ts:
-          type: ['string', 'null']
-          format: date-time
-          description: Timestamp of the price bar
-
-    QuotesResponse:
-      type: object
-      required: [asOf, quotes]
-      properties:
-        asOf:
-          type: string
-          format: date-time
-          description: Latest price_bar timestamp considered
-        quotes:
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/QuoteEntry'
-          description: Symbol → QuoteEntry map
-
-    SymbolItem:
-      type: object
-      required: [symbol, backfilled]
+      required: [symbol, backfilled, backfilledAt, firstBarAt, lastBarAt]
       properties:
         symbol:
           type: string
         backfilled:
           type: boolean
-          description: false → not yet tradeable
+          description: false → no price history yet
+        backfilledAt:
+          type: ['string', 'null']
+          format: date-time
+        firstBarAt:
+          type: ['string', 'null']
+          format: date-time
+          description: Earliest price_bar.ts for the symbol
+        lastBarAt:
+          type: ['string', 'null']
+          format: date-time
+          description: Latest price_bar.ts for the symbol
 
-    SymbolsResponse:
+    UniverseResponse:
       type: object
       required: [items]
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/SymbolItem'
+            $ref: '#/components/schemas/UniverseItem'
+
+    # --- Prices ---
+
+    PriceBar:
+      type: object
+      required: [ts, open, high, low, close, volume]
+      properties:
+        ts:
+          type: string
+          format: date-time
+          description: Bar date (UTC)
+        open:
+          type: integer
+          format: int64
+          description: Cents
+        high:
+          type: integer
+          format: int64
+          description: Cents
+        low:
+          type: integer
+          format: int64
+          description: Cents
+        close:
+          type: integer
+          format: int64
+          description: Cents
+        volume:
+          type: ['number', 'null']
+
+    PricesResponse:
+      type: object
+      required: [from, to, series, missing]
+      properties:
+        from:
+          type: string
+          format: date-time
+          description: Resolved window start
+        to:
+          type: string
+          format: date-time
+          description: Resolved window end
+        series:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/PriceBar'
+          description: Symbol → ordered bars within the window
+        missing:
+          type: array
+          items:
+            type: string
+          description: Requested symbols not in universe / with no bars
+
+    # --- Evaluate ---
+
+    EvaluateOrder:
+      type: object
+      required: [symbol, side, quantity, at]
+      properties:
+        symbol:
+          type: string
+        side:
+          $ref: '#/components/schemas/OrderSide'
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+          description: Fractional shares (NUMERIC 20,8); must be > 0
+        at:
+          type: string
+          format: date-time
+          description: ISO-8601 — when this order executes
+
+    EvaluateRequest:
+      type: object
+      required: [startingCash, orders]
+      properties:
+        startingCash:
+          type: integer
+          format: int64
+          description: Cents
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluateOrder'
+
+    EvaluatedOrder:
+      type: object
+      required: [symbol, side, quantity, at, fillPrice, status, rejectReason]
+      properties:
+        symbol:
+          type: string
+        side:
+          $ref: '#/components/schemas/OrderSide'
+        quantity:
+          type: number
+        at:
+          type: string
+          format: date-time
+        fillPrice:
+          type: ['integer', 'null']
+          format: int64
+          description: Cents/share at-or-before `at`; null if rejected
+        status:
+          type: string
+          enum: [filled, rejected]
+        rejectReason:
+          type: ['string', 'null']
+          description: >-
+            SYMBOL_NOT_TRADEABLE | STALE_PRICE | INSUFFICIENT_FUNDS |
+            INSUFFICIENT_POSITION
+
+    FinalPosition:
+      type: object
+      required: [symbol, quantity, avgCost]
+      properties:
+        symbol:
+          type: string
+        quantity:
+          type: number
+        avgCost:
+          type: integer
+          format: int64
+          description: Cents per share (cost basis)
+
+    EquityPoint:
+      type: object
+      required: [ts, equity]
+      properties:
+        ts:
+          type: string
+          format: date-time
+        equity:
+          type: integer
+          format: int64
+          description: Cents
+
+    EvaluateResponse:
+      type: object
+      required:
+        [
+          orders,
+          finalCash,
+          finalPositions,
+          finalEquity,
+          totalReturnPct,
+          equityCurve,
+        ]
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluatedOrder'
+        finalCash:
+          type: integer
+          format: int64
+          description: Cents
+        finalPositions:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinalPosition'
+        finalEquity:
+          type: ['integer', 'null']
+          format: int64
+          description: Cents (finalCash + Σ qty × last close)
+        totalReturnPct:
+          type: ['number', 'null']
+          description: Return vs startingCash
+        equityCurve:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquityPoint'
+
+    # --- Admin ---
 
     UpsertUniverseRequest:
       type: object
@@ -483,7 +343,7 @@ components:
           type: array
           items:
             type: string
-          description: S&P 500 symbols to add or update
+          description: Symbols to add or update in the corpus
 
     BackfillRequest:
       type: object
@@ -492,31 +352,6 @@ components:
         symbol:
           type: string
           description: Symbol to re-trigger backfill for
-
-    OpsResponse:
-      type: object
-      required:
-        [
-          lastSnapshotAt,
-          snapshotLagSec,
-          finnhubRest429sLast24h,
-          jobQueueDepth,
-          backfillRemaining,
-        ]
-      properties:
-        lastSnapshotAt:
-          type: ['string', 'null']
-          format: date-time
-        snapshotLagSec:
-          type: ['integer', 'null']
-          format: int64
-        finnhubRest429sLast24h:
-          type: integer
-        jobQueueDepth:
-          type: integer
-        backfillRemaining:
-          type: integer
-          description: Count of universe_symbol where backfilled = false
 
 paths:
   # --- Auth & session ---
@@ -591,7 +426,7 @@ paths:
 
   /me:
     get:
-      summary: Current user, linked identities, and portfolio ID
+      summary: Current user, linked identities, and CSRF token
       operationId: getMe
       tags: [user]
       responses:
@@ -606,187 +441,63 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  # --- Portfolio & trading ---
+  # --- Platform: market data + evaluation ---
 
-  /portfolios/{id}:
+  /universe:
     get:
-      summary: Portfolio overview (cash, positions, best-effort equity)
-      operationId: getPortfolio
-      tags: [portfolio]
+      summary: The corpus of symbols with backfill state and bar-coverage bounds
+      operationId: getUniverse
+      tags: [platform]
       parameters:
-        - $ref: '#/components/parameters/portfolioId'
+        - name: backfilled
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: When true, only symbols with price history
       responses:
         '200':
-          description: Portfolio view
+          description: Universe
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PortfolioView'
+                $ref: '#/components/schemas/UniverseResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /portfolios/{id}/orders:
+  /prices:
     get:
-      summary: Order history (paginated)
-      operationId: listOrders
-      tags: [portfolio]
-      parameters:
-        - $ref: '#/components/parameters/portfolioId'
-        - $ref: '#/components/parameters/limitParam'
-        - $ref: '#/components/parameters/cursorParam'
-      responses:
-        '200':
-          description: Paginated order list
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OrdersPage'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-    post:
-      summary: Submit an order
-      operationId: createOrder
-      tags: [portfolio]
-      parameters:
-        - $ref: '#/components/parameters/portfolioId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateOrderRequest'
-      responses:
-        '201':
-          description: Order created and filled (v1)
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CreateOrderResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: Idempotency key conflict
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '429':
-          $ref: '#/components/responses/TooManyRequests'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /portfolios/{id}/orders/{orderId}/cancel:
-    post:
-      summary: Cancel an order if cancellable
-      operationId: cancelOrder
-      tags: [portfolio]
-      parameters:
-        - $ref: '#/components/parameters/portfolioId'
-        - $ref: '#/components/parameters/orderId'
-      responses:
-        '200':
-          description: Cancelled order
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Order'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '422':
-          $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /portfolios/{id}/history:
-    get:
-      summary: Equity over time from valuation snapshots (paginated)
-      operationId: getPortfolioHistory
-      tags: [portfolio]
-      parameters:
-        - $ref: '#/components/parameters/portfolioId'
-        - $ref: '#/components/parameters/limitParam'
-        - $ref: '#/components/parameters/cursorParam'
-      responses:
-        '200':
-          description: Paginated valuation snapshot list
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HistoryPage'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  # --- Leaderboard ---
-
-  /leaderboard:
-    get:
-      summary: Ranked rows from the latest snapshot
-      operationId: getLeaderboard
-      tags: [leaderboard]
-      security: []
-      parameters:
-        - $ref: '#/components/parameters/limitParam'
-        - $ref: '#/components/parameters/cursorParam'
-      responses:
-        '200':
-          description: Leaderboard
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LeaderboardResponse'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  # --- Market data ---
-
-  /quotes:
-    get:
-      summary: Latest price_bar.close per symbol
-      operationId: getQuotes
-      tags: [market]
+      summary: Pricing history for a corpus, from price_bar
+      operationId: getPrices
+      tags: [platform]
       parameters:
         - name: symbols
           in: query
           required: true
           schema:
             type: string
-          description: Comma-separated symbols, e.g. AAPL,MSFT
+          description: Comma-separated symbols, e.g. AAPL,MSFT (≤ 100)
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ISO date/datetime; window start (default to − 2y)
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ISO date/datetime; window end (default now)
       responses:
         '200':
-          description: Quotes
+          description: Price history
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/QuotesResponse'
+                $ref: '#/components/schemas/PricesResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '422':
@@ -794,19 +505,28 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /symbols:
-    get:
-      summary: S&P 500 universe (tradeable subset)
-      operationId: getSymbols
-      tags: [market]
-      security: []
+  /evaluate:
+    post:
+      summary: Evaluate the returns of a series of orders, replayed against history
+      operationId: evaluate
+      tags: [platform]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateRequest'
       responses:
         '200':
-          description: Symbols
+          description: Evaluation result (stateless; nothing persisted)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SymbolsResponse'
+                $ref: '#/components/schemas/EvaluateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -814,7 +534,7 @@ paths:
 
   /admin/universe/upsert:
     post:
-      summary: Add or update S&P 500 membership rows
+      summary: Add or update corpus membership rows
       operationId: adminUpsertUniverse
       tags: [admin]
       requestBody:
@@ -824,7 +544,7 @@ paths:
             schema:
               $ref: '#/components/schemas/UpsertUniverseRequest'
       responses:
-        '204':
+        '200':
           description: Upserted
         '401':
           $ref: '#/components/responses/Unauthorized'
@@ -847,8 +567,8 @@ paths:
             schema:
               $ref: '#/components/schemas/BackfillRequest'
       responses:
-        '202':
-          description: Backfill enqueued
+        '200':
+          description: Backfill flag reset
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -857,24 +577,5 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
-        '500':
-          $ref: '#/components/responses/InternalServerError'
-
-  /admin/ops:
-    get:
-      summary: Operational view (snapshot lag, Finnhub rate limits, queue depth)
-      operationId: adminGetOps
-      tags: [admin]
-      responses:
-        '200':
-          description: Ops status
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OpsResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'

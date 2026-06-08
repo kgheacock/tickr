@@ -79,7 +79,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Current user, linked identities, and portfolio ID */
+        /** Current user, linked identities, and CSRF token */
         get: operations["getMe"];
         put?: never;
         post?: never;
@@ -89,15 +89,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/portfolios/{id}": {
+    "/universe": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Portfolio overview (cash, positions, best-effort equity) */
-        get: operations["getPortfolio"];
+        /** The corpus of symbols with backfill state and bar-coverage bounds */
+        get: operations["getUniverse"];
         put?: never;
         post?: never;
         delete?: never;
@@ -106,25 +106,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/portfolios/{id}/orders": {
+    "/prices": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Order history (paginated) */
-        get: operations["listOrders"];
+        /** Pricing history for a corpus, from price_bar */
+        get: operations["getPrices"];
         put?: never;
-        /** Submit an order */
-        post: operations["createOrder"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/portfolios/{id}/orders/{orderId}/cancel": {
+    "/evaluate": {
         parameters: {
             query?: never;
             header?: never;
@@ -133,76 +132,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel an order if cancellable */
-        post: operations["cancelOrder"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/portfolios/{id}/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Equity over time from valuation snapshots (paginated) */
-        get: operations["getPortfolioHistory"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/leaderboard": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Ranked rows from the latest snapshot */
-        get: operations["getLeaderboard"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/quotes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Latest price_bar.close per symbol */
-        get: operations["getQuotes"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/symbols": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** S&P 500 universe (tradeable subset) */
-        get: operations["getSymbols"];
-        put?: never;
-        post?: never;
+        /** Evaluate the returns of a series of orders, replayed against history */
+        post: operations["evaluate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -218,7 +149,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Add or update S&P 500 membership rows */
+        /** Add or update corpus membership rows */
         post: operations["adminUpsertUniverse"];
         delete?: never;
         options?: never;
@@ -243,33 +174,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/admin/ops": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Operational view (snapshot lag, Finnhub rate limits, queue depth) */
-        get: operations["adminGetOps"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** @enum {string} */
         OrderSide: "buy" | "sell";
-        /** @enum {string} */
-        OrderType: "market";
-        /** @enum {string} */
-        OrderStatus: "accepted" | "rejected" | "filled" | "cancelled";
         ApiError: {
             error: {
                 /** @description Machine-readable error code, e.g. SYMBOL_NOT_TRADEABLE */
@@ -295,221 +205,155 @@ export interface components {
             provider: "google" | "github";
             emailAtLink: string | null;
         };
-        Portfolio: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            userId: string;
-            /** Format: uuid */
-            algoId: string | null;
-            /**
-             * Format: int64
-             * @description Cents available
-             */
-            cash: number;
-            /** Format: date-time */
-            joinedAt: string;
+        MeResponse: {
+            user: components["schemas"]["User"];
+            identities: components["schemas"]["Identity"][];
+            /** @description Rotating token required in X-CSRF-Token on state-changing requests */
+            csrfToken: string;
         };
-        Order: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            portfolioId: string;
+        UniverseItem: {
             symbol: string;
-            side: components["schemas"]["OrderSide"];
-            type: components["schemas"]["OrderType"];
-            /** @description Fractional shares (NUMERIC 20,8) */
-            quantity: number;
-            status: components["schemas"]["OrderStatus"];
-            rejectReason: string | null;
-            idempotencyKey: string;
-            /** @enum {string} */
-            source: "human" | "algo";
+            /** @description false → no price history yet */
+            backfilled: boolean;
             /** Format: date-time */
-            createdAt: string;
-        };
-        Fill: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            orderId: string;
-            symbol: string;
-            side: components["schemas"]["OrderSide"];
-            /** @description Fractional shares (NUMERIC 20,8) */
-            quantity: number;
+            backfilledAt: string | null;
             /**
-             * Format: int64
-             * @description Cents per share at fill
+             * Format: date-time
+             * @description Earliest price_bar.ts for the symbol
              */
-            price: number;
-            /** Format: date-time */
-            filledAt: string;
+            firstBarAt: string | null;
+            /**
+             * Format: date-time
+             * @description Latest price_bar.ts for the symbol
+             */
+            lastBarAt: string | null;
         };
-        ValuationSnapshot: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            portfolioId: string;
-            /** Format: date-time */
-            takenAt: string;
+        UniverseResponse: {
+            items: components["schemas"]["UniverseItem"][];
+        };
+        PriceBar: {
+            /**
+             * Format: date-time
+             * @description Bar date (UTC)
+             */
+            ts: string;
             /**
              * Format: int64
              * @description Cents
              */
-            cash: number;
+            open: number;
             /**
              * Format: int64
-             * @description Cents (sum of qty × price)
+             * @description Cents
              */
-            positionsValue: number;
+            high: number;
             /**
              * Format: int64
-             * @description Cents (cash + positionsValue)
+             * @description Cents
              */
-            equity: number;
+            low: number;
+            /**
+             * Format: int64
+             * @description Cents
+             */
+            close: number;
+            volume: number | null;
         };
-        PositionView: {
+        PricesResponse: {
+            /**
+             * Format: date-time
+             * @description Resolved window start
+             */
+            from: string;
+            /**
+             * Format: date-time
+             * @description Resolved window end
+             */
+            to: string;
+            /** @description Symbol → ordered bars within the window */
+            series: {
+                [key: string]: components["schemas"]["PriceBar"][];
+            };
+            /** @description Requested symbols not in universe / with no bars */
+            missing: string[];
+        };
+        EvaluateOrder: {
             symbol: string;
-            /** @description Fractional shares */
+            side: components["schemas"]["OrderSide"];
+            /** @description Fractional shares (NUMERIC 20,8); must be > 0 */
+            quantity: number;
+            /**
+             * Format: date-time
+             * @description ISO-8601 — when this order executes
+             */
+            at: string;
+        };
+        EvaluateRequest: {
+            /**
+             * Format: int64
+             * @description Cents
+             */
+            startingCash: number;
+            orders: components["schemas"]["EvaluateOrder"][];
+        };
+        EvaluatedOrder: {
+            symbol: string;
+            side: components["schemas"]["OrderSide"];
+            quantity: number;
+            /** Format: date-time */
+            at: string;
+            /**
+             * Format: int64
+             * @description Cents/share at-or-before `at`; null if rejected
+             */
+            fillPrice: number | null;
+            /** @enum {string} */
+            status: "filled" | "rejected";
+            /** @description SYMBOL_NOT_TRADEABLE | STALE_PRICE | INSUFFICIENT_FUNDS | INSUFFICIENT_POSITION */
+            rejectReason: string | null;
+        };
+        FinalPosition: {
+            symbol: string;
             quantity: number;
             /**
              * Format: int64
              * @description Cents per share (cost basis)
              */
             avgCost: number;
-            /**
-             * Format: int64
-             * @description Latest price_bar.close in cents; null if not yet backfilled
-             */
-            lastPrice: number | null;
-            /**
-             * Format: int64
-             * @description Cents (quantity × lastPrice); null if lastPrice is null
-             */
-            marketValue: number | null;
         };
-        PortfolioView: {
-            portfolio: components["schemas"]["Portfolio"];
-            positions: components["schemas"]["PositionView"][];
-            /**
-             * Format: int64
-             * @description Cents (cash + sum of marketValues); best-effort live
-             */
-            equity: number | null;
-            /**
-             * Format: int64
-             * @description Cents; equals cash in v1 (no margin)
-             */
-            buyingPower: number;
-            /**
-             * Format: date-time
-             * @description When the official ranking last refreshed
-             */
-            lastSnapshotAt: string | null;
-        };
-        MeResponse: {
-            user: components["schemas"]["User"];
-            identities: components["schemas"]["Identity"][];
-            /**
-             * Format: uuid
-             * @description v1 — each user has exactly one portfolio
-             */
-            portfolioId: string;
-        };
-        CreateOrderRequest: {
-            symbol: string;
-            side: components["schemas"]["OrderSide"];
-            type: components["schemas"]["OrderType"];
-            /** @description Fractional shares; must be > 0 */
-            quantity: number;
-            /** @description Client-generated deduplication key */
-            idempotencyKey: string;
-        };
-        CreateOrderResponse: {
-            order: components["schemas"]["Order"];
-            /** @description Present if immediately filled (v1 model) */
-            fill: components["schemas"]["Fill"] | null;
-        };
-        OrdersPage: {
-            items: components["schemas"]["Order"][];
-            nextCursor: string | null;
-        };
-        HistoryPage: {
-            items: components["schemas"]["ValuationSnapshot"][];
-            nextCursor: string | null;
-        };
-        LeaderboardRowItem: {
-            rank: number;
-            /** Format: uuid */
-            portfolioId: string;
-            /** @description User display name; "index" for the bot */
-            displayName: string;
-            isBot: boolean;
+        EquityPoint: {
+            /** Format: date-time */
+            ts: string;
             /**
              * Format: int64
              * @description Cents
              */
             equity: number;
-            /** @description Return vs starting capital */
-            returnPct: number;
         };
-        LeaderboardResponse: {
-            /**
-             * Format: date-time
-             * @description Snapshot this ranking reflects
-             */
-            takenAt: string;
-            rows: components["schemas"]["LeaderboardRowItem"][];
-            nextCursor: string | null;
-        };
-        QuoteEntry: {
+        EvaluateResponse: {
+            orders: components["schemas"]["EvaluatedOrder"][];
             /**
              * Format: int64
-             * @description Latest price_bar.close in cents
+             * @description Cents
              */
-            price: number | null;
+            finalCash: number;
+            finalPositions: components["schemas"]["FinalPosition"][];
             /**
-             * Format: date-time
-             * @description Timestamp of the price bar
+             * Format: int64
+             * @description Cents (finalCash + Σ qty × last close)
              */
-            ts: string | null;
-        };
-        QuotesResponse: {
-            /**
-             * Format: date-time
-             * @description Latest price_bar timestamp considered
-             */
-            asOf: string;
-            /** @description Symbol → QuoteEntry map */
-            quotes: {
-                [key: string]: components["schemas"]["QuoteEntry"];
-            };
-        };
-        SymbolItem: {
-            symbol: string;
-            /** @description false → not yet tradeable */
-            backfilled: boolean;
-        };
-        SymbolsResponse: {
-            items: components["schemas"]["SymbolItem"][];
+            finalEquity: number | null;
+            /** @description Return vs startingCash */
+            totalReturnPct: number | null;
+            equityCurve: components["schemas"]["EquityPoint"][];
         };
         UpsertUniverseRequest: {
-            /** @description S&P 500 symbols to add or update */
+            /** @description Symbols to add or update in the corpus */
             symbols: string[];
         };
         BackfillRequest: {
             /** @description Symbol to re-trigger backfill for */
             symbol: string;
-        };
-        OpsResponse: {
-            /** Format: date-time */
-            lastSnapshotAt: string | null;
-            /** Format: int64 */
-            snapshotLagSec: number | null;
-            finnhubRest429sLast24h: number;
-            jobQueueDepth: number;
-            /** @description Count of universe_symbol where backfilled = false */
-            backfillRemaining: number;
         };
     };
     responses: {
@@ -549,16 +393,6 @@ export interface components {
                 "application/json": components["schemas"]["ApiError"];
             };
         };
-        /** @description Rate limited */
-        TooManyRequests: {
-            headers: {
-                "Retry-After"?: number;
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": components["schemas"]["ApiError"];
-            };
-        };
         /** @description Internal server error */
         InternalServerError: {
             headers: {
@@ -570,11 +404,7 @@ export interface components {
         };
     };
     parameters: {
-        portfolioId: string;
-        orderId: string;
         provider: "google" | "github";
-        limitParam: number;
-        cursorParam: string;
     };
     requestBodies: never;
     headers: never;
@@ -692,227 +522,85 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
-    getPortfolio: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["portfolioId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Portfolio view */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PortfolioView"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            500: components["responses"]["InternalServerError"];
-        };
-    };
-    listOrders: {
+    getUniverse: {
         parameters: {
             query?: {
-                limit?: components["parameters"]["limitParam"];
-                cursor?: components["parameters"]["cursorParam"];
+                /** @description When true, only symbols with price history */
+                backfilled?: boolean;
             };
             header?: never;
-            path: {
-                id: components["parameters"]["portfolioId"];
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Paginated order list */
+            /** @description Universe */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OrdersPage"];
+                    "application/json": components["schemas"]["UniverseResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
         };
     };
-    createOrder: {
+    getPrices: {
+        parameters: {
+            query: {
+                /** @description Comma-separated symbols, e.g. AAPL,MSFT (≤ 100) */
+                symbols: string;
+                /** @description ISO date/datetime; window start (default to − 2y) */
+                from?: string;
+                /** @description ISO date/datetime; window end (default now) */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Price history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricesResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    evaluate: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                id: components["parameters"]["portfolioId"];
-            };
+            path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CreateOrderRequest"];
+                "application/json": components["schemas"]["EvaluateRequest"];
             };
         };
         responses: {
-            /** @description Order created and filled (v1) */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreateOrderResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            /** @description Idempotency key conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiError"];
-                };
-            };
-            422: components["responses"]["UnprocessableEntity"];
-            429: components["responses"]["TooManyRequests"];
-            500: components["responses"]["InternalServerError"];
-        };
-    };
-    cancelOrder: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["portfolioId"];
-                orderId: components["parameters"]["orderId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cancelled order */
+            /** @description Evaluation result (stateless; nothing persisted) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Order"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["UnprocessableEntity"];
-            500: components["responses"]["InternalServerError"];
-        };
-    };
-    getPortfolioHistory: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["limitParam"];
-                cursor?: components["parameters"]["cursorParam"];
-            };
-            header?: never;
-            path: {
-                id: components["parameters"]["portfolioId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Paginated valuation snapshot list */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HistoryPage"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            500: components["responses"]["InternalServerError"];
-        };
-    };
-    getLeaderboard: {
-        parameters: {
-            query?: {
-                limit?: components["parameters"]["limitParam"];
-                cursor?: components["parameters"]["cursorParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Leaderboard */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LeaderboardResponse"];
-                };
-            };
-            500: components["responses"]["InternalServerError"];
-        };
-    };
-    getQuotes: {
-        parameters: {
-            query: {
-                /** @description Comma-separated symbols, e.g. AAPL,MSFT */
-                symbols: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Quotes */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["QuotesResponse"];
+                    "application/json": components["schemas"]["EvaluateResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
             422: components["responses"]["UnprocessableEntity"];
-            500: components["responses"]["InternalServerError"];
-        };
-    };
-    getSymbols: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Symbols */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SymbolsResponse"];
-                };
-            };
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -930,7 +618,7 @@ export interface operations {
         };
         responses: {
             /** @description Upserted */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -955,8 +643,8 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Backfill enqueued */
-            202: {
+            /** @description Backfill flag reset */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -966,29 +654,6 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
-            500: components["responses"]["InternalServerError"];
-        };
-    };
-    adminGetOps: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Ops status */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["OpsResponse"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalServerError"];
         };
     };

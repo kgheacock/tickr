@@ -1,6 +1,5 @@
 import { runApi } from './roles/api.js';
 import { runWorker } from './roles/worker.js';
-import { runBot } from './roles/bot.js';
 
 const ROLE = process.env['ROLE'] ?? 'api';
 
@@ -12,11 +11,8 @@ async function main(): Promise<void> {
     case 'worker':
       await runWorker();
       return;
-    case 'bot':
-      await runBot();
-      return;
     default:
-      console.error(`unknown ROLE=${ROLE} (expected: api | worker | bot)`);
+      console.error(`unknown ROLE=${ROLE} (expected: api | worker)`);
       process.exit(1);
   }
 }

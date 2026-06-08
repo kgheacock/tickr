@@ -107,20 +107,3 @@ export async function attachIdentity(
     [randomUUID(), userId, provider, providerSubject, email],
   );
 }
-
-export async function ensurePortfolio(
-  client: pg.PoolClient,
-  userId: string,
-): Promise<string> {
-  await client.query(
-    `INSERT INTO portfolio (id, user_id, algo_id, cash)
-     VALUES ($1, $2, NULL, 100000000)
-     ON CONFLICT DO NOTHING`,
-    [randomUUID(), userId],
-  );
-  const row = await client.query<{ id: string }>(
-    `SELECT id FROM portfolio WHERE user_id = $1 AND algo_id IS NULL`,
-    [userId],
-  );
-  return row.rows[0]!.id;
-}

@@ -1,25 +1,18 @@
 import type { Redis } from 'ioredis';
 import type {
   WsServerMessage,
-  PortfolioView,
-  Order,
-  Fill,
-  LeaderboardResponse,
-  QuotesResponse,
+  UniverseResponse,
+  PricesResponse,
 } from '@tickr/shared-types';
-import {
-  LEADERBOARD_CHANNEL,
-  QUOTES_CHANNEL,
-  portfolioChannel,
-} from '../ws/topics.js';
+import { UNIVERSE_CHANNEL, PRICES_CHANNEL } from '../ws/topics.js';
 
 /**
  * The single place the rest of the codebase pushes realtime events from. Each
  * helper writes a complete `WsServerMessage` to a per-topic Redis channel; the
  * WS gateway's subscriber (see ws/subscriber.ts) fans it out to connections.
  *
- * Callers must invoke these only after the originating DB transaction has
- * committed — never inside a `BEGIN/COMMIT` block.
+ * Callers must invoke these only after the originating DB writes have
+ * committed — never mid-transaction.
  */
 
 async function publishMessage(
@@ -30,50 +23,26 @@ async function publishMessage(
   await redis.publish(channel, JSON.stringify(message));
 }
 
-export async function publishOrderFilled(
+/** Corpus membership / backfill state changed. */
+export async function publishUniverseUpdated(
   redis: Redis,
-  portfolioId: string,
-  order: Order,
-  fill: Fill,
+  data: UniverseResponse,
 ): Promise<void> {
-  await publishMessage(redis, portfolioChannel(portfolioId), {
-    type: 'order.filled',
-    portfolioId,
-    order,
-    fill,
-  });
-}
-
-export async function publishPortfolioUpdated(
-  redis: Redis,
-  portfolioId: string,
-  view: PortfolioView,
-): Promise<void> {
-  await publishMessage(redis, portfolioChannel(portfolioId), {
-    type: 'portfolio.updated',
-    portfolioId,
-    view,
-  });
-}
-
-export async function publishLeaderboardUpdated(
-  redis: Redis,
-  data: LeaderboardResponse,
-): Promise<void> {
-  await publishMessage(redis, LEADERBOARD_CHANNEL, {
-    type: 'leaderboard.updated',
+  await publishMessage(redis, UNIVERSE_CHANNEL, {
+    type: 'universe.updated',
     data,
   });
 }
 
-export async function publishQuotesUpdated(
+/** New bars were appended for the named symbols. */
+export async function publishPricesUpdated(
   redis: Redis,
   asOf: string,
-  quotes: QuotesResponse['quotes'],
+  series: PricesResponse['series'],
 ): Promise<void> {
-  await publishMessage(redis, QUOTES_CHANNEL, {
-    type: 'quotes.updated',
+  await publishMessage(redis, PRICES_CHANNEL, {
+    type: 'prices.updated',
     asOf,
-    quotes,
+    series,
   });
 }
