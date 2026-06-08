@@ -34,13 +34,14 @@ of each file as you go.
 | 09 | [WebSocket gateway](09-websocket-gateway.md) | 04, 07, 08 | pending |
 | 10 | [Observability + admin](10-observability-and-admin.md) | 04, 06, 08 | pending |
 | 11 | [Frontend SPA](11-frontend.md) | 16 | pending |
-| 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11 | pending |
+| 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11, 19 | pending |
 | 13 | [Massive client](13-massive-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/9) |
 | 14 | [Kaggle client](14-kaggle-client.md) | 03, 13 | [done](https://github.com/kgheacock/tickr/pull/9) |
 | 15 | [Migrate to pnpm](15-migrate-to-pnpm.md) | — | [done](https://github.com/kgheacock/tickr/pull/13) |
 | 16 | [Platformize the API](16-platformize-api.md) | 03, 04, 06, 09 | [done](https://github.com/kgheacock/tickr/pull/25) |
 | 17 | [ETF over a weighted corpus](17-etf-weighted-corpus.md) | 16 | pending |
 | 18 | [Display: ETF editor, strategy & plot](18-display-logic.md) | 16, 17 | pending |
+| 19 | [Data audit](19-data-audit.md) | 06, 13, 14 | pending |
 
 > **Pivot (items 16–18):** the project is being re-scoped from a trading
 > *game* to a market-data + returns *platform*. Item 16 keeps the data corpus
