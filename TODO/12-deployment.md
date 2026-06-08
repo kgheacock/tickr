@@ -37,6 +37,8 @@ restore drill, and a one-command deploy from a fresh git pull.
    git clone <repo> /srv/tickr/repo
    cp .env.example /srv/tickr/secrets/tickr.env
    # edit /srv/tickr/secrets/tickr.env
+   # Run the data audit BEFORE migrating — exits non-zero on a dirty corpus.
+   pnpm tsx scripts/data-audit.ts
    docker compose -f compose/docker-compose.yml \
                   -f compose/docker-compose.prod.yml \
                   --env-file /srv/tickr/secrets/tickr.env \
@@ -47,9 +49,11 @@ restore drill, and a one-command deploy from a fresh git pull.
    ```
 5. **Deploy script.** `scripts/deploy.sh` runs on the VPS (or via SSH from
    CI): `git fetch && git checkout origin/main && docker compose build &&
+   pnpm tsx scripts/data-audit.ts &&
    docker compose run --rm api pnpm run db:migrate && docker compose up -d`.
    Pre-flight checks: working tree clean; current commit reachable from
-   `origin/main`; `tickr.env` exists.
+   `origin/main`; `tickr.env` exists. The data audit runs before every
+   migration and blocks the deploy on a non-zero exit (see TODO/19).
 6. **Backups.** `scripts/backup.sh` runs nightly via systemd timer (or
    cron) on the host:
    ```bash
