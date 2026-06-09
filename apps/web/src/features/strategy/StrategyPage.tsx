@@ -98,7 +98,7 @@ export function StrategyPage() {
   const handleLogout = useCallback(async () => {
     await client.logout();
     await queryClient.invalidateQueries({ queryKey: ['me'] });
-    navigate('/login', { replace: true });
+    navigate('/', { replace: true });
   }, [queryClient, navigate]);
 
   const updateWeight = (symbol: string, weight: string) =>

@@ -134,8 +134,8 @@ Only needed if you want the tickr logo/name on the consent screen.
 
 ## The button must stay brand-compliant
 
-Brand review also looks at how you present "Sign in with Google." The login
-button in `apps/web/src/pages/LoginPage.tsx` is already built to Google's
+Brand review also looks at how you present "Sign in with Google." The sign-in
+button in `apps/web/src/pages/LandingPage.tsx` is already built to Google's
 [Sign in with Google branding guidelines](https://developers.google.com/identity/branding-guidelines):
 
 - Text is exactly **"Sign in with Google"** (an approved phrase).
@@ -166,8 +166,9 @@ this button. Everything else (text, logo, colors, layout) is compliant.
 - [ ] Export `docs/tickr-logo.svg` to a 120×120 PNG and upload it.
 - [ ] **Publish to Production** (Step 2) — unblocks beta users immediately.
 - [ ] **Submit brand verification** (Step 3) for the logo/name.
-- [ ] Provide the **request-access form URL** (separate TODO/20 item 2) so
-      the closed-beta CTA can be wired up.
+- [x] Provide the **request-access form URL** (separate TODO/20 item 2) so
+      the closed-beta CTA can be wired up. — done; wired to
+      `https://forms.gle/xhPHtFmtSvHByEqa6`.
 
 ## If something is "sensitive" later
 
@@ -183,7 +184,7 @@ current sign-in identity flow does not.
 
 Unlike Google, GitHub has **no verification or approval gate** for using an
 OAuth App to sign users in, and **no "unverified app" warning screen**. The
-button (`apps/web/src/pages/LoginPage.tsx`) points at
+button (`apps/web/src/pages/LandingPage.tsx`) points at
 `/api/v1/auth/github/start`, and the app requests only `read:user user:email`
 (see `apps/api/src/auth/github.ts:26`) — nothing that triggers review.
 

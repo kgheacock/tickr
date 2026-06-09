@@ -51,7 +51,7 @@ export function MarketPage() {
   const handleLogout = useCallback(async () => {
     await client.logout();
     await queryClient.invalidateQueries({ queryKey: ['me'] });
-    navigate('/login', { replace: true });
+    navigate('/', { replace: true });
   }, [queryClient, navigate]);
 
   // Default to first symbol when universe loads
