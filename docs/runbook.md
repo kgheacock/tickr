@@ -73,13 +73,33 @@ What to pick for each field in the Hetzner Cloud console (or `hcloud`/Terraform)
 | **Image** | Debian 12 | Matches §1. |
 | **Type** | CX22 (shared vCPU) | See [§10](#10-sizing-monitoring--load-testing). Shared is fine for v1. |
 | **Networking / Public IPv4** | **Required — enable it** | See the IPv4 note below; do **not** run IPv6-only. |
-| **Firewalls** | **Create one: allow inbound TCP 22, 80, 443; deny the rest** | The authoritative control. Unlike UFW, a Hetzner Cloud Firewall is enforced at the hypervisor **before** traffic reaches the host, so — critically — it is **not** bypassed by Docker's iptables rules. This is what actually guarantees the "`nmap` shows only 22/80/443" posture ([§9](#9-security-posture-confirmation)). Keep UFW too (defense in depth). Optionally restrict 22 to your own IP. |
+| **Firewalls** | **Create one: inbound allow TCP 22, 80, 443; deny the rest. Outbound: leave default (allow all).** See "Firewall protocols & egress" below. | The authoritative control. Unlike UFW, a Hetzner Cloud Firewall is enforced at the hypervisor **before** traffic reaches the host, so — critically — it is **not** bypassed by Docker's iptables rules. This is what actually guarantees the "`nmap` shows only 22/80/443" posture ([§9](#9-security-posture-confirmation)). Keep UFW too (defense in depth). Optionally restrict 22 to your own IP. |
 | **Volumes** | N/A at launch | The 40 GB local disk covers the v1 corpus + 7 days of dumps. When disk approaches ~70% ([§10](#10-sizing-monitoring--load-testing)), attach a Hetzner Volume and move `/srv/tickr/data` onto it (resizable, no rebuild). Provision one from day one only if you want headroom early. |
 | **Backups** | Optional | Hetzner's paid full-VM snapshot feature (~20% of server cost). **Not** the system of record — `scripts/backup.sh` (off-VPS `pg_dump`) is, and it satisfies the DoD. Enable Hetzner backups only if one-click whole-VM rollback for disaster recovery is worth the cost; otherwise N/A. |
 | **Placement Groups** | N/A | Anti-affinity across physical hosts only matters with multiple servers. Revisit if the worker/bot is later extracted onto its own VPS. |
 | **Labels** | Optional | Resource metadata for tooling (`hcloud`, Terraform). Suggested: `env=prod`, `app=tickr`. Harmless and handy if infra grows; skip for a hand-managed single box. |
 | **Cloud config** | Optional (recommended) | cloud-init user-data that automates §1 for reproducible rebuilds — see below. |
 | **SSH keys** | Add your public key | So the initial root login is key-only; §1 then disables root login. |
+
+**Firewall protocols & egress.**
+
+- **Protocol per inbound port: all TCP.** 22 (SSH) and 80 (ACME challenge +
+  HTTP→HTTPS redirect) are TCP-only. 443 is TCP for HTTP/1.1 and HTTP/2 — which
+  is all you need. **Open UDP 443 only if you want HTTP/3 (QUIC)**, and that also
+  requires publishing it on the caddy service: add `'443:443/udp'` alongside
+  `'443:443/tcp'` in the prod overlay (compose defaults a bare `443:443` to TCP).
+  With UDP 443 closed, clients transparently fall back to HTTP/2 — nothing
+  breaks. Recommendation for v1: **TCP only; skip HTTP/3.**
+- **Outbound: leave it unrestricted (Hetzner's default).** The moment you add any
+  outbound rule, Hetzner switches egress to deny-by-default, and you then have to
+  chase every CDN/API IP that rotates — high operational fragility for little
+  gain on a single trusted host. If you later want egress hardening (limit
+  exfiltration if the box is compromised), the *minimum* the host must reach is:
+  **TCP 443** (HTTPS — covers Let's Encrypt, Massive, Google/GitHub OAuth, GHCR
+  image pulls, `git`-over-HTTPS, and rclone to object storage), **TCP 80** (apt +
+  `get.docker.com` + ACME fallback), **UDP/TCP 53** (DNS), and **UDP 123** (NTP).
+  Pinning those to specific destination IPs is impractical (CDNs rotate), so
+  egress allowlisting is by-port at best — another reason to skip it for v1.
 
 **IPv4 is required — do not run IPv6-only.** Two independent reasons: (1) a large
 share of visitors are on IPv4-only networks and simply cannot reach an
