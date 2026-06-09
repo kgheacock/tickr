@@ -33,6 +33,26 @@ vi.mock('../../src/massive/bucket.js', () => ({
   BUCKET_KEY: 'massive:bucket',
 }));
 
+// Capture every argument the client passes to its logger, so we can assert the
+// API key / Authorization header is never among them. Mocking the logger is
+// robust (no stdout/fd capture races); pino's real destination binds at import
+// and writes via SonicBoom in the vitest worker, so a stdout spy sees nothing.
+const { logCalls } = vi.hoisted(() => ({
+  logCalls: [] as Array<{ obj: unknown; msg: unknown }>,
+}));
+vi.mock('../../src/log/logger.js', () => {
+  const rec = (obj: unknown, msg?: unknown): void => {
+    logCalls.push({ obj, msg });
+  };
+  const fake = { debug: rec, info: rec, warn: rec, error: rec };
+  return {
+    jobLogger: () => fake,
+    rootLogger: fake,
+    baseLoggerOptions: {},
+    genRequestId: () => 'test',
+  };
+});
+
 describe('massiveGet', () => {
   it('calls acquire exactly once per request', async () => {
     const { acquire } = await import('../../src/massive/bucket.js');
@@ -178,36 +198,30 @@ describe('massiveGet', () => {
     expect(url).not.toContain('test-key');
   });
 
-  it('never logs the API key', async () => {
-    const logged: string[] = [];
-    for (const level of ['debug', 'info', 'warn', 'error'] as const) {
-      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
-        logged.push(args.map(String).join(' '));
-      });
-    }
+  it('never passes the API key or Authorization header to the logger', async () => {
+    const apiKey = process.env['MASSIVE_API_KEY']!;
+    logCalls.length = 0;
 
-    const mockFetch = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          status: 'OK',
-          results: [],
-          resultsCount: 0,
-          ticker: 'AAPL',
-          queryCount: 0,
-        }),
-        { status: 200 },
+    // A 500 is non-retryable → throws immediately after logging the error
+    // lines ({path,status} then {path,attempt,err}). Forces real log output.
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response('nope', { status: 500 }));
+
+    await expect(
+      massiveGet(
+        redis,
+        '/v2/aggs/ticker/AAPL/range/1/day/2024-01-01/2024-12-31',
+        {},
+        mockFetch,
       ),
-    );
-    await massiveGet(
-      redis,
-      '/v2/aggs/ticker/AAPL/range/1/day/2024-01-01/2024-12-31',
-      {},
-      mockFetch,
-    );
+    ).rejects.toThrow();
 
-    for (const entry of logged) {
-      expect(entry).not.toContain('test-key');
-    }
+    // Guard against a vacuous pass: prove logging actually happened.
+    expect(logCalls.length).toBeGreaterThan(0);
+    const serialized = JSON.stringify(logCalls);
+    expect(serialized).not.toContain(apiKey);
+    expect(serialized).not.toContain('Bearer');
   });
 });
 

@@ -13,8 +13,11 @@ import { registerPricesRoute } from '../routes/prices.js';
 import { registerEvaluateRoute } from '../routes/evaluate.js';
 import { registerEtfsRoutes } from '../routes/etfs.js';
 import { registerStrategyRoutes } from '../routes/strategies.js';
+import { registerAdminOpsRoute } from '../routes/admin/ops.js';
 import { getRedis } from '../redis.js';
 import { attachWsGateway } from '../ws/server.js';
+import { baseLoggerOptions, genRequestId } from '../log/logger.js';
+import { registerMetrics } from '../metrics/middleware.js';
 
 const PORT = Number(process.env['PORT'] ?? 3000);
 const HOST = '0.0.0.0';
@@ -22,12 +25,21 @@ const HOST = '0.0.0.0';
 export async function runApi(): Promise<void> {
   await runMigrations();
 
-  const fastify = Fastify({ logger: true });
+  const fastify = Fastify({
+    logger: baseLoggerOptions,
+    genReqId: genRequestId,
+    requestIdLogLabel: 'request_id',
+  });
 
+  registerMetrics(fastify);
+
+  // Redis-backed so per-IP limits hold across api instances. Default per-IP
+  // cap is 60 req/min; per-route caps (auth start, admin) tighten this.
   await fastify.register(rateLimit, {
     global: true,
-    max: 100,
+    max: 60,
     timeWindow: '1 minute',
+    redis: getRedis(),
   });
 
   await fastify.register(cookie, {
@@ -50,6 +62,7 @@ export async function runApi(): Promise<void> {
       await registerEvaluateRoute(api);
       await registerEtfsRoutes(api);
       await registerStrategyRoutes(api);
+      await registerAdminOpsRoute(api);
     },
     { prefix: '/api/v1' },
   );

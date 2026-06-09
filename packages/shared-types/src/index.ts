@@ -42,3 +42,6 @@ export type SmaStrategyRequest = components['schemas']['SmaStrategyRequest'];
 export type UpsertUniverseRequest =
   components['schemas']['UpsertUniverseRequest'];
 export type BackfillRequest = components['schemas']['BackfillRequest'];
+
+// --- Admin / ops ---
+export type OpsResponse = components['schemas']['OpsResponse'];

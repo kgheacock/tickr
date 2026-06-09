@@ -7,6 +7,9 @@ import { insertBars } from './insertBars.js';
 import { loadUniverse } from '../routes/universe.js';
 import { publishUniverseUpdated } from '../events/publisher.js';
 import { aggPath, MULTIPLIER, TIMESPAN, MAX_RESULTS } from './granularity.js';
+import { jobLogger } from '../log/logger.js';
+
+const baseLog = jobLogger('backfill');
 
 type AggregatesResponse = components['schemas']['AggregatesResponse'];
 type Bar = NonNullable<AggregatesResponse['results']>[number];
@@ -37,9 +40,7 @@ function log(
   msg: string,
   extra?: object,
 ): void {
-  console[level](
-    JSON.stringify({ level, component: 'backfill', msg, ...extra }),
-  );
+  baseLog[level](extra ?? {}, msg);
 }
 
 function toDateStr(ms: number): string {

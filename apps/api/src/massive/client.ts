@@ -1,6 +1,10 @@
 import type { Redis } from 'ioredis';
 import { acquire } from './bucket.js';
 import { requireEnv } from '../config.js';
+import { jobLogger } from '../log/logger.js';
+import { recordMassiveCall, recordMassive429 } from '../metrics/redis.js';
+
+const baseLog = jobLogger('massive');
 
 export class MassiveRateLimitError extends Error {
   readonly status = 429;
@@ -30,9 +34,7 @@ function log(
   msg: string,
   extra?: object,
 ): void {
-  console[level](
-    JSON.stringify({ level, component: 'massive', msg, ...extra }),
-  );
+  baseLog[level](extra ?? {}, msg);
 }
 
 function buildUrl(
@@ -85,7 +87,11 @@ async function fetchWithRetry<T>(
       });
       clearTimeout(timer);
 
+      // Fire-and-forget metric writes — never block or fail a request on them.
+      void recordMassiveCall(redis).catch(() => {});
+
       if (res.status === 429) {
+        void recordMassive429(redis).catch(() => {});
         log('error', 'massive 429 — bucket mistuned', { url });
         throw new MassiveRateLimitError();
       }

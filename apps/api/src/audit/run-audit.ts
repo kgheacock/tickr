@@ -44,6 +44,16 @@ export interface AuditConfig {
   splitTolerance: number;
   /** Max gap (minutes) between consecutive within-session bars. */
   intradayGapMinutes: number;
+  /**
+   * NYSE regular-session open, as an ET wall-clock time (HH:MM). Bars are
+   * filtered to [open, close) in America/New_York so the gap check never
+   * reaches into the sparse pre/post-market zone (the source returns irregular
+   * extended-hours bars that are not real coverage gaps). DST-correct because
+   * the comparison is done after converting ts to ET. Defaults to 09:30.
+   */
+  sessionOpenEt: string;
+  /** NYSE regular-session close as an ET wall-clock time (HH:MM). Defaults to 16:00. */
+  sessionCloseEt: string;
 }
 
 export interface AuditReport {
@@ -95,17 +105,38 @@ export function computeExpectedTradingDays(
   return days;
 }
 
+/**
+ * Where a gap sits in the expected window. `trailing` gaps (the symbol stops
+ * before the window end) are the low-severity "backfill hasn't caught the last
+ * few days" case; `leading`/`internal` gaps mean real history is missing and
+ * warrant a re-fetch. See docs/12-data-remediation-plan.md (Findings 2A vs 2B/2C).
+ */
+export type GapPosition = 'leading' | 'internal' | 'trailing';
+
+// A type alias (not an interface) so it stays assignable to the Issue.detail
+// `Record<string, unknown>` — named interfaces lack an implicit index signature.
+export type CoverageGap = {
+  gapStart: string;
+  gapEnd: string;
+  missingTradingDays: number;
+  position: GapPosition;
+};
+
 /** Finds runs of missing trading days >= gapThreshold in length. */
 export function findCoverageGaps(
   expectedDays: string[],
   presentDates: Set<string>,
   gapThreshold: number,
-): Array<{ gapStart: string; gapEnd: string; missingTradingDays: number }> {
-  const gaps: Array<{
-    gapStart: string;
-    gapEnd: string;
-    missingTradingDays: number;
-  }> = [];
+): CoverageGap[] {
+  const firstDay = expectedDays[0];
+  const lastDay = expectedDays[expectedDays.length - 1];
+  const classify = (start: string, end: string): GapPosition => {
+    if (end === lastDay) return 'trailing';
+    if (start === firstDay) return 'leading';
+    return 'internal';
+  };
+
+  const gaps: CoverageGap[] = [];
   let gapStart: string | null = null;
   let gapEnd: string | null = null;
   let gapCount = 0;
@@ -117,7 +148,12 @@ export function findCoverageGaps(
       gapCount++;
     } else {
       if (gapCount >= gapThreshold && gapStart !== null && gapEnd !== null) {
-        gaps.push({ gapStart, gapEnd, missingTradingDays: gapCount });
+        gaps.push({
+          gapStart,
+          gapEnd,
+          missingTradingDays: gapCount,
+          position: classify(gapStart, gapEnd),
+        });
       }
       gapStart = null;
       gapEnd = null;
@@ -125,7 +161,12 @@ export function findCoverageGaps(
     }
   }
   if (gapCount >= gapThreshold && gapStart !== null && gapEnd !== null) {
-    gaps.push({ gapStart, gapEnd, missingTradingDays: gapCount });
+    gaps.push({
+      gapStart,
+      gapEnd,
+      missingTradingDays: gapCount,
+      position: classify(gapStart, gapEnd),
+    });
   }
   return gaps;
 }
@@ -204,6 +245,8 @@ export async function runAudit(
     crossSourceThreshold,
     splitTolerance,
     intradayGapMinutes,
+    sessionOpenEt,
+    sessionCloseEt,
   } = config;
 
   const expectsIntraday =
@@ -432,7 +475,14 @@ export async function runAudit(
   // ─── 5: Intraday gap detection ───────────────────────────────────────────────
 
   if (expectsIntraday) {
-    // A: symbols with NO session-hour bars — data is likely daily-only.
+    // Regular-session window, expressed in ET so the comparison is DST-correct
+    // (the UTC offset of 09:30 ET differs by ±1h across the year). Filtering to
+    // [open, close) excludes the sparse pre/post-market bars the source returns
+    // at irregular intervals, which are NOT real intraday gaps. See
+    // docs/12-data-remediation-plan.md (Finding 1).
+    const etTime = `(ts AT TIME ZONE 'America/New_York')::time`;
+
+    // A: symbols with NO regular-session bars — data is likely daily-only.
     const { rows: noSessionRows } = await pool.query<{
       symbol: string;
       bar_count: number;
@@ -442,11 +492,11 @@ export async function runAudit(
        WHERE ts >= $1::timestamptz
        GROUP BY symbol
        HAVING SUM(CASE WHEN
-         EXTRACT(hour FROM ts AT TIME ZONE 'UTC') BETWEEN 13 AND 22
+         ${etTime} >= $2::time AND ${etTime} < $3::time
          THEN 1 ELSE 0 END) = 0
          AND COUNT(*) > 0
        ORDER BY symbol`,
-      [startIso],
+      [startIso, sessionOpenEt, sessionCloseEt],
     );
 
     for (const row of noSessionRows) {
@@ -457,7 +507,7 @@ export async function runAudit(
         detail: {
           type: 'no_session_bars',
           barCount: row.bar_count,
-          note: `All ${row.bar_count} bars are outside market session hours (13:00–22:00 UTC). Expected ${multiplier}-${timespan} intraday data but corpus appears to be daily-only.`,
+          note: `All ${row.bar_count} bars are outside the NYSE regular session (${sessionOpenEt}–${sessionCloseEt} ET). Expected ${multiplier}-${timespan} intraday data but corpus appears to be daily-only.`,
         },
       });
     }
@@ -472,14 +522,14 @@ export async function runAudit(
          SELECT symbol, ts
          FROM price_bar
          WHERE ts >= $1::timestamptz
-           AND EXTRACT(hour FROM ts AT TIME ZONE 'UTC') BETWEEN 13 AND 22
+           AND ${etTime} >= $3::time AND ${etTime} < $4::time
        ),
        consecutive AS (
          SELECT
            symbol,
            EXTRACT(EPOCH FROM (
              LEAD(ts) OVER (
-               PARTITION BY symbol, (ts AT TIME ZONE 'UTC')::date
+               PARTITION BY symbol, (ts AT TIME ZONE 'America/New_York')::date
                ORDER BY ts
              ) - ts
            )) / 60 AS gap_minutes
@@ -490,7 +540,7 @@ export async function runAudit(
        WHERE gap_minutes > $2
        GROUP BY symbol
        ORDER BY symbol`,
-      [startIso, intradayGapMinutes],
+      [startIso, intradayGapMinutes, sessionOpenEt, sessionCloseEt],
     );
 
     for (const row of sessionGapRows) {
@@ -573,7 +623,7 @@ export async function runAudit(
           ratio: Math.round(r.ratio * 10000) / 10000,
           likelySplit: splitLabel(r.ratio),
         })),
-        note: 'v1 uses raw prices; verify whether the data source returns adjusted or unadjusted bars. If unadjusted, positions must be corrected on the split date and adj_close support added in v2.',
+        note: 'Massive /v2/aggs returns split-adjusted prices by default (the backfill does not pass adjusted=false), so a true split should NOT appear as a step here. A candidate is therefore most likely a genuine large single-day move (false positive at this tolerance) or a data error — verify against known corporate actions before acting. See docs/12-data-remediation-plan.md (Finding 5).',
       },
     });
   }

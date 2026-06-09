@@ -44,7 +44,7 @@ export async function registerStartRoutes(
 
   fastify.get<{ Params: { provider: string } }>(
     '/auth/:provider/start',
-    { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } },
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req, reply) => {
       const { provider } = req.params;
       if (provider !== 'google' && provider !== 'github') {
@@ -76,7 +76,7 @@ export async function registerStartRoutes(
     '/auth/link/:provider/start',
     {
       preHandler: [requireAuth, requireCsrf],
-      config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (req, reply) => {
       const { provider } = req.params;

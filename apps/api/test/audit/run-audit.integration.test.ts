@@ -115,6 +115,8 @@ function weekConfig(overrides: Partial<AuditConfig> = {}): AuditConfig {
     crossSourceThreshold: 0.01,
     splitTolerance: 0.03,
     intradayGapMinutes: 30,
+    sessionOpenEt: '09:30',
+    sessionCloseEt: '16:00',
     ...overrides,
   };
 }
@@ -377,6 +379,29 @@ describe('INTRADAY_GAP — session_gap', () => {
     const report = await runAudit(pool, weekConfig({ intradayGapMinutes: 30 }));
     expect(report.errorCounts[CODE.INTRADAY_GAP]).toBe(0);
   });
+
+  // Regression guard for Finding 1: a gap that lives ONLY in post-market hours
+  // must not be flagged. Continuous in-session bars (10:00–15:45 ET) followed by
+  // a lone post-close bar (17:00 ET) >30 min later — under the old
+  // `BETWEEN 13 AND 22` UTC window this fired a false session_gap.
+  it('ignores a gap that falls entirely in post-market hours', async () => {
+    await seedSymbol('NVDA');
+    const day = new Date(T0);
+    // Continuous regular-session bars: 14:00→19:45 UTC = 10:00→15:45 ET (EDT).
+    for (let h = 14 * 60; h <= 19 * 60 + 45; h += 15) {
+      const ts = new Date(T0);
+      ts.setUTCHours(0, 0, 0, 0);
+      await insertBar('NVDA', new Date(ts.getTime() + h * 60_000));
+    }
+    // Lone post-close bar at 21:00 UTC = 17:00 ET, 75 min after the last
+    // session bar — outside the regular session, so it must be ignored.
+    const postClose = new Date(day);
+    postClose.setUTCHours(21, 0, 0, 0);
+    await insertBar('NVDA', postClose);
+
+    const report = await runAudit(pool, weekConfig({ intradayGapMinutes: 30 }));
+    expect(report.errorCounts[CODE.INTRADAY_GAP]).toBe(0);
+  });
 });
 
 // ─── SPLIT_CANDIDATE (warning, not error) ─────────────────────────────────────
@@ -392,7 +417,7 @@ describe('SPLIT_CANDIDATE', () => {
     await seedSymbol('TSLA');
 
     const day0 = new Date(T0);
-    day0.setUTCHours(20, 45, 0, 0);
+    day0.setUTCHours(18, 0, 0, 0); // 14:00 ET — within the regular session
     await insertBar('TSLA', day0, {
       open: 19900,
       high: 20100,
@@ -401,7 +426,7 @@ describe('SPLIT_CANDIDATE', () => {
     });
 
     const day1 = new Date(T0 + DAY_MS);
-    day1.setUTCHours(20, 45, 0, 0);
+    day1.setUTCHours(18, 0, 0, 0); // 14:00 ET — within the regular session
     await insertBar('TSLA', day1, {
       open: 9900,
       high: 10100,
@@ -424,7 +449,7 @@ describe('SPLIT_CANDIDATE', () => {
     await seedSymbol('PLTR');
 
     const day0 = new Date(T0);
-    day0.setUTCHours(20, 45, 0, 0);
+    day0.setUTCHours(18, 0, 0, 0); // 14:00 ET — within the regular session
     await insertBar('PLTR', day0, {
       open: 19900,
       high: 20100,
@@ -433,7 +458,7 @@ describe('SPLIT_CANDIDATE', () => {
     });
 
     const day1 = new Date(T0 + DAY_MS);
-    day1.setUTCHours(20, 45, 0, 0);
+    day1.setUTCHours(18, 0, 0, 0); // 14:00 ET — within the regular session
     await insertBar('PLTR', day1, {
       open: 9900,
       high: 10100,

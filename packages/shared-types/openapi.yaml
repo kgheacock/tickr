@@ -541,6 +541,35 @@ components:
           type: string
           description: Symbol to re-trigger backfill for
 
+    OpsResponse:
+      type: object
+      required:
+        - lastEodUpdateAt
+        - eodUpdateLagSec
+        - marketData429sLast24h
+        - jobQueueDepth
+        - backfillRemaining
+      properties:
+        lastEodUpdateAt:
+          type: ['string', 'null']
+          description: ISO timestamp of the last successful EOD price-update run; null if none yet
+        eodUpdateLagSec:
+          type: ['integer', 'null']
+          description: Seconds since the last EOD update (now - lastEodUpdateAt)
+        marketData429sLast24h:
+          type: object
+          required: [massive]
+          properties:
+            massive:
+              type: integer
+              description: Massive 429 count in the trailing 24h
+        jobQueueDepth:
+          type: integer
+          description: Currently-held worker job locks (backfill / session-update)
+        backfillRemaining:
+          type: integer
+          description: Count of universe_symbol rows with backfilled = false
+
 paths:
   # --- Auth & session ---
 
@@ -902,5 +931,24 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /admin/ops:
+    get:
+      summary: Operational view (EOD-update lag, market data 429s, queue depth, backfill remaining)
+      operationId: adminOps
+      tags: [admin]
+      responses:
+        '200':
+          description: Platform health snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalServerError'

@@ -1,32 +1,16 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { pool } from '../../db/pool.js';
-import { requireAuth, requireCsrf } from '../../auth/middleware.js';
+import { requireAdmin, requireCsrf } from '../../auth/middleware.js';
 import { upsertUniverseSchema, backfillSchema } from './schema.js';
 
-async function requireAdmin(
-  req: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
-  await requireAuth(req, reply);
-  if (!req.userId) return; // requireAuth already sent 401
-
-  const { rows } = await pool.query<{ role: string }>(
-    `SELECT role FROM app_user WHERE id = $1`,
-    [req.userId],
-  );
-  if (rows[0]?.role !== 'admin') {
-    return reply
-      .code(403)
-      .send({ error: { code: 'FORBIDDEN', message: 'Admin access required' } });
-  }
-}
+const ADMIN_RATE_LIMIT = { rateLimit: { max: 30, timeWindow: '1 minute' } };
 
 export async function registerAdminUniverseRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
   fastify.post(
     '/admin/universe/upsert',
-    { preHandler: [requireAdmin, requireCsrf] },
+    { preHandler: [requireAdmin, requireCsrf], config: ADMIN_RATE_LIMIT },
     async (req, reply) => {
       const parsed = upsertUniverseSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -54,7 +38,7 @@ export async function registerAdminUniverseRoutes(
 
   fastify.post(
     '/admin/universe/backfill',
-    { preHandler: [requireAdmin, requireCsrf] },
+    { preHandler: [requireAdmin, requireCsrf], config: ADMIN_RATE_LIMIT },
     async (req, reply) => {
       const parsed = backfillSchema.safeParse(req.body);
       if (!parsed.success) {
