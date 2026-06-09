@@ -3,7 +3,7 @@ pre-commit:
   commands:
     lint:
       glob: '*.{ts,tsx,js,cjs,mjs}'
-      run: pnpm exec eslint {staged_files}
+      run: fnm exec -- pnpm exec eslint {staged_files}
     format:
       glob: '*.{ts,tsx,js,cjs,mjs,json,md,yml,yaml}'
-      run: pnpm exec prettier --check {staged_files}
+      run: fnm exec -- pnpm exec prettier --check {staged_files}

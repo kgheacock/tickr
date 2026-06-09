@@ -44,7 +44,6 @@ a one-shot.
   | `DATABASE_URL` | everything | e.g. `postgres://tickr:tickr@localhost:5432/tickr` |
   | `REDIS_URL` | worker / backfill locks | e.g. `redis://localhost:6379` |
   | `MASSIVE_API_KEY` | price backfill | worker exits without it |
-  | `KAGGLE_USERNAME` / `KAGGLE_API_KEY` | optional pre-warm | bulk history, see §4 |
   | `BACKFILL_START_DATE` | optional | only backfill from this date forward |
 
 > The app code does **not** auto-load `.env` (env is injected by
@@ -180,19 +179,6 @@ BACKFILL_START_DATE=2018-01-01 pnpm backfill   # re-arms symbols with a front ga
   deliberate trade-off of deriving the decision from data instead of persisting
   a coverage watermark.
 
-### Optional pre-warm from Kaggle (faster, fewer API calls)
-
-For a bulk cold start, load history from the Kaggle US-stock dataset first, then
-let Massive fill only the gap to today (`scripts/kaggle-backfill.ts`):
-
-```bash
-pnpm run kaggle:backfill                 # bulk-load price_bar from Kaggle
-# then set BACKFILL_START_DATE so the backfill only covers the gap:
-BACKFILL_START_DATE=2024-07-06 pnpm backfill
-```
-
-Requires `KAGGLE_USERNAME` and `KAGGLE_API_KEY`.
-
 ---
 
 ## 5. Verify a populated database
@@ -206,8 +192,8 @@ SELECT count(*) AS price_bars FROM price_bar;
 SQL
 ```
 
-A healthy fresh DB shows ~500 symbols, all `backfilled = true`, and hundreds of
-thousands of `price_bar` rows (≈500 symbols × ~500 trading days).
+A healthy fresh DB shows ~500 symbols, all `backfilled = true`, and millions of
+`price_bar` rows (≈500 symbols × ~500 trading days × ~26 intraday bars/day).
 
 ---
 
@@ -218,13 +204,9 @@ thousands of `price_bar` rows (≈500 symbols × ~500 trading days).
 docker compose -f compose/docker-compose.yml up -d postgres redis
 cp .env.example .env   # then fill in MASSIVE_API_KEY (+ DATABASE_URL/REDIS_URL)
 
-# 1. (optional) bulk pre-warm to cut the ~3h Massive backfill down to the gap
-pnpm run kaggle:backfill           # needs KAGGLE_* creds
-# export BACKFILL_START_DATE=2024-07-06
-
-# 2. schema + universe + price history, idempotent, then exit
+# 1. schema + universe + price history, idempotent, then exit (~3h for a cold S&P 500 backfill)
 pnpm backfill
 
-# 3. run the platform (serves API + daily-price cron)
+# 2. run the platform (serves API + daily-price cron)
 ROLE=worker pnpm --filter @tickr/api start
 ```

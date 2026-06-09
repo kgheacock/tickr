@@ -9,7 +9,7 @@ is; this file is _how to build and work on it_. The design lives in
 
 | Tool   | Version                  | Notes                                                                    |
 | ------ | ------------------------ | ------------------------------------------------------------------------ |
-| Node   | `22.22.3` (see `.nvmrc`) | `>=22.12.0`. Use `nvm use` to match.                                     |
+| Node   | `22.22.3` (see `.nvmrc`) | `>=22.12.0`. Install [fnm](https://fnm.vercel.app), then `fnm use`.      |
 | pnpm   | `10.11.0`                | `corepack enable` picks this up from `packageManager`.                   |
 | Docker | recent                   | Compose v2 plugin; also required to run the test suite (Testcontainers). |
 | Caddy  | 2.x                      | Only needed once, to trust the local CA (below).                         |
@@ -17,6 +17,33 @@ is; this file is _how to build and work on it_. The design lives in
 ## One-time local setup
 
 Everything here only needs to be done once per machine.
+
+### 0. Install fnm and activate Node 22
+
+[fnm](https://fnm.vercel.app) (Fast Node Manager) manages Node versions via
+shims that work in every shell context — including git hooks — without any
+manual sourcing.
+
+```bash
+brew install fnm          # or: curl -fsSL https://fnm.vercel.app/install | bash
+```
+
+Add the shell integration to your profile (once; adjust for your shell):
+
+```bash
+# ~/.zshrc (or ~/.bashrc)
+eval "$(fnm env --use-on-cd --shell zsh)"
+```
+
+Then activate the pinned version for this repo:
+
+```bash
+fnm install   # installs the version from .nvmrc (22.22.3)
+fnm use
+```
+
+After this, `node` in any shell — including git hooks run by lefthook — resolves
+to the project-pinned version automatically.
 
 ### 1. Route the dev hostname to loopback
 
@@ -51,7 +78,6 @@ cp .env.example .env
 | `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | github.com/settings/developers → tickr OAuth App                        |
 | `SESSION_SIGNING_KEY`                | generate: `openssl rand -hex 32`                                        |
 | `MASSIVE_API_KEY`                    | massive.com dashboard (backfill)                                        |
-| `KAGGLE_USERNAME` / `KAGGLE_API_KEY` | kaggle.com account settings (one-time bulk backfill)                    |
 | `ADMIN_BOOTSTRAP`                    | `provider:subject` pairs granted admin on first login, e.g. `github:42` |
 
 `PUBLIC_BASE_URL=https://local.tickr.keithheacock.com` is already the default.
@@ -95,15 +121,12 @@ A working sign-in lands you at `/portfolio` with a `tickr_sid` cookie set.
 
 ### Bootstrap market data
 
-Price data loads in phases (see [TODO/06](TODO/06-backfill-and-daily-price.md)):
+The worker runs the Massive backfill and the post-close session update on its
+own schedule once symbols are seeded. To bootstrap manually:
 
 ```bash
-pnpm run kaggle:backfill     # one-time historical bulk import (CSV → price_bar)
-# then set BACKFILL_START_DATE=2024-07-06 so the worker's Massive job fills only the gap
+pnpm backfill    # migrate → seed universe → backfill prices via Massive, then exit
 ```
-
-The worker runs the Massive backfill and the post-close session update (also
-Massive) on its own schedule once symbols are seeded.
 
 ## Deployment
 
@@ -126,7 +149,7 @@ apps/web/            # React + Vite SPA
 packages/shared-types/  # OpenAPI doc + generated TS types, shared across the wire
 compose/             # docker-compose.yml + Caddyfile
 schema/              # vendored upstream OpenAPI specs (massive)
-scripts/             # dev-up, kaggle-backfill, deploy, backup helpers
+scripts/             # dev-up, deploy, backup helpers
 docs/                # design documents
 TODO/                # per-slice implementation playbooks
 ```
