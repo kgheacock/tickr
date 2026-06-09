@@ -97,7 +97,10 @@ export function StrategyPage() {
 
   const handleLogout = useCallback(async () => {
     await client.logout();
-    await queryClient.invalidateQueries({ queryKey: ['me'] });
+    // Clear the cached session so `user` flips to null immediately. Invalidating
+    // would refetch /me, but a failed (401) refetch retains the last successful
+    // data, leaving LandingPage to bounce us back to /market.
+    queryClient.setQueryData(['me'], null);
     navigate('/', { replace: true });
   }, [queryClient, navigate]);
 
