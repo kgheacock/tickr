@@ -1,6 +1,6 @@
 # 11 — Frontend SPA
 
-> **Status:** pending • **Depends on:** 16
+> **Status:** done • **Depends on:** 16 • **PR:** https://github.com/kgheacock/tickr/pull/27
 >
 > **Re-scoped by the platform pivot (item 16):** the portfolio view, order
 > ticket, and leaderboard below are game constructs that no longer exist.
