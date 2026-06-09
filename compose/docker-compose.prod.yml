@@ -1,0 +1,94 @@
+# Production overlay. Layered on top of docker-compose.yml:
+#   docker compose -f compose/docker-compose.yml -f compose/docker-compose.prod.yml \
+#     --env-file /srv/tickr/secrets/tickr.env up -d
+#
+# What this overlay does (TODO/12 item 8):
+#   - Pins built images by tag (TICKR_IMAGE_TAG = the deployed commit SHA); no
+#     ":latest". `build:` is kept so a fresh host can build locally before a
+#     registry exists — set TICKR_IMAGE_TAG=local for hand builds.
+#   - api/worker/bot run the self-contained `prod` Dockerfile target (no source
+#     bind-mounts, no watch — those live only in the dev overlay).
+#   - Loads production secrets from /srv/tickr/secrets/tickr.env (chmod 600).
+#   - Caddy serves the prebuilt SPA (baked into the web image) and the prod
+#     Caddyfile; issues real TLS via Let's Encrypt.
+#   - Resource limits sized for a Hetzner CX22 (2 vCPU / 4 GB). See docs/runbook.md.
+#   - Postgres data on a named volume bound to /srv/tickr/data/pg on the host.
+#
+# No host ports are published for postgres/redis/api here — only Caddy's 80/443
+# (inherited from the base file). External nmap should show 22/80/443 only.
+
+services:
+  postgres:
+    image: timescale/timescaledb-ha:pg16
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1536M
+
+  redis:
+    image: redis:7-alpine
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  api:
+    build:
+      target: prod
+    image: ghcr.io/kgheacock/tickr-api:${TICKR_IMAGE_TAG:-local}
+    env_file:
+      - /srv/tickr/secrets/tickr.env
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 512M
+
+  worker:
+    build:
+      target: prod
+    image: ghcr.io/kgheacock/tickr-api:${TICKR_IMAGE_TAG:-local}
+    env_file:
+      - /srv/tickr/secrets/tickr.env
+    deploy:
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 512M
+
+  bot:
+    build:
+      target: prod
+    image: ghcr.io/kgheacock/tickr-api:${TICKR_IMAGE_TAG:-local}
+    env_file:
+      - /srv/tickr/secrets/tickr.env
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  caddy:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    image: ghcr.io/kgheacock/tickr-web:${TICKR_IMAGE_TAG:-local}
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+volumes:
+  # Bind the postgres named volume to a known host path so backups and disk
+  # sizing are predictable. Create it first: mkdir -p /srv/tickr/data/pg
+  tickr-pg-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /srv/tickr/data/pg

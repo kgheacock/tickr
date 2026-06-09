@@ -1,0 +1,37 @@
+# Production Caddyfile. Differs from the dev Caddyfile only in the site address
+# and that it serves the prebuilt SPA from /srv (baked into the web image) — dev
+# proxies the Vite dev server instead. Caddy obtains and renews real TLS certs
+# from Let's Encrypt automatically on first request.
+{
+	# ACME account contact; Let's Encrypt uses it for expiry notices.
+	email ops@keithheacock.com
+	# No admin endpoint published in prod (the dev overlay exposes :2019 locally).
+	admin off
+}
+
+# Redirect the www host to the apex.
+www.tickr.keithheacock.com {
+	redir https://tickr.keithheacock.com{uri} permanent
+}
+
+tickr.keithheacock.com {
+	encode zstd gzip
+
+	# HSTS: 1 year, include subdomains, preload-eligible.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+
+	handle /ws/* {
+		reverse_proxy api:3000
+	}
+
+	# SPA: serve static assets, falling back to index.html for client routes.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -92,13 +92,16 @@ First-run host setup (one `/etc/hosts` entry, trusting Caddy's local CA, and
 filling in OAuth + market-data keys) lives in
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-<!-- TODO: Once TODO/12-deployment.md lands, add a deployment / hosting section
-     here — production URL, sizing, monitoring, and load-testing notes drawn from
-     its findings. -->
-> **Hosting & deployment:** production runs the same Compose stack on a single
-> Hetzner VPS behind Caddy-issued TLS. Detailed sizing, monitoring, and
-> load-testing notes will be filled in from
-> [`TODO/12-deployment.md`](TODO/12-deployment.md) once that slice ships.
+> **Hosting & deployment:** production lives at
+> [`https://tickr.keithheacock.com`](https://tickr.keithheacock.com) and runs the
+> same Compose stack on a single Hetzner CX22 VPS behind Caddy-issued TLS, with
+> off-VPS nightly Postgres backups and a one-command, auto-rolling-back deploy
+> (`scripts/deploy.sh`). The base compose file is deployment-neutral; dev and
+> prod each layer an overlay (`compose/docker-compose.dev.yml` /
+> `compose/docker-compose.prod.yml`). Full procedure — provisioning, secrets,
+> bring-up, backups/restore drills, security checks, VPS sizing, and the
+> monitoring/load-testing gaps still open — is in
+> [`docs/runbook.md`](docs/runbook.md).
 
 ---
 

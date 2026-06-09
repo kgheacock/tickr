@@ -1,6 +1,7 @@
 # 12 — Deployment
 
-> **Status:** pending • **Depends on:** 01, 03, 10, 11, 19
+> **Status:** infrastructure-as-code complete; runtime DoD pending a live VPS •
+> **Depends on:** 01, 03, 10, 11, 19
 
 ## Goal
 
@@ -122,5 +123,46 @@ restore drill, and a one-command deploy from a fresh git pull.
 - [ ] Document sizing & hosting concerns surfaced during this work: monitoring
       / alerting coverage, load-testing results, and VPS resource sizing
       (CPU/mem headroom under realistic load, when to scale up off the CX22).
-- [ ] Feed those deployment findings back into `README.md` and
+- [x] Feed those deployment findings back into `README.md` and
       `CONTRIBUTING.md`, replacing the placeholder deployment TODOs in each.
+
+> The remaining unchecked boxes require the live Hetzner VPS (TLS issuance,
+> `docker compose ps healthy`, nightly upload, a real restore drill, external
+> `nmap`) and are verified by following `docs/runbook.md` during stand-up. The
+> code, compose overlays, scripts, CI, and runbook to make each pass are in
+> place and were validated locally (image builds, both prod/dev `compose config`,
+> `caddy validate`, prettier, `bash -n`).
+
+## Implementation notes & deviations from the playbook
+
+These were chosen against the actual codebase; reviewers should weigh them:
+
+1. **Compose split into base + dev/prod overlays.** Compose *appends* `ports`
+   and `volumes` across `-f` files (no removal), so dev source-mounts and host
+   port publishing could not simply be "removed" by the prod overlay. The base
+   file is now deployment-neutral; a new `compose/docker-compose.dev.yml` re-adds
+   the dev conveniences (`pnpm dev` passes it automatically). This is what makes
+   the security DoD (`nmap` shows only 22/80/443) achievable — Docker's
+   published ports bypass UFW, so postgres/redis/api must not be published at all.
+2. **Prod runs via `tsx`, not `tsc → node dist`.** `@tickr/shared-types` ships
+   raw TS as its `main`, and the whole repo runs on tsx; a compiled path would
+   need a shared-types build refactor. The prod Dockerfile target is
+   self-contained (no source mounts, no watch) and runs `tsx src/index.ts`.
+3. **Data audit + migrations run in the api container, not on the host.**
+   Provisioning (step 1) installs only Docker — no Node/pnpm — so the literal
+   `pnpm tsx scripts/data-audit.ts` on the host won't run. `deploy.sh` mounts
+   `scripts/` into the api container instead.
+4. **smoke.sh `/admin/ops` check is opt-in.** `requireAdmin` is session-cookie
+   only (no bearer/API token exists in v1), so the ops freshness check runs only
+   when `SMOKE_ADMIN_COOKIE` is supplied. The field asserted is
+   `eodUpdateLagSec` (the API's real field), not the playbook's `lastSnapshotAt`
+   (which doesn't exist — item 16 re-targeted snapshot lag to the EOD cron).
+5. **SPA is baked into the Caddy image** (`apps/web/Dockerfile` final stage is
+   now `caddy:2-alpine` with `dist` at `/srv`) so there is no running `web`
+   service — matching the `docker compose ps` list. CI pushes it as
+   `ghcr.io/kgheacock/tickr-web`.
+6. **Open gap — the `bot` role.** Base compose defines a `bot` service
+   (`ROLE=bot`), but `apps/api/src/index.ts` only handles `api`/`worker` and
+   exits non-zero otherwise, so `bot` will restart-loop and the "bot healthy"
+   DoD cannot pass until the role is implemented (a separate slice). Flagged in
+   the runbook.

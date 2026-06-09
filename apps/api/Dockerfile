@@ -5,10 +5,18 @@
 #   ROLE=worker — scheduled background jobs (backfill, daily price, snapshots)
 #   ROLE=bot    — bot runner
 #
-# Dev cadence: bind-mount source over /app/apps/api/src and run `tsx watch`
-# via the compose `command:`. Production builds are layered on in item 12.
+# Two build targets:
+#   --target dev  (default) — source is bind-mounted over /app/apps/api/src by
+#                 the dev compose overlay and run with `tsx watch`.
+#   --target prod — self-contained: source + deps baked in, no bind mounts, no
+#                 watch. Run via `tsx src/index.ts`. The repo ships its workspace
+#                 packages as raw TS (`@tickr/shared-types` main = src/index.ts),
+#                 so prod runs through tsx rather than a tsc → node dist step.
+#
+# `dev` is the last stage so a build with no `target:` (the base compose) keeps
+# producing the dev image; the prod overlay opts in with `target: prod`.
 
-FROM node:22-alpine
+FROM node:22-alpine AS base
 
 RUN corepack enable pnpm
 
@@ -30,4 +38,11 @@ WORKDIR /app/apps/api
 
 EXPOSE 3000
 
+# Production image: self-contained, no source mounts, no file watcher.
+FROM base AS prod
+ENV NODE_ENV=production
+CMD ["pnpm", "run", "start:prod"]
+
+# Dev image (default target): tsx watch, source bind-mounted by the dev overlay.
+FROM base AS dev
 CMD ["pnpm", "run", "dev"]

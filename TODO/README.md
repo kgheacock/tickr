@@ -34,7 +34,7 @@ of each file as you go.
 | 09 | [WebSocket gateway](09-websocket-gateway.md) | 04, 07, 08 | [done](https://github.com/kgheacock/tickr/pull/21) |
 | 10 | [Observability + admin](10-observability-and-admin.md) | 04, 16 | [done](https://github.com/kgheacock/tickr/pull/36) |
 | 11 | [Frontend SPA](11-frontend.md) | 16 | [done](https://github.com/kgheacock/tickr/pull/27) |
-| 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11, 19 | pending |
+| 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11, 19 | [in review](https://github.com/kgheacock/tickr/pull/39) |
 | 13 | [Massive client](13-massive-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/9) |
 | 14 | ~~Kaggle client~~ (removed — see docs/11-data-audit-findings.md) | — | [removed](https://github.com/kgheacock/tickr/pull/29) |
 | 15 | [Migrate to pnpm](15-migrate-to-pnpm.md) | — | [done](https://github.com/kgheacock/tickr/pull/13) |

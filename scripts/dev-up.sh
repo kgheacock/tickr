@@ -6,7 +6,7 @@
 # Usage: pnpm dev [-- -y] [docker compose args]
 #   -y  kill any process already on port 5173 instead of erroring
 #
-# After startup: docker compose -f compose/docker-compose.yml logs -f
+# After startup: docker compose -f compose/docker-compose.yml -f compose/docker-compose.dev.yml logs -f
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -31,7 +31,7 @@ done
 echo "[dev-up] starting backend services..."
 # --renew-anon-volumes recreates the node_modules anonymous volumes so they
 # stay in sync with the rebuilt image after lockfile changes.
-docker compose -f compose/docker-compose.yml up --build --renew-anon-volumes -d ${COMPOSE_ARGS[@]+"${COMPOSE_ARGS[@]}"}
+docker compose -f compose/docker-compose.yml -f compose/docker-compose.dev.yml up --build --renew-anon-volumes -d ${COMPOSE_ARGS[@]+"${COMPOSE_ARGS[@]}"}
 
 VITE_PID=""
 
@@ -39,13 +39,13 @@ cleanup() {
   echo ""
   echo "[dev-up] stopping..."
   [[ -n "$VITE_PID" ]] && kill "$VITE_PID" 2>/dev/null || true
-  docker compose -f compose/docker-compose.yml stop
+  docker compose -f compose/docker-compose.yml -f compose/docker-compose.dev.yml stop
 }
 trap cleanup EXIT INT TERM
 
 # Stream API logs in full; Caddy filtered to errors only (its JSON uses "level":"error").
-docker compose -f compose/docker-compose.yml logs -f api >&2 &
-docker compose -f compose/docker-compose.yml logs -f caddy \
+docker compose -f compose/docker-compose.yml -f compose/docker-compose.dev.yml logs -f api >&2 &
+docker compose -f compose/docker-compose.yml -f compose/docker-compose.dev.yml logs -f caddy \
   | grep --line-buffered '"level":"error"' >&2 &
 
 echo "[dev-up] waiting for API on :3000..."

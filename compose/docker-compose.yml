@@ -1,5 +1,16 @@
 name: tickr
 
+# Base (deployment-neutral) stack. Bring it up with an environment overlay:
+#   dev:  docker compose -f compose/docker-compose.yml -f compose/docker-compose.dev.yml up
+#   prod: docker compose -f compose/docker-compose.yml -f compose/docker-compose.prod.yml up
+#
+# Dev-only concerns live in the dev overlay, NOT here, because compose overlays
+# *append* to `ports`/`volumes` rather than replacing them — so anything dev-only
+# left in the base would leak into prod (published DB ports, source bind-mounts).
+# Keep this file free of host port publishing for postgres/redis/api and free of
+# source bind-mounts; the dev overlay adds them back. See compose/Caddyfile and
+# the prod overlay for the proxy.
+
 services:
   postgres:
     image: timescale/timescaledb-ha:pg16
@@ -8,8 +19,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-tickr}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tickr}
       POSTGRES_DB: ${POSTGRES_DB:-tickr}
-    ports:
-      - '5432:5432'
     volumes:
       - tickr-pg-data:/home/postgres/pgdata/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
@@ -26,8 +35,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - '6379:6379'
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -40,26 +47,18 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file:
-      - ../.env
+      - path: ../.env
+        required: false
     environment:
       ROLE: api
       DATABASE_URL: postgres://${POSTGRES_USER:-tickr}:${POSTGRES_PASSWORD:-tickr}@postgres:5432/${POSTGRES_DB:-tickr}
       REDIS_URL: redis://redis:6379
       PORT: '3000'
-    ports:
-      - '3000:3000'
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ../apps/api/src:/app/apps/api/src
-      - ../packages/shared-types/src:/app/packages/shared-types/src
-      # Anonymous volumes: shadow host node_modules with the image's Linux-built
-      # deps. Recreated on `up --build` so dep changes pick up cleanly.
-      - /app/node_modules
-      - /app/apps/api/node_modules
 
   worker:
     build:
@@ -67,7 +66,8 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file:
-      - ../.env
+      - path: ../.env
+        required: false
     environment:
       ROLE: worker
       DATABASE_URL: postgres://${POSTGRES_USER:-tickr}:${POSTGRES_PASSWORD:-tickr}@postgres:5432/${POSTGRES_DB:-tickr}
@@ -77,11 +77,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ../apps/api/src:/app/apps/api/src
-      - ../packages/shared-types/src:/app/packages/shared-types/src
-      - /app/node_modules
-      - /app/apps/api/node_modules
 
   bot:
     build:
@@ -89,7 +84,8 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     env_file:
-      - ../.env
+      - path: ../.env
+        required: false
     environment:
       ROLE: bot
       DATABASE_URL: postgres://${POSTGRES_USER:-tickr}:${POSTGRES_PASSWORD:-tickr}@postgres:5432/${POSTGRES_DB:-tickr}
@@ -99,11 +95,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ../apps/api/src:/app/apps/api/src
-      - ../packages/shared-types/src:/app/packages/shared-types/src
-      - /app/node_modules
-      - /app/apps/api/node_modules
 
   caddy:
     image: caddy:2-alpine
@@ -111,7 +102,6 @@ services:
     ports:
       - '80:80'
       - '443:443'
-      - '2019:2019'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
