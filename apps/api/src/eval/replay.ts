@@ -10,6 +10,8 @@ import {
   computeNewAvgCost,
   subtractQuantity,
 } from '../trading/money.js';
+import { isEtfHandle, normalizeHandle, etfKey } from '../etf/resolve.js';
+import { etfSeries } from '../etf/series.js';
 
 /**
  * Staleness window for point-in-time fills. Mirrors the (now-removed) live
@@ -66,10 +68,18 @@ function equityAt(
  * before the order's `at`. Writes nothing to the DB.
  */
 export async function replay(req: EvaluateRequest): Promise<EvaluateResponse> {
-  const symbols = [...new Set(req.orders.map((o) => o.symbol.toUpperCase()))];
+  // Normalize handles: ETF handles → "etf:<key>"; real symbols → uppercase.
+  const symbols = [
+    ...new Set(req.orders.map((o) => normalizeHandle(o.symbol))),
+  ];
+
+  const etfHandles = symbols.filter(isEtfHandle);
+  const realSymbols = symbols.filter((s) => !isEtfHandle(s));
 
   const barsBySymbol = new Map<string, Bar[]>();
-  if (symbols.length > 0) {
+
+  // Load real symbol bars (full history for point-in-time fill).
+  if (realSymbols.length > 0) {
     const { rows } = await pool.query<{
       symbol: string;
       ts: Date;
@@ -79,12 +89,34 @@ export async function replay(req: EvaluateRequest): Promise<EvaluateResponse> {
          FROM price_bar
         WHERE symbol = ANY($1)
         ORDER BY symbol, ts`,
-      [symbols],
+      [realSymbols],
     );
     for (const r of rows) {
       const list = barsBySymbol.get(r.symbol) ?? [];
       list.push({ tsMs: r.ts.getTime(), close: r.close });
       barsBySymbol.set(r.symbol, list);
+    }
+  }
+
+  // Load ETF synthetic series for each handle.
+  // Use the full history (from epoch to now) so the point-in-time fill works.
+  if (etfHandles.length > 0) {
+    const earliest = '1970-01-01T00:00:00Z';
+    const latest = new Date().toISOString();
+    for (const handle of etfHandles) {
+      try {
+        const bars = await etfSeries(pool, etfKey(handle), {
+          from: earliest,
+          to: latest,
+        });
+        barsBySymbol.set(
+          handle,
+          bars.map((b) => ({ tsMs: Date.parse(b.ts), close: b.close })),
+        );
+      } catch {
+        // ETF not found — the orders using this handle will be rejected as
+        // SYMBOL_NOT_TRADEABLE (barsBySymbol has no entry for the handle).
+      }
     }
   }
 
@@ -98,7 +130,7 @@ export async function replay(req: EvaluateRequest): Promise<EvaluateResponse> {
   const equityCurve: EvaluateResponse['equityCurve'] = [];
 
   for (const { o } of indexed) {
-    const symbol = o.symbol.toUpperCase();
+    const symbol = normalizeHandle(o.symbol);
     const atMs = Date.parse(o.at);
     const bars = barsBySymbol.get(symbol) ?? [];
     const bar = barAtOrBefore(bars, atMs);

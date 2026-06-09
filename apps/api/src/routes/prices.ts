@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import type { PricesResponse, PriceBar } from '@tickr/shared-types';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../auth/middleware.js';
+import { isEtfHandle, normalizeHandle, etfKey } from '../etf/resolve.js';
+import { etfSeries } from '../etf/series.js';
 
 /** Corpus size cap — documented in openapi.yaml (`/prices`). */
 export const MAX_PRICE_SYMBOLS = 100;
@@ -53,33 +55,53 @@ export async function loadPrices(q: PricesQuery): Promise<PricesResponse> {
   const from = new Date(fromMs).toISOString();
   const to = new Date(toMs).toISOString();
 
-  const requested = [...new Set(q.symbols.map((s) => s.toUpperCase()))];
+  // Normalize: ETF handles become "etf:<key>"; everything else is uppercased.
+  const requested = [...new Set(q.symbols.map(normalizeHandle))];
   if (requested.length > MAX_PRICE_SYMBOLS) {
     throw new RangeError(`at most ${MAX_PRICE_SYMBOLS} symbols`);
   }
 
-  // Which requested symbols actually exist in the corpus.
-  const { rows: known } = await pool.query<{ symbol: string }>(
-    `SELECT symbol FROM universe_symbol WHERE symbol = ANY($1)`,
-    [requested],
-  );
-  const knownSet = new Set(known.map((r) => r.symbol));
+  const etfHandles = requested.filter(isEtfHandle);
+  const realSymbols = requested.filter((s) => !isEtfHandle(s));
 
   const series: PricesResponse['series'] = {};
-  if (knownSet.size > 0) {
-    const { rows } = await pool.query<BarRow>(
-      `SELECT symbol, ts, open, high, low, close, volume
-         FROM price_bar
-        WHERE symbol = ANY($1) AND ts BETWEEN $2 AND $3
-        ORDER BY symbol, ts`,
-      [[...knownSet], from, to],
+
+  // Resolve real symbols from price_bar.
+  if (realSymbols.length > 0) {
+    const { rows: known } = await pool.query<{ symbol: string }>(
+      `SELECT symbol FROM universe_symbol WHERE symbol = ANY($1)`,
+      [realSymbols],
     );
-    for (const r of rows) {
-      (series[r.symbol] ??= []).push(serializeBar(r));
+    const knownSet = new Set(known.map((r) => r.symbol));
+
+    if (knownSet.size > 0) {
+      const { rows } = await pool.query<BarRow>(
+        `SELECT symbol, ts, open, high, low, close, volume
+           FROM price_bar
+          WHERE symbol = ANY($1) AND ts BETWEEN $2 AND $3
+          ORDER BY symbol, ts`,
+        [[...knownSet], from, to],
+      );
+      for (const r of rows) {
+        (series[r.symbol] ??= []).push(serializeBar(r));
+      }
     }
   }
 
-  // Unknown symbols, plus known-but-no-bars-in-window symbols, are "missing".
+  // Resolve ETF handles to synthetic series.
+  for (const handle of etfHandles) {
+    try {
+      const bars = await etfSeries(pool, etfKey(handle), { from, to });
+      if (bars.length > 0) {
+        series[handle] = bars;
+      }
+      // If no bars in window, the handle lands in `missing` below.
+    } catch {
+      // ETF not found or invalid — lands in `missing`.
+    }
+  }
+
+  // Unknown/empty symbols land in `missing`.
   const missing = requested.filter((s) => !(s in series));
 
   return { from, to, series, missing };
