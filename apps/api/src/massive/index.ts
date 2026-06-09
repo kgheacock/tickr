@@ -4,5 +4,9 @@ if (process.env['ROLE'] !== 'worker') {
   );
 }
 
-export { massiveGet, MassiveRateLimitError } from './client.js';
+export {
+  massiveGet,
+  massiveGetPaged,
+  MassiveRateLimitError,
+} from './client.js';
 export { acquire } from './bucket.js';

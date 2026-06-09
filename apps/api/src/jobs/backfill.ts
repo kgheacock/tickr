@@ -1,28 +1,18 @@
 import type { Redis } from 'ioredis';
 import pLimit from 'p-limit';
 import { pool } from '../db/pool.js';
-import { massiveGet } from '../massive/client.js';
+import { massiveGetPaged } from '../massive/client.js';
 import type { components } from '../massive/massive.gen.js';
 import { insertBars } from './insertBars.js';
 import { loadUniverse } from '../routes/universe.js';
 import { publishUniverseUpdated } from '../events/publisher.js';
-import {
-  aggPath,
-  safeWindowDays,
-  MULTIPLIER,
-  TIMESPAN,
-  MAX_RESULTS,
-} from './granularity.js';
+import { aggPath, MULTIPLIER, TIMESPAN, MAX_RESULTS } from './granularity.js';
 
 type AggregatesResponse = components['schemas']['AggregatesResponse'];
+type Bar = NonNullable<AggregatesResponse['results']>[number];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CONCURRENCY = parseInt(process.env['BACKFILL_CONCURRENCY'] ?? '4', 10);
-// Requested window is clamped to the configured resolution's safe size so a
-// single request stays under the 50k-result cap (see granularity.ts).
-const WINDOW_DAYS = safeWindowDays(
-  parseInt(process.env['BACKFILL_WINDOW_DAYS'] ?? '365', 10),
-);
 const LOOKBACK_DAYS = parseInt(
   process.env['BACKFILL_LOOKBACK_DAYS'] ?? '730',
   10,
@@ -78,46 +68,31 @@ function formatDuration(ms: number): string {
 async function backfillSymbol(redis: Redis, symbol: string): Promise<void> {
   const nowMs = Date.now();
   const startMs = resolveStartMs(nowMs);
-  const windowMs = WINDOW_DAYS * DAY_MS;
+  const from = toDateStr(startMs);
+  const to = toDateStr(nowMs);
 
-  log('info', 'symbol start', { symbol });
+  log('info', 'symbol start', { symbol, from, to });
 
-  let fromMs = startMs;
+  // One request over the whole range, followed through next_url. The free tier
+  // pages at ~4k bars, so a 2-year 15-min pull is ~8 pages; massiveGetPaged
+  // streams each page to insertBars, so memory stays bounded and a crash mid-
+  // pagination leaves the already-inserted pages (ON CONFLICT keeps re-runs
+  // idempotent).
   let totalBars = 0;
   let newestMs = 0;
-  while (fromMs < nowMs) {
-    const toMs = Math.min(fromMs + windowMs, nowMs);
-    const from = toDateStr(fromMs);
-    const to = toDateStr(toMs);
-
-    const response = await massiveGet<AggregatesResponse>(
-      redis,
-      aggPath(symbol, from, to),
-      // Windows are sized under the free tier's ~4.1k-bar response page (see
-      // granularity.ts MAX_RESULTS); pass that as the limit too so the request
-      // never truncates within a window. The client does not follow next_url.
-      { sort: 'asc', limit: MAX_RESULTS },
-    );
-
-    const results = response.results ?? [];
-    if (results.length > 0) {
+  await massiveGetPaged<Bar>(
+    redis,
+    aggPath(symbol, from, to),
+    { sort: 'asc', limit: MAX_RESULTS },
+    async (results) => {
       await insertBars(symbol, results);
       totalBars += results.length;
       for (const bar of results) if (bar.t > newestMs) newestMs = bar.t;
-      log('info', 'window inserted', {
-        symbol,
-        from,
-        to,
-        bars: results.length,
-      });
-    } else {
-      log('info', 'window no_data', { symbol, from, to });
-    }
+      log('info', 'page inserted', { symbol, bars: results.length });
+    },
+  );
 
-    fromMs = toMs;
-  }
-
-  // Masking guard: a symbol that produced zero bars across every window has no
+  // Masking guard: a symbol that produced zero bars across every page has no
   // data at the source (wrong ticker, delisted). Do NOT mark it backfilled —
   // leave it backfilled = false so it surfaces honestly and the bootstrap prune
   // can remove it, instead of being silently marked complete-but-empty.
@@ -168,7 +143,6 @@ export async function runBackfill(redis: Redis): Promise<BackfillResult> {
     total,
     multiplier: MULTIPLIER,
     timespan: TIMESPAN,
-    windowDays: WINDOW_DAYS,
     lookbackDays: LOOKBACK_DAYS,
   });
 

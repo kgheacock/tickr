@@ -169,14 +169,19 @@ describe('backfill', () => {
     );
 
     const startMs = Date.now() - 60 * 24 * 60 * 60 * 1000;
-    const bars = makeBars(3, startMs);
+    // Page 1 carries a next_url; the crash happens when the client follows it,
+    // after page 1's bars are already inserted.
+    const page1 = {
+      ...makeBars(3, startMs),
+      next_url: 'https://api.massive.com/next',
+    };
 
     let firstCall = true;
     const mockFetch = vi.fn().mockImplementation(() => {
       if (firstCall) {
         firstCall = false;
         return Promise.resolve(
-          new Response(JSON.stringify(bars), { status: 200 }),
+          new Response(JSON.stringify(page1), { status: 200 }),
         );
       }
       return Promise.reject(new Error('simulated crash'));
@@ -198,22 +203,16 @@ describe('backfill', () => {
     const { rows: barRows } = await client.query<{ count: string }>(
       `SELECT count(*) FROM price_bar WHERE symbol = 'GOOG'`,
     );
-    expect(Number(barRows[0]?.count)).toBe(3);
+    expect(Number(barRows[0]?.count)).toBe(3); // page 1 survived the crash
 
-    // Second run (restart): re-processes but ON CONFLICT keeps row count the same.
+    // Second run (restart): single complete page (no next_url). ON CONFLICT
+    // keeps the row count the same and the symbol is marked backfilled.
     vi.resetModules();
-    let secondFirst = true;
-    const mockFetch2 = vi.fn().mockImplementation(() => {
-      if (secondFirst) {
-        secondFirst = false;
-        return Promise.resolve(
-          new Response(JSON.stringify(bars), { status: 200 }),
-        );
-      }
-      return Promise.resolve(
-        new Response(JSON.stringify(makeEmpty()), { status: 200 }),
+    const mockFetch2 = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify(makeBars(3, startMs)), { status: 200 }),
       );
-    });
     vi.stubGlobal('fetch', mockFetch2);
 
     const { runBackfill: runBackfill2 } =
@@ -236,6 +235,37 @@ describe('backfill — masking, data_status, ticker, limit', () => {
   function respond(body: object) {
     return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
   }
+
+  it('follows next_url across pages and inserts every page', async () => {
+    await client.query(
+      `INSERT INTO universe_symbol (symbol, backfilled) VALUES ('PAGED', false)`,
+    );
+    const base = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const HOUR = 60 * 60 * 1000;
+    // Three pages of 2 distinct bars each; only the first two carry a next_url.
+    const pages = [
+      { ...makeBars(2, base), next_url: 'https://api.massive.com/p2' },
+      {
+        ...makeBars(2, base + 2 * HOUR),
+        next_url: 'https://api.massive.com/p3',
+      },
+      { ...makeBars(2, base + 4 * HOUR) }, // no next_url → last page
+    ];
+    let i = 0;
+    const mockFetch = vi
+      .fn()
+      .mockImplementation(() => respond(pages[i++] ?? makeEmpty()));
+    vi.stubGlobal('fetch', mockFetch);
+
+    const { runBackfill } = await import('../../src/jobs/backfill.js');
+    await runBackfill(redis);
+
+    expect(mockFetch).toHaveBeenCalledTimes(3); // page1 + 2 next_url follows
+    const { rows } = await client.query<{ count: string }>(
+      `SELECT count(*) FROM price_bar WHERE symbol = 'PAGED'`,
+    );
+    expect(Number(rows[0]?.count)).toBe(6); // all three pages inserted
+  });
 
   it('does NOT mark a zero-bar symbol backfilled (masking fix, Finding 4)', async () => {
     await client.query(
@@ -333,7 +363,7 @@ describe('backfill — masking, data_status, ticker, limit', () => {
 
     const url = String(mockFetch.mock.calls[0]?.[0]);
     expect(url).toContain('/ticker/BRK.B/'); // translated for the API
-    expect(url).toContain('limit=4000'); // the free tier's per-page cap
+    expect(url).toContain('limit=50000'); // requested page size (capped by tier)
     // Bars stored under the canonical hyphen symbol, not the API form.
     const { rows } = await client.query<{ count: string }>(
       `SELECT count(*) FROM price_bar WHERE symbol = 'BRK-B'`,
