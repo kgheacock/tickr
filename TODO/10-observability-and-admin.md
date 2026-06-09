@@ -1,6 +1,6 @@
 # 10 — Observability + admin
 
-> **Status:** pending • **Depends on:** 04, 16
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/36) • **Depends on:** 04, 16
 
 ## Goal
 

@@ -32,7 +32,7 @@ of each file as you go.
 | 07 | [Trading engine](07-trading-engine.md) | 03, 04, 06 | [done](https://github.com/kgheacock/tickr/pull/12) |
 | 08 | ~~Snapshots + leaderboard~~ (superseded by item 16) | 06, 07 | [removed](https://github.com/kgheacock/tickr/pull/25) |
 | 09 | [WebSocket gateway](09-websocket-gateway.md) | 04, 07, 08 | [done](https://github.com/kgheacock/tickr/pull/21) |
-| 10 | [Observability + admin](10-observability-and-admin.md) | 04, 06, 08 | pending |
+| 10 | [Observability + admin](10-observability-and-admin.md) | 04, 16 | [done](https://github.com/kgheacock/tickr/pull/36) |
 | 11 | [Frontend SPA](11-frontend.md) | 16 | [done](https://github.com/kgheacock/tickr/pull/27) |
 | 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11, 19 | pending |
 | 13 | [Massive client](13-massive-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/9) |
