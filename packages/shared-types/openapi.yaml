@@ -333,6 +333,111 @@ components:
           items:
             $ref: '#/components/schemas/EquityPoint'
 
+    # --- ETF ---
+
+    EtfWeight:
+      type: object
+      required: [symbol, weight]
+      properties:
+        symbol:
+          type: string
+        weight:
+          type: number
+          description: Normalized weight (sums to 1.0 across all members)
+
+    Etf:
+      type: object
+      required: [id, key, name, baseValue, baseDate, createdAt, weights]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Stable handle, e.g. "big7" (referenced as "etf:big7" in /prices and /evaluate)
+        name:
+          type: string
+        baseValue:
+          type: integer
+          format: int64
+          description: Index level (cents) at baseDate — synthetic series is normalized to this
+        baseDate:
+          type: string
+          format: date
+          description: t0 the series is rebased to
+        createdAt:
+          type: string
+          format: date-time
+        weights:
+          type: array
+          items:
+            $ref: '#/components/schemas/EtfWeight'
+          description: Normalized weights (sum to 1.0)
+
+    EtfSummary:
+      type: object
+      required: [id, key, name, memberCount, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        name:
+          type: string
+        memberCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateEtfRequest:
+      type: object
+      required: [key, name, weights]
+      properties:
+        key:
+          type: string
+          description: Stable handle, e.g. "big7"
+        name:
+          type: string
+        baseDate:
+          type: string
+          format: date
+          description: t0 for normalization (defaults to earliest common bar date)
+        baseValue:
+          type: integer
+          format: int64
+          description: Cents; index level at baseDate (default 10000 = $100.00)
+        weights:
+          type: object
+          additionalProperties:
+            type: number
+          description: >-
+            symbol → positive weight (need not sum to 1; normalized at compute time)
+
+    EtfListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EtfSummary'
+
+    EtfReturnsResponse:
+      type: object
+      required: [from, to, returnPct]
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        returnPct:
+          type: ['number', 'null']
+          description: Total return % of the ETF over the window; null if no bars in window
+
     # --- Admin ---
 
     UpsertUniverseRequest:
@@ -525,6 +630,114 @@ paths:
                 $ref: '#/components/schemas/EvaluateResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --- ETFs ---
+
+  /etfs:
+    get:
+      summary: List defined ETFs
+      operationId: listEtfs
+      tags: [etf]
+      responses:
+        '200':
+          description: ETF list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EtfListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      summary: Define a new ETF from a weighted set of universe symbols
+      operationId: createEtf
+      tags: [etf]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEtfRequest'
+      responses:
+        '201':
+          description: ETF created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Etf'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /etfs/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+        description: ETF key, e.g. "big7"
+    get:
+      summary: Get ETF detail including normalized weights
+      operationId: getEtf
+      tags: [etf]
+      responses:
+        '200':
+          description: ETF detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Etf'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /etfs/{key}/returns:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Total return % of the ETF over a window
+      operationId: getEtfReturns
+      tags: [etf]
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ISO date/datetime; window start
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ISO date/datetime; window end (default now)
+      responses:
+        '200':
+          description: ETF return over the window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EtfReturnsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         '500':

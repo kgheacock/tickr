@@ -22,9 +22,17 @@ export type FinalPosition = components['schemas']['FinalPosition'];
 export type EquityPoint = components['schemas']['EquityPoint'];
 export type EvaluateResponse = components['schemas']['EvaluateResponse'];
 
+// --- ETF ---
+export type EtfWeight = components['schemas']['EtfWeight'];
+export type Etf = components['schemas']['Etf'];
+export type EtfSummary = components['schemas']['EtfSummary'];
+export type EtfListResponse = components['schemas']['EtfListResponse'];
+export type EtfReturnsResponse = components['schemas']['EtfReturnsResponse'];
+
 // --- Request types ---
 export type EvaluateOrder = components['schemas']['EvaluateOrder'];
 export type EvaluateRequest = components['schemas']['EvaluateRequest'];
+export type CreateEtfRequest = components['schemas']['CreateEtfRequest'];
 export type UpsertUniverseRequest =
   components['schemas']['UpsertUniverseRequest'];
 export type BackfillRequest = components['schemas']['BackfillRequest'];

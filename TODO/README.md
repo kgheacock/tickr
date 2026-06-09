@@ -39,7 +39,7 @@ of each file as you go.
 | 14 | ~~Kaggle client~~ (removed — see docs/11-data-audit-findings.md) | — | [removed](https://github.com/kgheacock/tickr/pull/29) |
 | 15 | [Migrate to pnpm](15-migrate-to-pnpm.md) | — | [done](https://github.com/kgheacock/tickr/pull/13) |
 | 16 | [Platformize the API](16-platformize-api.md) | 03, 04, 06, 09 | [done](https://github.com/kgheacock/tickr/pull/25) |
-| 17 | [ETF over a weighted corpus](17-etf-weighted-corpus.md) | 16 | pending |
+| 17 | [ETF over a weighted corpus](17-etf-weighted-corpus.md) | 16 | [done](https://github.com/kgheacock/tickr/pull/31) |
 | 18 | [Display: ETF editor, strategy & plot](18-display-logic.md) | 16, 17 | pending |
 | 19 | [Data audit](19-data-audit.md) | 06, 13 | [done](https://github.com/kgheacock/tickr/pull/28) |
 

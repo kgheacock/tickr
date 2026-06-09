@@ -140,6 +140,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/etfs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List defined ETFs */
+        get: operations["listEtfs"];
+        put?: never;
+        /** Define a new ETF from a weighted set of universe symbols */
+        post: operations["createEtf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/etfs/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ETF key, e.g. "big7" */
+                key: string;
+            };
+            cookie?: never;
+        };
+        /** Get ETF detail including normalized weights */
+        get: operations["getEtf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/etfs/{key}/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        /** Total return % of the ETF over a window */
+        get: operations["getEtfReturns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/universe/upsert": {
         parameters: {
             query?: never;
@@ -346,6 +403,71 @@ export interface components {
             /** @description Return vs startingCash */
             totalReturnPct: number | null;
             equityCurve: components["schemas"]["EquityPoint"][];
+        };
+        EtfWeight: {
+            symbol: string;
+            /** @description Normalized weight (sums to 1.0 across all members) */
+            weight: number;
+        };
+        Etf: {
+            /** Format: uuid */
+            id: string;
+            /** @description Stable handle, e.g. "big7" (referenced as "etf:big7" in /prices and /evaluate) */
+            key: string;
+            name: string;
+            /**
+             * Format: int64
+             * @description Index level (cents) at baseDate — synthetic series is normalized to this
+             */
+            baseValue: number;
+            /**
+             * Format: date
+             * @description t0 the series is rebased to
+             */
+            baseDate: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description Normalized weights (sum to 1.0) */
+            weights: components["schemas"]["EtfWeight"][];
+        };
+        EtfSummary: {
+            /** Format: uuid */
+            id: string;
+            key: string;
+            name: string;
+            memberCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateEtfRequest: {
+            /** @description Stable handle, e.g. "big7" */
+            key: string;
+            name: string;
+            /**
+             * Format: date
+             * @description t0 for normalization (defaults to earliest common bar date)
+             */
+            baseDate?: string;
+            /**
+             * Format: int64
+             * @description Cents; index level at baseDate (default 10000 = $100.00)
+             */
+            baseValue?: number;
+            /** @description symbol → positive weight (need not sum to 1; normalized at compute time) */
+            weights: {
+                [key: string]: number;
+            };
+        };
+        EtfListResponse: {
+            items: components["schemas"]["EtfSummary"][];
+        };
+        EtfReturnsResponse: {
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** @description Total return % of the ETF over the window; null if no bars in window */
+            returnPct: number | null;
         };
         UpsertUniverseRequest: {
             /** @description Symbols to add or update in the corpus */
@@ -600,6 +722,112 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listEtfs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ETF list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EtfListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createEtf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEtfRequest"];
+            };
+        };
+        responses: {
+            /** @description ETF created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Etf"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getEtf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description ETF key, e.g. "big7" */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ETF detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Etf"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getEtfReturns: {
+        parameters: {
+            query?: {
+                /** @description ISO date/datetime; window start */
+                from?: string;
+                /** @description ISO date/datetime; window end (default now) */
+                to?: string;
+            };
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ETF return over the window */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EtfReturnsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalServerError"];
         };
