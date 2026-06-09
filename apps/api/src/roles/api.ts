@@ -14,9 +14,14 @@ import { registerEvaluateRoute } from '../routes/evaluate.js';
 import { registerEtfsRoutes } from '../routes/etfs.js';
 import { registerStrategyRoutes } from '../routes/strategies.js';
 import { registerAdminOpsRoute } from '../routes/admin/ops.js';
+import { registerAdminLogsRoutes } from '../routes/admin/logs.js';
 import { getRedis } from '../redis.js';
 import { attachWsGateway } from '../ws/server.js';
-import { baseLoggerOptions, genRequestId } from '../log/logger.js';
+import {
+  baseLoggerOptions,
+  genRequestId,
+  getLogDestination,
+} from '../log/logger.js';
 import { registerMetrics } from '../metrics/middleware.js';
 
 const PORT = Number(process.env['PORT'] ?? 3000);
@@ -26,7 +31,9 @@ export async function runApi(): Promise<void> {
   await runMigrations();
 
   const fastify = Fastify({
-    logger: baseLoggerOptions,
+    // Same options as the worker's rootLogger, but routed through the shared
+    // stdout+Redis destination so api request logs reach the admin viewer too.
+    logger: { ...baseLoggerOptions, stream: getLogDestination() },
     genReqId: genRequestId,
     requestIdLogLabel: 'request_id',
   });
@@ -63,6 +70,7 @@ export async function runApi(): Promise<void> {
       await registerEtfsRoutes(api);
       await registerStrategyRoutes(api);
       await registerAdminOpsRoute(api);
+      await registerAdminLogsRoutes(api);
     },
     { prefix: '/api/v1' },
   );
