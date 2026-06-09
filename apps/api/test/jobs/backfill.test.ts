@@ -333,7 +333,7 @@ describe('backfill — masking, data_status, ticker, limit', () => {
 
     const url = String(mockFetch.mock.calls[0]?.[0]);
     expect(url).toContain('/ticker/BRK.B/'); // translated for the API
-    expect(url).toContain('limit=50000'); // full cap, not the 5000 default
+    expect(url).toContain('limit=4000'); // the free tier's per-page cap
     // Bars stored under the canonical hyphen symbol, not the API form.
     const { rows } = await client.query<{ count: string }>(
       `SELECT count(*) FROM price_bar WHERE symbol = 'BRK-B'`,

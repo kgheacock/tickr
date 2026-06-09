@@ -93,9 +93,9 @@ async function backfillSymbol(redis: Redis, symbol: string): Promise<void> {
     const response = await massiveGet<AggregatesResponse>(
       redis,
       aggPath(symbol, from, to),
-      // limit defaults to 5000, NOT the 50k cap windows are sized against;
-      // without it a full window truncates to the first 5000 bars (no
-      // pagination), leaving gaps. See granularity.ts MAX_RESULTS.
+      // Windows are sized under the free tier's ~4.1k-bar response page (see
+      // granularity.ts MAX_RESULTS); pass that as the limit too so the request
+      // never truncates within a window. The client does not follow next_url.
       { sort: 'asc', limit: MAX_RESULTS },
     );
 

@@ -47,18 +47,23 @@ export function estBarsPerDay(): number {
   }
 }
 
-// Hard per-request result cap for the aggregates API. The `limit` query param
-// defaults to 5000, NOT this cap (see massive.gen.ts) — callers MUST pass
-// `limit: MAX_RESULTS` or a window sized against this cap silently truncates to
-// the first 5000 bars (the client does not paginate), manufacturing gaps.
-export const MAX_RESULTS = 50_000;
-const SAFE_FILL = 0.9; // headroom under the hard cap
+// Effective per-response bar cap on the free Massive tier. The `limit` query
+// param is documented as max 50000, but the free tier ignores it and caps each
+// response at ~4.1k bars, returning a `next_url` for the rest (verified
+// empirically: a 730-day 15-min AAPL request pages at ~4165 bars/page). The
+// client does NOT follow next_url, so any window that would exceed one page is
+// silently truncated — the true cause of the audit's near-zero-coverage gaps.
+// We size windows under this real cap instead of paginating (matching the
+// existing design); raise it / add next_url pagination if the tier changes.
+export const MAX_RESULTS = 4_000;
+const SAFE_FILL = 0.9; // headroom under the per-page cap
 
 /**
- * Clamp a requested window (in days) so one aggregates request can't exceed the
- * 50k-result cap at the configured resolution. Treating every calendar day as a
- * trading day overcounts (only ~5/7 trade), which only makes the window safer.
- * Coarse resolutions (hour/day) are unaffected; fine ones auto-shrink.
+ * Clamp a requested window (in days) so one aggregates request stays within a
+ * single response page at the configured resolution (no next_url, no silent
+ * truncation). Treating every calendar day as a trading day overcounts (only
+ * ~5/7 trade), which only makes the window safer. Coarse resolutions (hour/day)
+ * are unaffected; fine ones auto-shrink (15-min → ~56-day windows).
  */
 export function safeWindowDays(requestedDays: number): number {
   const perDay = Math.max(1, estBarsPerDay());
