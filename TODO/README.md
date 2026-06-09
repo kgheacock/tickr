@@ -36,7 +36,7 @@ of each file as you go.
 | 11 | [Frontend SPA](11-frontend.md) | 16 | pending |
 | 12 | [Deployment](12-deployment.md) | 01, 03, 10, 11, 19 | pending |
 | 13 | [Massive client](13-massive-client.md) | 01 | [done](https://github.com/kgheacock/tickr/pull/9) |
-| 14 | ~~Kaggle client~~ (removed — see docs/11-data-audit-findings.md) | — | removed |
+| 14 | ~~Kaggle client~~ (removed — see docs/11-data-audit-findings.md) | — | [removed](https://github.com/kgheacock/tickr/pull/29) |
 | 15 | [Migrate to pnpm](15-migrate-to-pnpm.md) | — | [done](https://github.com/kgheacock/tickr/pull/13) |
 | 16 | [Platformize the API](16-platformize-api.md) | 03, 04, 06, 09 | [done](https://github.com/kgheacock/tickr/pull/25) |
 | 17 | [ETF over a weighted corpus](17-etf-weighted-corpus.md) | 16 | pending |
