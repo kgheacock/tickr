@@ -123,6 +123,11 @@ class ApiClient {
   logout(): Promise<void> {
     return this.request<void>('POST', '/auth/logout');
   }
+
+  /** DEV-ONLY: mint a real session via the server's gated dev-login backdoor. */
+  devLogin(): Promise<void> {
+    return this.request<void>('POST', '/auth/dev-login');
+  }
 }
 
 export const client = new ApiClient();

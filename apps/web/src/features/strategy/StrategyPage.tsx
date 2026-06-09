@@ -1,7 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
+import { useLogout } from '../../auth/useLogout';
 import { client, ApiClientError } from '../../api/client';
 import { LineChart } from '../../components/LineChart';
 import { formatCents } from '../../lib/format';
@@ -23,7 +24,6 @@ function formatPct(pct: number | null): string {
 
 export function StrategyPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [activeKey, setActiveKey] = useState('sp500');
@@ -95,14 +95,7 @@ export function StrategyPage() {
       }),
   });
 
-  const handleLogout = useCallback(async () => {
-    await client.logout();
-    // Clear the cached session so `user` flips to null immediately. Invalidating
-    // would refetch /me, but a failed (401) refetch retains the last successful
-    // data, leaving LandingPage to bounce us back to /market.
-    queryClient.setQueryData(['me'], null);
-    navigate('/', { replace: true });
-  }, [queryClient, navigate]);
+  const handleLogout = useLogout();
 
   const updateWeight = (symbol: string, weight: string) =>
     setMembers((ms) =>

@@ -42,6 +42,7 @@ of each file as you go.
 | 17 | [ETF over a weighted corpus](17-etf-weighted-corpus.md) | 16 | [done](https://github.com/kgheacock/tickr/pull/31) |
 | 18 | [Display: ETF editor, strategy & plot](18-display-logic.md) | 16, 17 | [done](https://github.com/kgheacock/tickr/pull/33) |
 | 19 | [Data audit](19-data-audit.md) | 06, 13 | [done](https://github.com/kgheacock/tickr/pull/28) |
+| 21 | [Logout fix + dev auth](21-logout-fix-and-dev-auth.md) | 04, 11, 12 | [in review](https://github.com/kgheacock/tickr/pull/44) |
 
 > **Pivot (items 16–18):** the project is being re-scoped from a trading
 > *game* to a market-data + returns *platform*. Item 16 keeps the data corpus
