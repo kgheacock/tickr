@@ -12,9 +12,21 @@ export const MULTIPLIER = parseInt(
 );
 export const TIMESPAN = process.env['BACKFILL_TIMESPAN'] ?? 'minute';
 
+/**
+ * Translate our canonical ticker to the form the Massive/Polygon aggregates API
+ * expects. We store share-class suffixes with a hyphen (the S&P/CSV convention,
+ * e.g. `BRK-B`, `MOG-A`) but Polygon uses a period (`BRK.B`, `MOG.A`). Building
+ * the URL literally returns 0 results, so the symbol gets marked backfilled with
+ * no bars (data audit Finding 4). We translate only at the request boundary so
+ * the hyphen stays canonical everywhere else (DB rows, FKs, API responses).
+ */
+export function toMassiveTicker(symbol: string): string {
+  return symbol.replace('-', '.');
+}
+
 /** Massive/Polygon aggregates path at the configured resolution. */
 export function aggPath(symbol: string, from: string, to: string): string {
-  return `/v2/aggs/ticker/${symbol}/range/${MULTIPLIER}/${TIMESPAN}/${from}/${to}`;
+  return `/v2/aggs/ticker/${toMassiveTicker(symbol)}/range/${MULTIPLIER}/${TIMESPAN}/${from}/${to}`;
 }
 
 // Upper bound of bars per trading day for the configured resolution, using the
@@ -35,7 +47,11 @@ export function estBarsPerDay(): number {
   }
 }
 
-const RESULT_CAP = 50_000;
+// Hard per-request result cap for the aggregates API. The `limit` query param
+// defaults to 5000, NOT this cap (see massive.gen.ts) — callers MUST pass
+// `limit: MAX_RESULTS` or a window sized against this cap silently truncates to
+// the first 5000 bars (the client does not paginate), manufacturing gaps.
+export const MAX_RESULTS = 50_000;
 const SAFE_FILL = 0.9; // headroom under the hard cap
 
 /**
@@ -46,6 +62,6 @@ const SAFE_FILL = 0.9; // headroom under the hard cap
  */
 export function safeWindowDays(requestedDays: number): number {
   const perDay = Math.max(1, estBarsPerDay());
-  const maxDays = Math.max(1, Math.floor((RESULT_CAP * SAFE_FILL) / perDay));
+  const maxDays = Math.max(1, Math.floor((MAX_RESULTS * SAFE_FILL) / perDay));
   return Math.min(requestedDays, maxDays);
 }

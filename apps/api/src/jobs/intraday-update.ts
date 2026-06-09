@@ -5,7 +5,7 @@ import { massiveGet } from '../massive/client.js';
 import type { components } from '../massive/massive.gen.js';
 import { insertBars } from './insertBars.js';
 import { publishPricesUpdated } from '../events/publisher.js';
-import { aggPath, MULTIPLIER, TIMESPAN } from './granularity.js';
+import { aggPath, MULTIPLIER, TIMESPAN, MAX_RESULTS } from './granularity.js';
 
 type AggregatesResponse = components['schemas']['AggregatesResponse'];
 
@@ -47,7 +47,14 @@ function toDateStr(ms: number): string {
  */
 export async function runIntradayUpdate(redis: Redis): Promise<void> {
   const { rows } = await pool.query<{ symbol: string }>(
-    `SELECT symbol FROM universe_symbol WHERE backfilled = true ORDER BY symbol`,
+    // Mirror the playable corpus (loadUniverse): skip removed and depth-capped
+    // ('incomplete') symbols so the session updater doesn't append fresh bars to
+    // an excluded symbol's stale tail or waste fetches on it.
+    `SELECT symbol FROM universe_symbol
+      WHERE backfilled = true
+        AND removed_at IS NULL
+        AND data_status IS DISTINCT FROM 'incomplete'
+      ORDER BY symbol`,
   );
 
   if (rows.length === 0) {
@@ -75,7 +82,9 @@ export async function runIntradayUpdate(redis: Redis): Promise<void> {
     const response = await massiveGet<AggregatesResponse>(
       redis,
       aggPath(symbol, from, to),
-      { sort: 'asc' },
+      // Match the backfill: pass the real cap so a busy session is never
+      // truncated to the 5000-bar default (see granularity.ts MAX_RESULTS).
+      { sort: 'asc', limit: MAX_RESULTS },
     );
 
     const results = response.results ?? [];

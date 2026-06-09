@@ -131,4 +131,21 @@ describe('loadUniverse', () => {
     const res = await loadUniverse(false);
     expect(res.items.map((i) => i.symbol)).toEqual(['AAPL']);
   });
+
+  it('excludes data_status = incomplete symbols from the corpus', async () => {
+    await seedSymbol('AAPL', true);
+    await client.query(
+      `INSERT INTO universe_symbol (symbol, backfilled, data_status)
+       VALUES ('SHORT', true, 'incomplete')`,
+    );
+
+    const { loadUniverse } = await import('../../src/routes/universe.js');
+    expect((await loadUniverse(false)).items.map((i) => i.symbol)).toEqual([
+      'AAPL',
+    ]);
+    // …and from the backfilled-only view games actually consume.
+    expect((await loadUniverse(true)).items.map((i) => i.symbol)).toEqual([
+      'AAPL',
+    ]);
+  });
 });
