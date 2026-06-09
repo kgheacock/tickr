@@ -22,7 +22,7 @@
 | Surface | File | Reviewed | Items |
 |---|---|---|---|
 | Landing | `src/pages/LandingPage.tsx` | — | — |
-| Login | `src/pages/LoginPage.tsx` | ✅ 2026-06-09 | 3 (all implemented) |
+| ~~Login~~ (removed — folded into Landing) | ~~`src/pages/LoginPage.tsx`~~ | ✅ 2026-06-09 | 3 (all implemented) |
 | Market | `src/features/market/MarketPage.tsx` | — | — |
 | Strategy | `src/features/strategy/StrategyPage.tsx` | — | — |
 | Shared (LineChart, App shell) | `src/components/`, `src/App.tsx` | — | — |
@@ -89,16 +89,16 @@
     default).
   - **Action item for user:** provide the form URL once created, so the future
     agent can wire the CTA `href`.
-- **Status:** [~] partial (2026-06-09) — CTA implemented in `LoginPage.tsx`:
-  "tickr is in closed beta. Request access" below the OAuth buttons, styled
-  as a secondary text link (`.beta`/`.requestAccess`). The `href` points at a
-  **placeholder** `REQUEST_ACCESS_URL` constant marked with a `TODO`. Two
-  things still open for the user:
-  1. **Provide the real form URL** (Google-account-gated form) to replace the
-     placeholder.
-  2. **Placement question** — CTA currently lives on the login page only. The
-     item notes it might also belong on the landing hero; confirm whether to
-     add it there too.
+- **Placement (resolved 2026-06-09):** the dedicated **login page was removed
+  altogether**; sign-in moved into a **header** on the landing page, and the
+  "Request access" CTA now lives in the landing hero. So the CTA is on Landing,
+  not a separate login surface.
+- **Status:** [x] done (2026-06-09) — CTA implemented in `LandingPage.tsx`:
+  "tickr is in closed beta. Request access" in the hero below the tagline,
+  styled as a secondary text link (`.beta`/`.requestAccess`). The `href` now
+  points at the real Google-account-gated form
+  (`https://forms.gle/xhPHtFmtSvHByEqa6`); the placeholder is gone. Placement
+  resolved (see above).
 
 ### 3. Use branded OAuth provider buttons (Google / GitHub)  ·  `major`
 - **Surface:** Login
