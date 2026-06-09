@@ -130,16 +130,22 @@ pnpm backfill    # migrate → seed universe → backfill prices via Massive, th
 
 ## Deployment
 
-<!-- TODO: Expand this section from the results of TODO/12-deployment.md —
-     production runbook, VPS sizing, monitoring/alerting, and load-testing
-     findings. The DoD of TODO/12 owns feeding those findings back here. -->
+Production runs the same Compose stack on a single Hetzner CX22 VPS with
+Caddy-issued TLS, off-VPS nightly Postgres backups, and a one-command deploy that
+audits the data, migrates, and smoke-tests with automatic rollback. The host
+needs only Docker + the compose plugin — every Node task runs inside the `api`
+container.
 
-Production runs the same Compose stack on a single Hetzner VPS with Caddy-issued
-TLS, off-VPS Postgres backups, and a one-command deploy. The full runbook —
-first-time bring-up, secrets, backups/restore drills, sizing, monitoring, and
-load-testing results — is being built in
-[`TODO/12-deployment.md`](TODO/12-deployment.md) and will be summarized here once
-that slice ships.
+Compose is split: `compose/docker-compose.yml` is the deployment-neutral base,
+with a `docker-compose.dev.yml` overlay (source bind-mounts, host ports, `tsx
+watch`) and a `docker-compose.prod.yml` overlay (pinned images, resource limits,
+secrets, no published DB ports). `pnpm dev` already passes the dev overlay.
+
+The full operational runbook — provisioning, secrets, first-time bring-up,
+backups/restore drills, security-posture checks, VPS sizing, and the open
+monitoring/alerting + load-testing gaps — is in
+[`docs/runbook.md`](docs/runbook.md). The deploy/build pipeline is
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
 ## Repository layout
 
