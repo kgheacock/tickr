@@ -8,8 +8,10 @@
  *   OHLC_VIOLATION        - low > open/close, open/close > high, or volume < 0
  *   DUPLICATE_BAR         - > 1 bar in a single granularity bucket (symbol, bucket)
  *   CROSS_SOURCE_DEVIATION - daily-bar close and intraday-bar close diverge > threshold
- *   INTRADAY_GAP          - gap > INTRADAY_GAP_MINUTES between consecutive within-session
- *                           bars, OR no session-hour bars at all (e.g. only daily data)
+ *   INTRADAY_GAP          - gap > INTRADAY_GAP_MINUTES between consecutive bars within the
+ *                           NYSE regular session (09:30–16:00 ET, DST-correct), OR no
+ *                           regular-session bars at all (e.g. only daily data). The session
+ *                           window deliberately excludes sparse pre/post-market bars.
  *
  * Warnings (informational, do not cause a non-zero exit):
  *   NOT_BACKFILLED        - symbol in universe_symbol with backfilled = false
@@ -34,6 +36,8 @@
  *   AUDIT_SPLIT_TOLERANCE            default 0.03 — tolerance around known split ratios
  *   AUDIT_INTRADAY_GAP_MINUTES       default 30 — max gap (minutes) allowed between
  *                                    consecutive within-session bars (skipped for day/week/month)
+ *   AUDIT_SESSION_OPEN_ET            default 09:30 — NYSE regular-session open (ET wall-clock)
+ *   AUDIT_SESSION_CLOSE_ET           default 16:00 — NYSE regular-session close (ET wall-clock)
  *
  * Exits 0 on a clean corpus (errors = 0), non-zero if any errors are found.
  */
@@ -112,6 +116,8 @@ async function main(): Promise<void> {
       process.env['AUDIT_INTRADAY_GAP_MINUTES'] ?? '30',
       10,
     ),
+    sessionOpenEt: process.env['AUDIT_SESSION_OPEN_ET'] ?? '09:30',
+    sessionCloseEt: process.env['AUDIT_SESSION_CLOSE_ET'] ?? '16:00',
   };
 
   const pool = new pg.Pool({
