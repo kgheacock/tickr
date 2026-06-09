@@ -110,3 +110,15 @@ Live updates over the WS gateway. CSS Modules + hand-rolled components.
 - [ ] No `any` types in committed code.
 - [ ] All money is rendered via `formatCents`; the page passes the
       "no-floats-in-JS-financial-math" lint rule.
+
+## Follow-ups
+
+- [ ] **Replace the chart provider.** `MarketPage` uses TradingView
+      [`lightweight-charts`](https://github.com/tradingview/lightweight-charts),
+      whose license requires a visible attribution notice. We don't want to
+      carry that notice, so migrate the market chart off it. Item 18 already
+      ships an attribution-free, dependency-free SVG chart
+      (`apps/web/src/components/LineChart.tsx`) for its performance plot —
+      extend that (or another MIT-licensed, no-attribution lib) to cover the
+      market candlestick/line view and drop the `lightweight-charts`
+      dependency.

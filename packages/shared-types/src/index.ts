@@ -29,10 +29,16 @@ export type EtfSummary = components['schemas']['EtfSummary'];
 export type EtfListResponse = components['schemas']['EtfListResponse'];
 export type EtfReturnsResponse = components['schemas']['EtfReturnsResponse'];
 
+// --- Strategy / backtest ---
+export type StrategyLeg = components['schemas']['StrategyLeg'];
+export type StrategyBacktestResponse =
+  components['schemas']['StrategyBacktestResponse'];
+
 // --- Request types ---
 export type EvaluateOrder = components['schemas']['EvaluateOrder'];
 export type EvaluateRequest = components['schemas']['EvaluateRequest'];
 export type CreateEtfRequest = components['schemas']['CreateEtfRequest'];
+export type SmaStrategyRequest = components['schemas']['SmaStrategyRequest'];
 export type UpsertUniverseRequest =
   components['schemas']['UpsertUniverseRequest'];
 export type BackfillRequest = components['schemas']['BackfillRequest'];

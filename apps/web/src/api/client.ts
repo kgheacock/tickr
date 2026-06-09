@@ -4,6 +4,11 @@ import type {
   PricesResponse,
   EvaluateRequest,
   EvaluateResponse,
+  Etf,
+  EtfListResponse,
+  CreateEtfRequest,
+  SmaStrategyRequest,
+  StrategyBacktestResponse,
   ApiError,
 } from '@tickr/shared-types';
 
@@ -93,6 +98,26 @@ class ApiClient {
 
   evaluate(req: EvaluateRequest): Promise<EvaluateResponse> {
     return this.request<EvaluateResponse>('POST', '/evaluate', req);
+  }
+
+  listEtfs(): Promise<EtfListResponse> {
+    return this.request<EtfListResponse>('GET', '/etfs');
+  }
+
+  getEtf(key: string): Promise<Etf> {
+    return this.request<Etf>('GET', `/etfs/${encodeURIComponent(key)}`);
+  }
+
+  createEtf(req: CreateEtfRequest): Promise<Etf> {
+    return this.request<Etf>('POST', '/etfs', req);
+  }
+
+  runSmaStrategy(req: SmaStrategyRequest): Promise<StrategyBacktestResponse> {
+    return this.request<StrategyBacktestResponse>(
+      'POST',
+      '/strategies/sma-crossover',
+      req,
+    );
   }
 
   logout(): Promise<void> {

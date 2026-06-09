@@ -4,6 +4,7 @@ import { RequireAuth } from './auth/RequireAuth';
 import { LandingPage } from './pages/LandingPage';
 import { LoginPage } from './pages/LoginPage';
 import { MarketPage } from './features/market/MarketPage';
+import { StrategyPage } from './features/strategy/StrategyPage';
 import styles from './App.module.css';
 
 export function App() {
@@ -18,6 +19,14 @@ export function App() {
             element={
               <RequireAuth>
                 <MarketPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/strategy"
+            element={
+              <RequireAuth>
+                <StrategyPage />
               </RequireAuth>
             }
           />

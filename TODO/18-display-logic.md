@@ -1,6 +1,6 @@
 # 18 — Display logic: ETF editor, strategy & performance plot
 
-> **Status:** pending • **Depends on:** 16, 17
+> **Status:** done • **Depends on:** 16, 17 • **PR:** https://github.com/kgheacock/tickr/pull/33
 >
 > Item 16 stops at the live-update spine (auth + CSRF + sessions + WS that
 > **logs to console**) with no display. This item is where that graduates
@@ -82,6 +82,11 @@ Render a performance plot of the chosen ETF under the strategy:
 - User-authored / configurable strategies (parameterized, then richer logic).
 - Market-cap or custom weighting schemes for the seeded S&P 500 ETF.
 - Live (WS-driven) re-evaluation as new daily bars arrive.
+- **Chart provider.** This item's plot uses a hand-rolled, dependency-free SVG
+  chart (`apps/web/src/components/LineChart.tsx`) precisely so it carries no
+  third-party attribution notice. The existing `MarketPage` still uses
+  TradingView `lightweight-charts` (attribution required); migrating it off is
+  tracked as a follow-up in [11-frontend.md](11-frontend.md).
 
 ## Relationship to item 11
 
@@ -91,10 +96,26 @@ of 11 or folds into it; keep the two consistent and avoid duplicate views.
 
 ## Definition of done
 
-- [ ] An `sp500` ETF is seeded (equal-weight over backfilled universe symbols)
+- [x] An `sp500` ETF is seeded (equal-weight over backfilled universe symbols)
       and fetchable via `GET /etfs/sp500`.
-- [ ] A user can fork `sp500`, edit members/weights, and save their own ETF.
-- [ ] The built-in SMA-crossover strategy produces an order series that runs
+- [x] A user can fork `sp500`, edit members/weights, and save their own ETF.
+- [x] The built-in SMA-crossover strategy produces an order series that runs
       through `POST /evaluate` and returns an equity curve for the ETF.
-- [ ] The client renders a performance plot of the ETF under the strategy,
+- [x] The client renders a performance plot of the ETF under the strategy,
       with a buy-and-hold baseline overlay and total-return %.
+
+## Implementation notes
+
+- **Seed:** `apps/api/src/bootstrap/seed-sp500.ts` (idempotent/refreshable,
+  equal-weight, `base_date` = latest member first-bar); wired into worker
+  startup. Skips when nothing is backfilled yet.
+- **Strategy:** pure module `apps/api/src/strategy/sma-crossover.ts`
+  (SMAs, order series, daily strategy + buy-and-hold equity curves, stats),
+  exposed via `POST /strategies/sma-crossover`
+  (`apps/api/src/routes/strategies.ts`). The route also replays the order
+  series through the `/evaluate` engine for faithful point-in-time fills; the
+  *plotted* curve is the dense daily series (the `/evaluate` equity curve is
+  one point per order and has no baseline).
+- **Client:** `apps/web/src/features/strategy/StrategyPage.tsx` (route
+  `/strategy`) — fork/edit basket, save ETF, run backtest, plot strategy vs
+  buy-and-hold with total-return % and max-drawdown headline stats.

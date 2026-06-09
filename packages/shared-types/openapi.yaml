@@ -438,6 +438,89 @@ components:
           type: ['number', 'null']
           description: Total return % of the ETF over the window; null if no bars in window
 
+    # --- Strategy / backtest ---
+
+    SmaStrategyRequest:
+      type: object
+      required: [etfKey]
+      properties:
+        etfKey:
+          type: string
+          description: ETF key to backtest (e.g. "sp500")
+        shortWindow:
+          type: integer
+          minimum: 1
+          description: Short SMA window in daily closes (default 20)
+        longWindow:
+          type: integer
+          minimum: 1
+          description: Long SMA window in daily closes (default 50)
+        startingCash:
+          type: integer
+          format: int64
+          description: Cents; starting cash for the backtest (default 1000000 = $10,000)
+        from:
+          type: string
+          description: ISO date/datetime; window start (default full series)
+        to:
+          type: string
+          description: ISO date/datetime; window end (default now)
+
+    StrategyLeg:
+      type: object
+      required: [equityCurve, totalReturnPct, maxDrawdownPct]
+      properties:
+        equityCurve:
+          type: array
+          items:
+            $ref: '#/components/schemas/EquityPoint'
+          description: Dense daily equity (cents) over the window
+        totalReturnPct:
+          type: ['number', 'null']
+          description: Total return % vs startingCash; null if no data
+        maxDrawdownPct:
+          type: ['number', 'null']
+          description: Largest peak-to-trough drawdown as a positive %; null if no data
+
+    StrategyBacktestResponse:
+      type: object
+      required:
+        [
+          etfKey,
+          shortWindow,
+          longWindow,
+          startingCash,
+          from,
+          to,
+          strategy,
+          buyHold,
+          orders,
+        ]
+      properties:
+        etfKey:
+          type: string
+        shortWindow:
+          type: integer
+        longWindow:
+          type: integer
+        startingCash:
+          type: integer
+          format: int64
+        from:
+          type: string
+        to:
+          type: string
+        strategy:
+          $ref: '#/components/schemas/StrategyLeg'
+        buyHold:
+          $ref: '#/components/schemas/StrategyLeg'
+          description: Buy-and-hold baseline of the same ETF over the window
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluatedOrder'
+          description: Faithful point-in-time fills from replaying the order series through /evaluate
+
     # --- Admin ---
 
     UpsertUniverseRequest:
@@ -734,6 +817,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EtfReturnsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --- Strategy / backtest ---
+
+  /strategies/sma-crossover:
+    post:
+      summary: Backtest the built-in SMA-crossover strategy on an ETF
+      operationId: runSmaStrategy
+      tags: [strategy]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmaStrategyRequest'
+      responses:
+        '200':
+          description: Backtest result with strategy and buy-and-hold equity curves
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StrategyBacktestResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':

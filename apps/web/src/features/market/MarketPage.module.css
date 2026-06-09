@@ -23,6 +23,12 @@
   letter-spacing: -0.3px;
 }
 
+.navLink {
+  margin-right: auto;
+  margin-left: var(--space-5);
+  font-size: var(--font-size-sm);
+}
+
 .headerRight {
   display: flex;
   align-items: center;
