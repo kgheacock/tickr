@@ -172,7 +172,7 @@ and an ops view.
 |---|---|---|
 | POST | `/admin/universe/upsert` | Add or update S&P 500 membership rows |
 | POST | `/admin/universe/backfill` | Manually re-trigger backfill for a symbol |
-| GET | `/admin/ops` | Operational view (snapshot lag, market data 429s, queue depth) |
+| GET | `/admin/ops` | Operational view (EOD-update lag, market data 429s, queue depth, backfill remaining) |
 
 ```ts
 interface UpsertUniverseRequest {
@@ -180,12 +180,14 @@ interface UpsertUniverseRequest {
 }
 
 interface OpsResponse {
-  lastSnapshotAt: string | null;
-  snapshotLagSec: number | null;
+  lastEodUpdateAt: string | null;   // last successful EOD price-update run
+  eodUpdateLagSec: number | null;   // now - lastEodUpdateAt
   marketData429sLast24h: { massive: number };
-  jobQueueDepth: number;
-  backfillRemaining: number;  // count of universe_symbol where backfilled = false
+  jobQueueDepth: number;            // currently-held worker job locks
+  backfillRemaining: number;        // count of universe_symbol where backfilled = false
 }
+// Note: snapshots/leaderboard were dropped in the item-16 platform pivot, so
+// "snapshot lag" is re-targeted at the daily EOD price-update cron.
 ```
 
 ## 7. WebSocket
@@ -218,11 +220,13 @@ these to per-snapshot cadence.
 
 ## 8. Rate limiting
 
-- Order endpoints: stricter per-user limits (protects fairness).
-- All routes: per-IP limits to absorb bot/abuse traffic.
-- `429` returns `Retry-After`. Limits enforced via Redis counters.
-- Specific numeric limits: defined at implementation time
-  ([09-open-questions A1](09-open-questions.md)).
+- All routes: per-IP limits to absorb bot/abuse traffic (default 60 req/min).
+- Auth `start` routes: tighter per-IP cap (10 req/min) — these kick off OAuth.
+- Admin routes (`/admin/*`): explicit per-route cap (30 req/min).
+- `429` returns `Retry-After`. Enforced via `@fastify/rate-limit` backed by
+  Redis (so limits hold across api instances).
+- (The order-endpoint per-user cap from the original game design is gone —
+  orders were dropped in the item-16 platform pivot.)
 
 ## 9. v2+ / v3+ endpoint outlook
 

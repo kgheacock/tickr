@@ -12,6 +12,9 @@ import {
   MULTIPLIER,
   TIMESPAN,
 } from './granularity.js';
+import { jobLogger } from '../log/logger.js';
+
+const baseLog = jobLogger('backfill');
 
 type AggregatesResponse = components['schemas']['AggregatesResponse'];
 
@@ -38,9 +41,7 @@ function log(
   msg: string,
   extra?: object,
 ): void {
-  console[level](
-    JSON.stringify({ level, component: 'backfill', msg, ...extra }),
-  );
+  baseLog[level](extra ?? {}, msg);
 }
 
 function toDateStr(ms: number): string {

@@ -1,12 +1,34 @@
 # 10 — Observability + admin
 
-> **Status:** pending • **Depends on:** 04, 06, 08
+> **Status:** pending • **Depends on:** 04, 16
 
 ## Goal
 
-Structured JSON logs, an in-process metric set, an admin ops endpoint
-that surfaces health at a glance, per-route rate limiting, and the
-remaining admin endpoints (`/admin/universe/*`).
+Structured JSON logs, a small in-process metric set, and an admin ops
+endpoint that surfaces platform health at a glance, plus per-route rate
+limiting on the surviving admin endpoints.
+
+> **Re-scoped for the platform pivot (item 16).** This item was originally
+> written for the trading-game architecture (snapshots, leaderboard, orders,
+> bots, a Finnhub provider, and an Express-style middleware stack). Item 16
+> dropped the game surface and item 19/cleanup removed Finnhub + Kaggle, and
+> the service is Fastify with **two separate processes** (`ROLE=api` and
+> `ROLE=worker`). The aims below are the surviving observability/admin core,
+> re-targeted at what actually exists:
+>
+> - **No snapshots/leaderboard.** The closest health signal is the daily EOD
+>   price-update cron (`jobs/intraday-update.ts`, the `0 30 21 * * 1-5`
+>   firing). "Snapshot lag" becomes **EOD-update lag**.
+> - **No Finnhub.** Massive is the only external market-data provider.
+> - **No orders/portfolios.** The per-user order rate cap is gone; rate
+>   limiting is per-IP global + per-route caps on the auth and admin surface.
+> - **api and worker are separate processes.** An in-process metric registry
+>   in the api process cannot see worker-produced numbers (Massive calls/429s,
+>   EOD run, backfill). Those cross-process metrics live in **Redis**; the
+>   in-process registry is only for the api process's own HTTP counters.
+> - **Rate limiting already exists** via `@fastify/rate-limit` (global +
+>   per-route `config.rateLimit`). This item *tunes* it rather than building a
+>   parallel Lua sliding-window limiter.
 
 ## Pre-reads
 
@@ -16,80 +38,87 @@ remaining admin endpoints (`/admin/universe/*`).
   + rate-limiting policy.
 - [docs/01-architecture.md §4](../docs/01-architecture.md#4-cross-cutting-concerns-v1)
   — cross-cutting concerns table.
+- `apps/api/src/roles/api.ts`, `roles/worker.ts`, `index.ts` — the
+  api/worker split this item instruments.
+- `apps/api/src/massive/client.ts`, `jobs/scheduler.ts`,
+  `jobs/intraday-update.ts`, `jobs/backfill.ts` — the worker metric sources.
 
 ## Steps
 
-1. **Structured logging.** Use `pino` with a child logger per request and
-   per job. Required fields on every line: `level`, `ts`, `msg`, plus
-   `request_id` (HTTP) or `job_id` (worker). Redact `MASSIVE_API_KEY`,
-   `FINNHUB_API_KEY`, OAuth secrets, and the session cookie via `pino.redact`.
-2. **Request middleware.** Generate a `request_id` (UUID) per request;
-   attach to `req.log`. Log `req.method`, `req.url`, status, and
-   `duration_ms` on response. Skip body logging by default; gate behind
-   `LOG_LEVEL=debug`.
-3. **Metrics registry.** A tiny in-process registry — `Map<string,
-   number>` for counters + gauges. No Prometheus client in v1. Increment
-   sites:
-   - `http_requests_total{route,status}` — counter in the request
-     middleware.
-   - `http_request_duration_ms{route}` — last-N circular buffer for p50/p95.
-   - `finnhub_calls_total`, `finnhub_429_total` — in the Finnhub client
-     (item 05, daily price path).
-   - `massive_calls_total`, `massive_429_total` — in the Massive client
-     (item 13, backfill path).
-   - `backfill_remaining` — gauge updated by the backfill job (item 06).
-   - `daily_price_last_run_at`, `daily_price_duration_ms` — set by the
-     daily-price job (item 06).
-   - `snapshot_last_run_at`, `snapshot_duration_ms`,
-     `snapshot_lag_seconds` — set/computed by the snapshot job (item 08).
-   - `redis_queue_depth` — gauge polled every 30 s.
-   - `finnhub_bucket_remaining`, `massive_bucket_remaining` — gauges polled
-     every 5 s.
-4. **`GET /admin/ops`.** Returns `OpsResponse` from
-   [docs/03-api.md §6](../docs/03-api.md#6-admin-v1):
+1. **Structured logging.** A shared `pino` factory. Required fields on every
+   line: `level`, `time`, `msg`, plus `request_id` (HTTP) or `job_id`
+   (worker). The Fastify server uses the pino instance with a `genReqId` that
+   stamps a UUID `request_id` onto `req.log`. Worker components
+   (`scheduler`, `backfill`, `intraday-update`, `massive`, `alerts`) replace
+   their ad-hoc `console.log(JSON.stringify(...))` calls with a `job_id`-keyed
+   child logger. Redact the real leak paths via `pino.redact`:
+   `req.headers.authorization`, `req.headers.cookie`, and
+   `res.headers["set-cookie"]`. (The Massive client already keeps
+   `MASSIVE_API_KEY` out of log fields — keep it that way.)
+2. **Request logging.** Generate a `request_id` (UUID) per request; Fastify
+   attaches it to `req.log`. Method/url/status/`responseTime` are logged on
+   response by Fastify's default request logging. Body logging stays off
+   unless `LOG_LEVEL=debug`.
+3. **Metrics registry.** A tiny in-process registry — `Map<string, number>`
+   for counters + gauges and a last-N circular buffer for durations
+   (p50/p95). Lives in the api process. Increment sites:
+   - `http_requests_total{route,status}` — counter in an `onResponse` hook.
+   - `http_request_duration_ms{route}` — circular buffer for p50/p95.
+4. **Cross-process metrics (Redis).** Numbers produced in the worker but read
+   by the api process's `/admin/ops`:
+   - `massive_429` — a Redis ZSET of 429 event timestamps (incremented in the
+     Massive client). 24h window for ops; 5m window for the alerter.
+   - `massive_calls_total` — lifetime counter (Massive client).
+   - EOD run state — `metrics:eod:last_run_at`, `metrics:eod:duration_ms`,
+     `metrics:eod:bars_written` set by the EOD update job.
+   - `backfill_remaining` — derived on read from
+     `SELECT count(*) FROM universe_symbol WHERE backfilled = false`.
+   - `job_queue_depth` — count of currently-held job locks
+     (`massive:job:backfill`, `massive:job:session-update`).
+5. **`GET /admin/ops`.** Admin-only. Returns `OpsResponse`:
    ```ts
-   {
-     lastSnapshotAt: string | null;
-     snapshotLagSec: number | null;
-     marketData429sLast24h: { massive: number; finnhub: number };
-     jobQueueDepth: number;
-     backfillRemaining: number;
+   interface OpsResponse {
+     lastEodUpdateAt: string | null;   // last successful EOD price-update run
+     eodUpdateLagSec: number | null;   // now - lastEodUpdateAt
+     marketData429sLast24h: { massive: number };
+     jobQueueDepth: number;            // held job locks
+     backfillRemaining: number;        // universe_symbol where backfilled=false
    }
    ```
-   Reads from the metrics registry + 24-hour rolling counters in Redis
-   for `finnhub_429_total` and `massive_429_total`.
-5. **Rate limiting.** Redis-backed sliding-window counters via a Lua
-   script. Wire as middleware:
-   - Default per-IP cap: 60 req/min on all routes.
-   - Per-user cap on `POST /portfolios/:id/orders`: 30 req/min.
-   - Per-user cap on auth `start` routes: 10 req/min.
-   429 responses include `Retry-After`. Counts on the metrics registry.
-6. **`POST /admin/universe/upsert`** and `POST /admin/universe/backfill`
-   — already specified in item 06; this item wires the admin role check
-   middleware and rate limiting around them.
-7. **Email/Discord alerts (optional v1).** A tiny worker tick (every
-   5 min) checks:
-   - `snapshot_lag_seconds > 26 * 3600` → alert.
-   - `backfill_remaining > 0` and unchanged for 1 h → alert.
-   - `finnhub_429_total in last 5m > 0` or `massive_429_total in last 5m > 0` → alert.
-   POSTs to a Discord webhook (`ALERT_WEBHOOK_URL`) if set; otherwise
-   logs at `warn`.
-8. **Tests.**
+   Reads the Redis cross-process metrics (step 4) + the DB count. Gated by the
+   existing `requireAdmin` check (player → 403).
+6. **Rate limiting (tune, don't rebuild).** Keep `@fastify/rate-limit`. Back
+   it with Redis so limits hold across api instances. Tune to the spec intent:
+   - Default per-IP cap: 60 req/min (global).
+   - Auth `start` routes: 10 req/min.
+   - Admin routes (`/admin/*`): explicit `config.rateLimit`.
+   429 responses carry `Retry-After` (the plugin sets this).
+7. **`/admin/universe/*`** — already implemented (item 06/16). This item wires
+   the per-route rate limiting around them; the admin role check already
+   exists.
+8. **Alerts (optional v1).** A worker tick (every 5 min) checks:
+   - `eodUpdateLagSec > 26 * 3600` → alert (missed the daily run).
+   - `backfillRemaining > 0` and unchanged for 1 h → alert.
+   - Massive 429s in the last 5 min `> 0` → alert.
+   POSTs to a Discord webhook (`ALERT_WEBHOOK_URL`) if set; otherwise logs at
+   `warn`. Fires **once per stuck-state window** (a Redis flag per alert key,
+   cleared when the condition resolves).
+9. **Tests.**
    - Hitting a route updates `http_requests_total` and
      `http_request_duration_ms`.
-   - The 31st `POST /orders` in a minute by one user returns 429 with
-     `Retry-After`.
-   - `GET /admin/ops` requires admin role; player gets 403.
-   - With a faked clock pushing `lastSnapshotAt` 27 h into the past, the
+   - Logger redaction: `authorization`/`cookie`/`set-cookie` never appear in
+     a serialized log line.
+   - `GET /admin/ops` requires admin role; a player gets 403; an admin gets
+     the `OpsResponse` shape.
+   - With a faked clock pushing `lastEodUpdateAt` 27 h into the past, the
      alerter triggers exactly once per check window.
 
 ## Files to create
 
 - `apps/api/src/log/logger.ts`
-- `apps/api/src/log/middleware.ts`
 - `apps/api/src/metrics/registry.ts`
 - `apps/api/src/metrics/middleware.ts`
-- `apps/api/src/ratelimit/limiter.ts` (Lua script + helper)
+- `apps/api/src/metrics/redis.ts` (cross-process counters)
 - `apps/api/src/routes/admin/ops.ts`
 - `apps/api/src/alerts/checker.ts`
 - `apps/api/test/observability/*.test.ts`
@@ -97,12 +126,13 @@ remaining admin endpoints (`/admin/universe/*`).
 
 ## Definition of done
 
-- [ ] Every log line includes `request_id` or `job_id`; `FINNHUB_API_KEY`
-      and `MASSIVE_API_KEY` never appear in stdout (grep verifies after a
-      full flow).
-- [ ] `GET /admin/ops` (admin) returns realistic numbers after one full
-      daily cycle has run.
-- [ ] Player calling `/admin/ops` → 403.
-- [ ] Order spam from one user is throttled to ≤30/min; other users
-      unaffected.
-- [ ] Alerter logs (or sends) exactly one alert per stuck-state window.
+- [x] Every log line includes `request_id` or `job_id`; `authorization`,
+      `cookie`, and `set-cookie` are redacted; `MASSIVE_API_KEY` never appears
+      in stdout (logger redaction test).
+- [x] `GET /admin/ops` (admin) returns realistic numbers
+      (`lastEodUpdateAt`, `backfillRemaining`, `marketData429sLast24h`,
+      `jobQueueDepth`).
+- [x] Player calling `/admin/ops` → 403.
+- [x] Per-IP rate limiting is Redis-backed; auth-start and admin routes carry
+      explicit per-route caps; 429s include `Retry-After`.
+- [x] Alerter logs (or sends) exactly one alert per stuck-state window.
