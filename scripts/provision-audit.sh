@@ -25,7 +25,20 @@ SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-n
 bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 fails=0
 
-probe() { nc -z -G3 -w3 "$HOST" "$1" 2>/dev/null || nc -z -w3 "$HOST" "$1" 2>/dev/null; }
+# Bounded TCP connect (~3s) via bash /dev/tcp with a watchdog kill. nc's connect
+# timeout flags are not portable (BSD -G vs OpenBSD), and a firewall-DROPped port
+# makes a bare `nc -w` hang on connect() for ~75s — this stays fast and portable.
+probe() {
+  ( exec 3<>"/dev/tcp/${HOST}/$1" ) 2>/dev/null &
+  local pid=$!
+  ( sleep 3 && kill -9 "$pid" 2>/dev/null ) 2>/dev/null &
+  local wd=$!
+  if wait "$pid" 2>/dev/null; then
+    kill "$wd" 2>/dev/null
+    return 0
+  fi
+  return 1
+}
 
 # --- Local: external reachability (a mini nmap) --------------------------------
 bold "== External port probe ($HOST) =="
