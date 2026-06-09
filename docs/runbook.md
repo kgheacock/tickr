@@ -138,6 +138,20 @@ runcmd:
   - chmod 700 /srv/tickr/secrets
 ```
 
+**Verify provisioning.** Once the server is up (give cloud-init a minute to
+finish), confirm every step landed — from your workstation:
+
+```bash
+scripts/provision-audit.sh deploy@<VPS_IPv4>     # default host: deploy@49.13.210.41
+```
+
+It probes the public ports (expects only 22 open until the stack is up; flags
+5432/6379/2019 if ever reachable), confirms key-only SSH with root login refused,
+and checks `cloud-init status`, the `deploy` user + groups, sshd hardening,
+Docker + the compose plugin, the UFW rules, and the `/srv/tickr` layout. It is
+read-only and exits non-zero on any failure — green means you're clear to start
+§3.
+
 ## 2. DNS + TLS
 
 Point both hosts at the VPS. The `A` (IPv4) records are what make the site
