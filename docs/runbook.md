@@ -26,7 +26,9 @@ hands-on procedure. TODO/12 owns it.
 ## 1. Provision the VPS
 
 One-time, manual. Target: **Hetzner CX22** (2 vCPU / 4 GB / 40 GB) running
-**Debian 12**. Larger is fine; see [§10](#10-sizing-monitoring--load-testing).
+**Debian 12 or 13**. Larger is fine; see [§10](#10-sizing-monitoring--load-testing).
+(The host only runs Docker, so the Debian point release barely matters; on
+Debian 13 the `ssh` service is socket-activated, which the cloud-init handles.)
 
 ```bash
 # As root, immediately after first boot:
@@ -70,7 +72,7 @@ What to pick for each field in the Hetzner Cloud console (or `hcloud`/Terraform)
 | Option | Setting | Why |
 |---|---|---|
 | **Name** | `tickr-prod` | Hostname/console label. Use `tickr-staging` etc. if you add environments. |
-| **Image** | Debian 12 | Matches §1. |
+| **Image** | Debian 12 or 13 | Matches §1; host only runs Docker. |
 | **Type** | CX22 (shared vCPU) | See [§10](#10-sizing-monitoring--load-testing). Shared is fine for v1. |
 | **Networking / Public IPv4** | **Required — enable it** | See the IPv4 note below; do **not** run IPv6-only. |
 | **Firewalls** | **Create one: inbound allow TCP 22, 80, 443; deny the rest. Outbound: leave default (allow all).** See "Firewall protocols & egress" below. | The authoritative control. Unlike UFW, a Hetzner Cloud Firewall is enforced at the hypervisor **before** traffic reaches the host, so — critically — it is **not** bypassed by Docker's iptables rules. This is what actually guarantees the "`nmap` shows only 22/80/443" posture ([§9](#9-security-posture-confirmation)). Keep UFW too (defense in depth). Optionally restrict 22 to your own IP. |
@@ -115,7 +117,10 @@ the "Cloud config" field; replace the SSH key):
 #cloud-config
 users:
   - name: deploy
-    groups: [sudo, docker]
+    # Only 'sudo' here — the 'docker' group does not exist until Docker installs
+    # in runcmd below, so deploy is added to it there via usermod. (Passwordless
+    # sudo is granted by the `sudo:` line regardless of group membership.)
+    groups: [sudo]
     shell: /bin/bash
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
     ssh_authorized_keys:
@@ -131,6 +136,8 @@ runcmd:
   - ufw allow 80/tcp
   - ufw allow 443/tcp
   - ufw --force enable
+  - printf 'PermitRootLogin no\n' > /etc/ssh/sshd_config.d/10-tickr-hardening.conf
+  - systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
   - curl -fsSL https://get.docker.com | sh
   - usermod -aG docker deploy
   - mkdir -p /srv/tickr/repo /srv/tickr/data/pg /srv/tickr/backups /srv/tickr/secrets

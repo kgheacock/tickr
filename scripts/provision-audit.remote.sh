@@ -31,14 +31,17 @@ fi
 # shellcheck disable=SC1091
 . /etc/os-release 2>/dev/null || true
 case "${VERSION_ID:-}" in
-12*) ok "OS: ${PRETTY_NAME:-Debian 12}" ;;
-*) warn "OS is ${PRETTY_NAME:-unknown} (runbook targets Debian 12)" ;;
+12* | 13*) ok "OS: ${PRETTY_NAME:-Debian}" ;;
+*) warn "OS is ${PRETTY_NAME:-unknown} (runbook targets Debian 12/13)" ;;
 esac
 
 # deploy user + groups
 if id deploy >/dev/null 2>&1; then ok "user 'deploy' exists"; else bad "user 'deploy' missing"; fi
 groups="$(id -nG deploy 2>/dev/null || echo '')"
-echo "$groups" | grep -qw sudo && ok "deploy in 'sudo' group" || bad "deploy NOT in 'sudo' group"
+# Check the actual capability, not group membership: the cloud-init grants
+# passwordless sudo via /etc/sudoers.d, which works even if deploy is not in the
+# 'sudo' group. (The whole audit relies on this NOPASSWD sudo via S().)
+S true 2>/dev/null && ok "deploy has passwordless sudo" || bad "deploy lacks passwordless (NOPASSWD) sudo"
 echo "$groups" | grep -qw docker && ok "deploy in 'docker' group" || bad "deploy NOT in 'docker' group"
 
 # SSH hardening (authoritative: effective sshd config)
