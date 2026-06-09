@@ -1,6 +1,6 @@
 # 21 — Logout cache fix + dev auth bypass
 
-> **Status:** in review • **Depends on:** 04, 11, 12
+> **Status:** [in review](https://github.com/kgheacock/tickr/pull/44) • **Depends on:** 04, 11, 12
 >
 > Retroactive record (written after the work) of a debugging session that
 > fixed a stuck logout and, to reproduce it locally without Google OAuth,
