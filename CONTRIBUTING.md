@@ -119,6 +119,21 @@ redis-cli -u "$REDIS_URL" PING                                      # → PONG
 
 A working sign-in lands you at `/portfolio` with a `tickr_sid` cookie set.
 
+### Logging in without Google OAuth (dev)
+
+To work on the authed UI without an OAuth round-trip, open the app with
+`?login=true` — a **dev-only** bypass mints a real session for a synthetic
+admin user:
+
+```
+https://local.tickr.keithheacock.com/?login=true
+```
+
+It is enabled by the dev compose overlay (`TICKR_DEV_AUTH=1`) and is gated so it
+can never run in production. See
+[docs/13-local-dev-login.md](docs/13-local-dev-login.md) for usage, gotchas, and
+the safety gating.
+
 ### Bootstrap market data
 
 The worker runs the Massive backfill and the post-close session update on its
