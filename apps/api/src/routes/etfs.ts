@@ -24,13 +24,23 @@ const createEtfSchema = z.object({
 export async function registerEtfsRoutes(
   fastify: FastifyInstance,
 ): Promise<void> {
-  fastify.get('/etfs', { preHandler: [requireAuth] }, async () => {
-    return { items: await listEtfs(pool) };
-  });
+  fastify.get(
+    '/etfs',
+    {
+      preHandler: [requireAuth],
+      config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+    },
+    async () => {
+      return { items: await listEtfs(pool) };
+    },
+  );
 
   fastify.get<{ Params: { key: string } }>(
     '/etfs/:key',
-    { preHandler: [requireAuth] },
+    {
+      preHandler: [requireAuth],
+      config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+    },
     async (req, reply) => {
       const etf = await loadEtf(req.params.key, pool);
       if (!etf) {
@@ -47,7 +57,10 @@ export async function registerEtfsRoutes(
 
   fastify.post(
     '/etfs',
-    { preHandler: [requireAuth, requireCsrf] },
+    {
+      preHandler: [requireAuth, requireCsrf],
+      config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+    },
     async (req, reply) => {
       const parsed = createEtfSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -75,7 +88,10 @@ export async function registerEtfsRoutes(
     Querystring: { from?: string; to?: string };
   }>(
     '/etfs/:key/returns',
-    { preHandler: [requireAuth] },
+    {
+      preHandler: [requireAuth],
+      config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+    },
     async (req, reply) => {
       const to = req.query.to ?? new Date().toISOString();
       const toMs = Date.parse(to);
