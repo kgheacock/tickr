@@ -42,7 +42,7 @@ chown -R deploy:deploy /home/deploy/.ssh && chmod 700 /home/deploy/.ssh
 systemctl restart ssh
 
 # Firewall: only SSH + HTTP + HTTPS inbound.
-apt-get update && apt-get install -y ufw
+apt-get update && apt-get install -y ufw git
 ufw default deny incoming && ufw default allow outgoing
 ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp
 ufw enable
@@ -128,7 +128,7 @@ users:
 ssh_pwauth: false
 disable_root: true
 package_update: true
-packages: [ufw]
+packages: [ufw, git]
 runcmd:
   - ufw default deny incoming
   - ufw default allow outgoing
@@ -183,7 +183,11 @@ image) instead of proxying the Vite dev server.
 ## 3. Production secrets
 
 ```bash
-# On the VPS, as deploy:
+# On the VPS, as deploy. Clone the repo first (public — HTTPS, no auth needed).
+# cloud-init created /srv/tickr/repo empty; clone fills it. `git` must be present
+# (it's in the §1.1 cloud-init packages; if missing: sudo apt-get install -y git).
+git clone https://github.com/kgheacock/tickr.git /srv/tickr/repo
+
 cp /srv/tickr/repo/.env.example /srv/tickr/secrets/tickr.env
 chmod 600 /srv/tickr/secrets/tickr.env
 # Edit it — at minimum set, for prod:
@@ -210,7 +214,8 @@ equivalent) as the allowed redirect.
 ## 4. First-time bring-up
 
 ```bash
-git clone <repo> /srv/tickr/repo        # if not already cloned
+# Repo was cloned in §3; if you skipped straight here:
+#   git clone https://github.com/kgheacock/tickr.git /srv/tickr/repo
 cd /srv/tickr/repo
 
 # Standard prod compose invocation (used throughout this runbook):
