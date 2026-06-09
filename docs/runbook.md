@@ -9,6 +9,7 @@ hands-on procedure. TODO/12 owns it.
 > migrations, backfill) runs inside the `api` container.
 
 - [1. Provision the VPS](#1-provision-the-vps)
+  - [1.1 Hetzner Cloud "create server" options](#11-hetzner-cloud-create-server-options)
 - [2. DNS + TLS](#2-dns--tls)
 - [3. Production secrets](#3-production-secrets)
 - [4. First-time bring-up](#4-first-time-bring-up)
@@ -61,13 +62,73 @@ chmod 700 /srv/tickr/secrets
 
 From here on, work as the `deploy` user.
 
+### 1.1 Hetzner Cloud "create server" options
+
+What to pick for each field in the Hetzner Cloud console (or `hcloud`/Terraform).
+"N/A" means intentionally skip it for the v1 single-VPS topology.
+
+| Option | Setting | Why |
+|---|---|---|
+| **Name** | `tickr-prod` | Hostname/console label. Use `tickr-staging` etc. if you add environments. |
+| **Image** | Debian 12 | Matches §1. |
+| **Type** | CX22 (shared vCPU) | See [§10](#10-sizing-monitoring--load-testing). Shared is fine for v1. |
+| **Networking / Public IPv4** | **Required — enable it** | See the IPv4 note below; do **not** run IPv6-only. |
+| **Firewalls** | **Create one: allow inbound TCP 22, 80, 443; deny the rest** | The authoritative control. Unlike UFW, a Hetzner Cloud Firewall is enforced at the hypervisor **before** traffic reaches the host, so — critically — it is **not** bypassed by Docker's iptables rules. This is what actually guarantees the "`nmap` shows only 22/80/443" posture ([§9](#9-security-posture-confirmation)). Keep UFW too (defense in depth). Optionally restrict 22 to your own IP. |
+| **Volumes** | N/A at launch | The 40 GB local disk covers the v1 corpus + 7 days of dumps. When disk approaches ~70% ([§10](#10-sizing-monitoring--load-testing)), attach a Hetzner Volume and move `/srv/tickr/data` onto it (resizable, no rebuild). Provision one from day one only if you want headroom early. |
+| **Backups** | Optional | Hetzner's paid full-VM snapshot feature (~20% of server cost). **Not** the system of record — `scripts/backup.sh` (off-VPS `pg_dump`) is, and it satisfies the DoD. Enable Hetzner backups only if one-click whole-VM rollback for disaster recovery is worth the cost; otherwise N/A. |
+| **Placement Groups** | N/A | Anti-affinity across physical hosts only matters with multiple servers. Revisit if the worker/bot is later extracted onto its own VPS. |
+| **Labels** | Optional | Resource metadata for tooling (`hcloud`, Terraform). Suggested: `env=prod`, `app=tickr`. Harmless and handy if infra grows; skip for a hand-managed single box. |
+| **Cloud config** | Optional (recommended) | cloud-init user-data that automates §1 for reproducible rebuilds — see below. |
+| **SSH keys** | Add your public key | So the initial root login is key-only; §1 then disables root login. |
+
+**IPv4 is required — do not run IPv6-only.** Two independent reasons: (1) a large
+share of visitors are on IPv4-only networks and simply cannot reach an
+`AAAA`-only host; (2) the host makes **outbound** calls to services that are
+IPv4-only on common paths (GitHub/GHCR pulls, OAuth, market data), and a Hetzner
+IPv6-only server has no NAT64/DNS64, so it can't reach them. A primary IPv4 is
+~€0.50/month — provision **dual-stack** (IPv4 + IPv6).
+
+Optional **cloud-init** that performs the §1 hardening on first boot (paste into
+the "Cloud config" field; replace the SSH key):
+
+```yaml
+#cloud-config
+users:
+  - name: deploy
+    groups: [sudo, docker]
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAA... your-key
+ssh_pwauth: false
+disable_root: true
+package_update: true
+packages: [ufw]
+runcmd:
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+  - curl -fsSL https://get.docker.com | sh
+  - usermod -aG docker deploy
+  - mkdir -p /srv/tickr/repo /srv/tickr/data/pg /srv/tickr/backups /srv/tickr/secrets
+  - chown -R deploy:deploy /srv/tickr
+  - chmod 700 /srv/tickr/secrets
+```
+
 ## 2. DNS + TLS
 
-Point both records at the VPS IP:
+Point both hosts at the VPS. The `A` (IPv4) records are what make the site
+broadly reachable; add `AAAA` (IPv6) too if you provisioned dual-stack (free
+bonus — IPv6 clients get a direct path). Namecheap's Advanced DNS supports both.
 
 ```
-tickr.keithheacock.com.       A     <VPS_IP>
-www.tickr.keithheacock.com.   A     <VPS_IP>
+tickr.keithheacock.com.       A      <VPS_IPv4>
+tickr.keithheacock.com.       AAAA   <VPS_IPv6>     # optional, if dual-stack
+www.tickr.keithheacock.com.   A      <VPS_IPv4>
+www.tickr.keithheacock.com.   AAAA   <VPS_IPv6>     # optional, if dual-stack
 ```
 
 TLS is automatic: `compose/Caddyfile.prod` lists the site addresses, and Caddy
