@@ -1,6 +1,6 @@
 # 16 — Platformize the API (game → market-data platform)
 
-> **Status:** done • **Depends on:** 03, 04, 06, 09
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/25) • **Depends on:** 03, 04, 06, 09
 
 ## Goal
 

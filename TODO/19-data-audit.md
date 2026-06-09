@@ -1,6 +1,6 @@
 # 19 — Data audit
 
-> **Status:** [done](https://github.com/kgheacock/tickr/pull/28) • **Depends on:** 06, 13, 14
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/28) • **Depends on:** 06, 13
 
 ## Goal
 

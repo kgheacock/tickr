@@ -1,6 +1,6 @@
 # 08 — Snapshots + leaderboard
 
-> **Status:** [done](https://github.com/kgheacock/tickr/pull/14) • **Depends on:** 06, 07
+> **Status:** [removed](https://github.com/kgheacock/tickr/pull/25) • **Depends on:** 06, 07
 
 ## Goal
 

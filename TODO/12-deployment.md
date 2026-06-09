@@ -1,6 +1,6 @@
 # 12 — Deployment
 
-> **Status:** pending • **Depends on:** 01, 03, 10, 11
+> **Status:** pending • **Depends on:** 01, 03, 10, 11, 19
 
 ## Goal
 
