@@ -239,7 +239,7 @@ describe('OHLC_VIOLATION', () => {
     expect(report.errorCounts[CODE.OHLC_VIOLATION]).toBe(1);
   });
 
-  it('allows null volume (Finnhub daily bars omit volume)', async () => {
+  it('allows null volume (some bars omit volume)', async () => {
     await seedSymbol('AAPL');
     await insertBar('AAPL', tradingDay(0), { volume: null });
 
@@ -319,7 +319,7 @@ describe('INTRADAY_GAP — no_session_bars (daily-only data)', () => {
     await seedSymbol('BRK-A');
     for (let d = 0; d <= 4; d++) {
       const ts = new Date(T0 + d * DAY_MS);
-      ts.setUTCHours(0, 0, 0, 0); // midnight = Kaggle daily pattern
+      ts.setUTCHours(0, 0, 0, 0); // midnight UTC = daily-bar pattern
       await insertBar('BRK-A', ts);
     }
 

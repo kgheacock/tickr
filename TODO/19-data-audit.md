@@ -12,8 +12,7 @@ wrong returns everywhere downstream.
 
 - [06-backfill-and-daily-price.md](06-backfill-and-daily-price.md) — ingestion
   pipelines whose output this audits.
-- [13-massive-client.md](13-massive-client.md), [14-kaggle-client.md](14-kaggle-client.md)
-  — the two data sources.
+- [13-massive-client.md](13-massive-client.md) — the data source.
 - [docs/02-data-model.md](../docs/02-data-model.md) — `price_bar` and
   `universe_symbol` schemas.
 
@@ -27,9 +26,9 @@ wrong returns everywhere downstream.
    every row. Flag violations.
 3. **Duplicate detection.** Assert unique `(symbol, bar_time)` within the
    expected granularity. Duplicates indicate a double-ingest bug.
-4. **Cross-source reconciliation.** For symbols present in both Massive and
-   Kaggle, compare closing prices on overlapping dates. Surface deviations
-   above a configurable threshold (e.g. 1%).
+4. **Cross-source reconciliation.** For symbols that have both a daily bar
+   (midnight UTC) and intraday bars on the same date, compare closing prices.
+   Surface deviations above a configurable threshold (e.g. 1%).
 5. **Report.** Emit a structured JSON report: total symbols, symbols clean,
    symbols with warnings, symbols with errors, and per-symbol detail for any
    flagged rows. Print a human-readable summary to stdout. Exit non-zero if

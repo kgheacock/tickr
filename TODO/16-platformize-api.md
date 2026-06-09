@@ -111,8 +111,7 @@ After removal, `portfolio`, `position`, `trade_order`, `fill`,
 - `universe_symbol` + `price_bar` (+ TimescaleDB hypertable & compression).
 - `jobs/backfill.ts`, `daily-price.ts`, `insertBars.ts`, `locks.ts`,
   `market/holidays.ts`, and the (simplified) `scheduler.ts`.
-- The Massive + Finnhub clients (`src/massive/`, `src/finnhub/`) and the
-  Kaggle loader if still used by backfill.
+- The Massive + Finnhub clients (`src/massive/`, `src/finnhub/`).
 - `db/migrate.ts`, `db/pool.ts`, `db/seed-universe.ts`.
 - The **pure** trading helpers worth salvaging for the evaluator:
   `trading/money.ts` (cents arithmetic, decimal.js) and the validation
