@@ -1,6 +1,7 @@
 import { pino } from 'pino';
 import type { Logger, LoggerOptions } from 'pino';
 import { randomUUID } from 'node:crypto';
+import { buildLogDestination } from './buffer.js';
 
 /**
  * Centralized structured logging (item 10).
@@ -28,6 +29,9 @@ export const REDACT_PATHS = [
 
 export const baseLoggerOptions: LoggerOptions = {
   level: process.env['LOG_LEVEL'] ?? 'info',
+  // Tag every line with the process role (api | worker | bot) so the admin log
+  // viewer can tell apart lines coming from the three containers.
+  base: { service: process.env['ROLE'] ?? 'api' },
   // Emit the level as its string label (`info`) rather than pino's numeric
   // default, matching the JSON the worker components used to print by hand.
   formatters: {
@@ -36,13 +40,25 @@ export const baseLoggerOptions: LoggerOptions = {
   redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
 };
 
+/**
+ * Shared pino destination (stdout + Redis fanout for the admin log viewer).
+ * Created once and reused by both {@link rootLogger} and the Fastify logger so
+ * a single process writes through one fanout. See {@link getLogDestination}.
+ */
+const logDestination = buildLogDestination();
+
+/** The shared stdout+Redis destination, for wiring into Fastify's logger. */
+export function getLogDestination(): typeof logDestination {
+  return logDestination;
+}
+
 /** Generate the per-request correlation id used as `request_id`. */
 export function genRequestId(): string {
   return randomUUID();
 }
 
-/** Standalone root logger for non-Fastify contexts (the worker process). */
-export const rootLogger: Logger = pino(baseLoggerOptions);
+/** Standalone root logger for non-Fastify contexts (the worker/bot process). */
+export const rootLogger: Logger = pino(baseLoggerOptions, logDestination);
 
 /**
  * Child logger for a worker job/component. Every line gets `component` and a
