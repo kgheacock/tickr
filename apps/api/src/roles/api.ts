@@ -6,6 +6,7 @@ import { requireEnv } from '../config.js';
 import { registerStartRoutes } from '../routes/auth/start.js';
 import { registerCallbackRoutes } from '../routes/auth/callback.js';
 import { registerLogoutRoute } from '../routes/auth/logout.js';
+import { registerDevLoginRoute } from '../routes/auth/dev-login.js';
 import { registerMeRoute } from '../routes/me.js';
 import { registerAdminUniverseRoutes } from '../routes/admin/universe.js';
 import { registerUniverseRoute } from '../routes/universe.js';
@@ -55,6 +56,20 @@ export async function runApi(): Promise<void> {
       await registerStartRoutes(api);
       await registerCallbackRoutes(api);
       await registerLogoutRoute(api);
+
+      // DEV-ONLY auth bypass, gated three ways: (1) defaults closed — needs an
+      // explicit opt-in, (2) refuses to run under NODE_ENV=production, and
+      // (3) scripts/deploy.sh refuses to deploy if TICKR_DEV_AUTH is set in the
+      // prod secrets. The dev compose overlay sets both vars; prod never does.
+      if (
+        process.env['TICKR_DEV_AUTH'] === '1' &&
+        process.env['NODE_ENV'] !== 'production'
+      ) {
+        api.log.warn(
+          'TICKR_DEV_AUTH=1 — registering POST /auth/dev-login backdoor. NEVER enable this in production.',
+        );
+        await registerDevLoginRoute(api);
+      }
       await registerMeRoute(api);
       await registerAdminUniverseRoutes(api);
       await registerUniverseRoute(api);

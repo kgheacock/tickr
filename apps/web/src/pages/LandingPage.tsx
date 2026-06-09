@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
+import { authLog } from '../auth/log';
 import styles from './LandingPage.module.css';
 
 // Google-account-gated request-access form (Google Forms with sign-in gate).
@@ -13,7 +14,9 @@ export function LandingPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    authLog('LandingPage effect', { user: user?.email ?? null, isLoading });
     if (!isLoading && user) {
+      authLog('LandingPage → redirecting to /market (user present)');
       navigate('/market', { replace: true });
     }
   }, [isLoading, user, navigate]);

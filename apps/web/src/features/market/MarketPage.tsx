@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState, useRef, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { createChart, ColorType } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
+import { useLogout } from '../../auth/useLogout';
 import { client } from '../../api/client';
 import { socket } from '../../api/socket';
 import { formatCents } from '../../lib/format';
@@ -24,8 +25,6 @@ function toChartTime(isoTs: string): UTCTimestamp {
 
 export function MarketPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const socketConnected = useSocketConnected();
 
   const [selectedSymbol, setSelectedSymbol] = useState('');
@@ -48,11 +47,7 @@ export function MarketPage() {
       !socketConnected && socket.disconnectedForMs > 30_000 ? 30_000 : false,
   });
 
-  const handleLogout = useCallback(async () => {
-    await client.logout();
-    await queryClient.invalidateQueries({ queryKey: ['me'] });
-    navigate('/', { replace: true });
-  }, [queryClient, navigate]);
+  const handleLogout = useLogout();
 
   // Default to first symbol when universe loads
   useEffect(() => {

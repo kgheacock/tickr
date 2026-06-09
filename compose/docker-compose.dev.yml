@@ -24,6 +24,11 @@ services:
   api:
     ports:
       - '3000:3000'
+    environment:
+      NODE_ENV: development
+      # Opt in to the dev-only POST /auth/dev-login backdoor (see roles/api.ts).
+      # Safe here: the prod overlay never sets this and deploy.sh refuses it.
+      TICKR_DEV_AUTH: '1'
     volumes:
       - ../apps/api/src:/app/apps/api/src
       - ../packages/shared-types/src:/app/packages/shared-types/src
@@ -34,6 +39,8 @@ services:
       - /app/apps/api/node_modules
 
   worker:
+    environment:
+      NODE_ENV: development
     volumes:
       - ../apps/api/src:/app/apps/api/src
       - ../packages/shared-types/src:/app/packages/shared-types/src
@@ -41,6 +48,8 @@ services:
       - /app/apps/api/node_modules
 
   bot:
+    environment:
+      NODE_ENV: development
     volumes:
       - ../apps/api/src:/app/apps/api/src
       - ../packages/shared-types/src:/app/packages/shared-types/src

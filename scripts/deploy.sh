@@ -28,6 +28,13 @@ die() { echo "[deploy] ERROR: $*" >&2; exit 1; }
 [[ -f "$SECRETS" ]] || die "secrets file $SECRETS not found (chmod 600, owned by deploy user)"
 [[ -z "$(git status --porcelain)" ]] || die "working tree is dirty — commit or clean before deploying"
 
+# Refuse to deploy with the dev-only auth bypass enabled. TICKR_DEV_AUTH gates
+# the POST /auth/dev-login backdoor (see apps/api/src/roles/api.ts); set to any
+# non-empty value in the prod secrets it would mint real sessions for anyone.
+if grep -Eq '^[[:space:]]*TICKR_DEV_AUTH[[:space:]]*=[[:space:]]*[^[:space:]]' "$SECRETS"; then
+  die "TICKR_DEV_AUTH is set in $SECRETS — the dev auth bypass must never be enabled in production; remove it before deploying"
+fi
+
 log "fetching origin/main..."
 git fetch --quiet origin main
 

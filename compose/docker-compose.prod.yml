@@ -40,6 +40,8 @@ services:
     image: ghcr.io/kgheacock/tickr-api:${TICKR_IMAGE_TAG:-local}
     env_file:
       - /srv/tickr/secrets/tickr.env
+    environment:
+      NODE_ENV: production
     deploy:
       resources:
         limits:
@@ -52,6 +54,8 @@ services:
     image: ghcr.io/kgheacock/tickr-api:${TICKR_IMAGE_TAG:-local}
     env_file:
       - /srv/tickr/secrets/tickr.env
+    environment:
+      NODE_ENV: production
     deploy:
       resources:
         limits:
@@ -64,6 +68,8 @@ services:
     image: ghcr.io/kgheacock/tickr-api:${TICKR_IMAGE_TAG:-local}
     env_file:
       - /srv/tickr/secrets/tickr.env
+    environment:
+      NODE_ENV: production
     deploy:
       resources:
         limits:

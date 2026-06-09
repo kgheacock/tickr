@@ -29,3 +29,4 @@ coverage/
 
 # local DB snapshots (db-snapshot.sh / db-restore.sh)
 backups/
+*.har
