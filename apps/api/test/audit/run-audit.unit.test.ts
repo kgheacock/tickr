@@ -145,6 +145,28 @@ describe('findCoverageGaps', () => {
     const gaps = findCoverageGaps(days, present, 2);
     expect(gaps).toHaveLength(2);
   });
+
+  it('classifies a trailing gap (symbol stops before window end)', () => {
+    const present = new Set(days.slice(0, days.length - 3));
+    const gaps = findCoverageGaps(days, present, 3);
+    expect(gaps[0]?.position).toBe('trailing');
+  });
+
+  it('classifies a leading gap (history starts late)', () => {
+    const present = new Set(days.slice(3));
+    const gaps = findCoverageGaps(days, present, 3);
+    expect(gaps[0]?.position).toBe('leading');
+  });
+
+  it('classifies an internal gap (hole in the middle)', () => {
+    const present = new Set(
+      days.filter(
+        (d) => d !== '2024-01-10' && d !== '2024-01-11' && d !== '2024-01-12',
+      ),
+    );
+    const gaps = findCoverageGaps(days, present, 3);
+    expect(gaps[0]?.position).toBe('internal');
+  });
 });
 
 // ─── buildBucketExpr ──────────────────────────────────────────────────────────
