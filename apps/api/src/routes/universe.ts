@@ -28,6 +28,9 @@ export async function loadUniverse(
        FROM universe_symbol us
        LEFT JOIN price_bar pb ON pb.symbol = us.symbol
       WHERE us.removed_at IS NULL
+        -- Partial-coverage symbols (depth-capped / partially delisted) are not
+        -- usable for a full-window game; keep them out of the playable corpus.
+        AND us.data_status IS DISTINCT FROM 'incomplete'
         AND ($1::boolean = false OR us.backfilled = true)
       GROUP BY us.symbol, us.backfilled, us.backfilled_at
       ORDER BY us.symbol`,

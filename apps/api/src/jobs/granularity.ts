@@ -12,40 +12,27 @@ export const MULTIPLIER = parseInt(
 );
 export const TIMESPAN = process.env['BACKFILL_TIMESPAN'] ?? 'minute';
 
+/**
+ * Translate our canonical ticker to the form the Massive/Polygon aggregates API
+ * expects. We store share-class suffixes with a hyphen (the S&P/CSV convention,
+ * e.g. `BRK-B`, `MOG-A`) but Polygon uses a period (`BRK.B`, `MOG.A`). Building
+ * the URL literally returns 0 results, so the symbol gets marked backfilled with
+ * no bars (data audit Finding 4). We translate only at the request boundary so
+ * the hyphen stays canonical everywhere else (DB rows, FKs, API responses).
+ */
+export function toMassiveTicker(symbol: string): string {
+  return symbol.replace('-', '.');
+}
+
 /** Massive/Polygon aggregates path at the configured resolution. */
 export function aggPath(symbol: string, from: string, to: string): string {
-  return `/v2/aggs/ticker/${symbol}/range/${MULTIPLIER}/${TIMESPAN}/${from}/${to}`;
+  return `/v2/aggs/ticker/${toMassiveTicker(symbol)}/range/${MULTIPLIER}/${TIMESPAN}/${from}/${to}`;
 }
 
-// Upper bound of bars per trading day for the configured resolution, using the
-// ~16h extended session (04:00–20:00 ET). Used to size request windows so a
-// single call stays under the provider's 50k-result cap (the client does not
-// paginate, so an over-large window would silently truncate and leave gaps).
-const EXT_SESSION_MINUTES = 16 * 60;
-export function estBarsPerDay(): number {
-  switch (TIMESPAN) {
-    case 'second':
-      return (EXT_SESSION_MINUTES * 60) / MULTIPLIER;
-    case 'minute':
-      return EXT_SESSION_MINUTES / MULTIPLIER;
-    case 'hour':
-      return 16 / MULTIPLIER;
-    default:
-      return 1; // day / week / month / quarter / year
-  }
-}
-
-const RESULT_CAP = 50_000;
-const SAFE_FILL = 0.9; // headroom under the hard cap
-
-/**
- * Clamp a requested window (in days) so one aggregates request can't exceed the
- * 50k-result cap at the configured resolution. Treating every calendar day as a
- * trading day overcounts (only ~5/7 trade), which only makes the window safer.
- * Coarse resolutions (hour/day) are unaffected; fine ones auto-shrink.
- */
-export function safeWindowDays(requestedDays: number): number {
-  const perDay = Math.max(1, estBarsPerDay());
-  const maxDays = Math.max(1, Math.floor((RESULT_CAP * SAFE_FILL) / perDay));
-  return Math.min(requestedDays, maxDays);
-}
+// Per-request `limit` for the aggregates API. The free Massive tier caps each
+// response well below the documented 50000 max (~4.1k bars at 15-min) and
+// returns a `next_url` for the remainder, so this is an upper bound, not the
+// page size. The backfill follows next_url (massiveGetPaged) to fetch the full
+// range across pages, so a window no longer has to be sized under the cap —
+// passing the documented max just maximises bars per page (fewer requests).
+export const MAX_RESULTS = 50_000;

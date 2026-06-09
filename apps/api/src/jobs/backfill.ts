@@ -1,30 +1,21 @@
 import type { Redis } from 'ioredis';
 import pLimit from 'p-limit';
 import { pool } from '../db/pool.js';
-import { massiveGet } from '../massive/client.js';
+import { massiveGetPaged } from '../massive/client.js';
 import type { components } from '../massive/massive.gen.js';
 import { insertBars } from './insertBars.js';
 import { loadUniverse } from '../routes/universe.js';
 import { publishUniverseUpdated } from '../events/publisher.js';
-import {
-  aggPath,
-  safeWindowDays,
-  MULTIPLIER,
-  TIMESPAN,
-} from './granularity.js';
+import { aggPath, MULTIPLIER, TIMESPAN, MAX_RESULTS } from './granularity.js';
 import { jobLogger } from '../log/logger.js';
 
 const baseLog = jobLogger('backfill');
 
 type AggregatesResponse = components['schemas']['AggregatesResponse'];
+type Bar = NonNullable<AggregatesResponse['results']>[number];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CONCURRENCY = parseInt(process.env['BACKFILL_CONCURRENCY'] ?? '4', 10);
-// Requested window is clamped to the configured resolution's safe size so a
-// single request stays under the 50k-result cap (see granularity.ts).
-const WINDOW_DAYS = safeWindowDays(
-  parseInt(process.env['BACKFILL_WINDOW_DAYS'] ?? '365', 10),
-);
 const LOOKBACK_DAYS = parseInt(
   process.env['BACKFILL_LOOKBACK_DAYS'] ?? '730',
   10,
@@ -33,6 +24,14 @@ const BACKFILL_START_DATE = process.env['BACKFILL_START_DATE'];
 // How often to emit a progress line (complete / remaining / ETA) during a run.
 const PROGRESS_INTERVAL_MS = parseInt(
   process.env['BACKFILL_PROGRESS_MS'] ?? '30000',
+  10,
+);
+// If a symbol's newest bar is older than this many days after the fetch reached
+// `now`, the source has no recent data for it (delisted / depth-capped) and the
+// symbol is marked data_status = 'incomplete' rather than 'ok'. The pad absorbs
+// the ~15-min feed delay and the longest market-closure run (holiday + weekend).
+const STALE_TAIL_DAYS = parseInt(
+  process.env['BACKFILL_STALE_TAIL_DAYS'] ?? '7',
   10,
 );
 
@@ -70,55 +69,74 @@ function formatDuration(ms: number): string {
 async function backfillSymbol(redis: Redis, symbol: string): Promise<void> {
   const nowMs = Date.now();
   const startMs = resolveStartMs(nowMs);
-  const windowMs = WINDOW_DAYS * DAY_MS;
+  const from = toDateStr(startMs);
+  const to = toDateStr(nowMs);
 
-  log('info', 'symbol start', { symbol });
+  log('info', 'symbol start', { symbol, from, to });
 
-  let fromMs = startMs;
-  while (fromMs < nowMs) {
-    const toMs = Math.min(fromMs + windowMs, nowMs);
-    const from = toDateStr(fromMs);
-    const to = toDateStr(toMs);
-
-    const response = await massiveGet<AggregatesResponse>(
-      redis,
-      aggPath(symbol, from, to),
-      { sort: 'asc' },
-    );
-
-    const results = response.results ?? [];
-    if (results.length > 0) {
+  // One request over the whole range, followed through next_url. The free tier
+  // pages at ~4k bars, so a 2-year 15-min pull is ~8 pages; massiveGetPaged
+  // streams each page to insertBars, so memory stays bounded and a crash mid-
+  // pagination leaves the already-inserted pages (ON CONFLICT keeps re-runs
+  // idempotent).
+  let totalBars = 0;
+  let newestMs = 0;
+  await massiveGetPaged<Bar>(
+    redis,
+    aggPath(symbol, from, to),
+    { sort: 'asc', limit: MAX_RESULTS },
+    async (results) => {
       await insertBars(symbol, results);
-      log('info', 'window inserted', {
-        symbol,
-        from,
-        to,
-        bars: results.length,
-      });
-    } else {
-      log('info', 'window no_data', { symbol, from, to });
-    }
+      totalBars += results.length;
+      for (const bar of results) if (bar.t > newestMs) newestMs = bar.t;
+      log('info', 'page inserted', { symbol, bars: results.length });
+    },
+  );
 
-    fromMs = toMs;
+  // Masking guard: a symbol that produced zero bars across every page has no
+  // data at the source (wrong ticker, delisted). Do NOT mark it backfilled —
+  // leave it backfilled = false so it surfaces honestly and the bootstrap prune
+  // can remove it, instead of being silently marked complete-but-empty.
+  if (totalBars === 0) {
+    log('warn', 'symbol produced no bars — not marking backfilled', { symbol });
+    return;
   }
 
+  // Terminal coverage classification: if the newest bar is still well short of
+  // `now` after fetching all the way to now, the source has no recent data for
+  // this symbol (depth-capped / partially delisted). Flag it 'incomplete' so it
+  // is excluded from the playable corpus and the re-arm step stops retrying it.
+  const staleCutoffMs = nowMs - STALE_TAIL_DAYS * DAY_MS;
+  const dataStatus = newestMs < staleCutoffMs ? 'incomplete' : 'ok';
   await pool.query(
-    `UPDATE universe_symbol SET backfilled = true, backfilled_at = now() WHERE symbol = $1`,
-    [symbol],
+    `UPDATE universe_symbol
+        SET backfilled = true, backfilled_at = now(), data_status = $2
+      WHERE symbol = $1`,
+    [symbol, dataStatus],
   );
-  log('info', 'symbol done', { symbol });
+  log('info', 'symbol done', { symbol, dataStatus, bars: totalBars });
 }
 
-export async function runBackfill(redis: Redis): Promise<void> {
+export interface BackfillResult {
+  /** Symbols that produced bars and were marked backfilled this run. */
+  completed: number;
+  /** Symbols whose fetch threw (transient) — left backfilled = false to retry.
+   *  Distinct from zero-bar symbols, which are pruning candidates, not retries. */
+  failed: string[];
+}
+
+export async function runBackfill(redis: Redis): Promise<BackfillResult> {
   const limit = pLimit(CONCURRENCY);
 
   const { rows } = await pool.query<{ symbol: string }>(
-    `SELECT symbol FROM universe_symbol WHERE backfilled = false ORDER BY symbol`,
+    `SELECT symbol FROM universe_symbol
+      WHERE backfilled = false AND removed_at IS NULL
+      ORDER BY symbol`,
   );
 
   if (rows.length === 0) {
     log('info', 'nothing to backfill');
-    return;
+    return { completed: 0, failed: [] };
   }
 
   const total = rows.length;
@@ -126,7 +144,6 @@ export async function runBackfill(redis: Redis): Promise<void> {
     total,
     multiplier: MULTIPLIER,
     timespan: TIMESPAN,
-    windowDays: WINDOW_DAYS,
     lookbackDays: LOOKBACK_DAYS,
   });
 
@@ -197,4 +214,6 @@ export async function runBackfill(redis: Redis): Promise<void> {
   } else {
     log('info', 'backfill complete', { total });
   }
+
+  return { completed, failed: failedSymbols };
 }

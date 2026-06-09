@@ -41,11 +41,11 @@ async function withLock(
 export function registerScheduledJobs(redis: Redis): void {
   // Backfill: run once at startup; the job self-terminates when nothing remains.
   // It publishes universe.updated when symbols flip to backfilled.
-  void withLock(redis, BACKFILL_LOCK, () => runBackfill(redis)).catch(
-    (err: unknown) => {
-      log('error', 'backfill failed', { err: String(err) });
-    },
-  );
+  void withLock(redis, BACKFILL_LOCK, async () => {
+    await runBackfill(redis);
+  }).catch((err: unknown) => {
+    log('error', 'backfill failed', { err: String(err) });
+  });
 
   // Session update: 21:30 UTC Mon–Fri (≈16:30 ET, after the close). Appends the
   // just-closed session's intraday bars per symbol (Massive, at the configured
