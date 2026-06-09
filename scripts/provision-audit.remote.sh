@@ -55,6 +55,9 @@ else
   warn "could not read effective sshd config (sudo -n failed?) — root login was checked externally"
 fi
 
+# git (needed by the §3 clone and by deploy.sh on the host)
+git --version >/dev/null 2>&1 && ok "git: $(git --version)" || bad "git not installed (apt-get install -y git)"
+
 # Docker + compose plugin
 docker --version >/dev/null 2>&1 && ok "docker: $(docker --version)" || bad "docker not installed"
 docker compose version >/dev/null 2>&1 &&
