@@ -4,19 +4,21 @@ import { runBackfill } from './backfill.js';
 import { runIntradayUpdate } from './intraday-update.js';
 import { tryAcquireLock, releaseLock } from './locks.js';
 import { isNyseHoliday } from '../market/holidays.js';
+import { runAlertCheck } from '../alerts/checker.js';
+import { jobLogger } from '../log/logger.js';
 
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const BACKFILL_LOCK = 'massive:job:backfill';
 const SESSION_UPDATE_LOCK = 'massive:job:session-update';
+
+const baseLog = jobLogger('scheduler');
 
 function log(
   level: 'info' | 'warn' | 'error',
   msg: string,
   extra?: object,
 ): void {
-  console[level](
-    JSON.stringify({ level, component: 'scheduler', msg, ...extra }),
-  );
+  baseLog[level](extra ?? {}, msg);
 }
 
 async function withLock(
@@ -64,5 +66,13 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   });
 
-  log('info', 'scheduler registered (backfill + session-update)');
+  // Alerts: every 5 minutes, check for stuck states (EOD lag, backfill stuck,
+  // Massive 429 burst) and fire once per window (item 10).
+  cron.schedule('0 */5 * * * *', () => {
+    void runAlertCheck(redis).catch((err: unknown) => {
+      log('error', 'alert check failed', { err: String(err) });
+    });
+  });
+
+  log('info', 'scheduler registered (backfill + session-update + alerts)');
 }

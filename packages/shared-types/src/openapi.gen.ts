@@ -248,6 +248,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/ops": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operational view (EOD-update lag, market data 429s, queue depth, backfill remaining) */
+        get: operations["adminOps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -532,6 +549,20 @@ export interface components {
         BackfillRequest: {
             /** @description Symbol to re-trigger backfill for */
             symbol: string;
+        };
+        OpsResponse: {
+            /** @description ISO timestamp of the last successful EOD price-update run; null if none yet */
+            lastEodUpdateAt: string | null;
+            /** @description Seconds since the last EOD update (now - lastEodUpdateAt) */
+            eodUpdateLagSec: number | null;
+            marketData429sLast24h: {
+                /** @description Massive 429 count in the trailing 24h */
+                massive: number;
+            };
+            /** @description Currently-held worker job locks (backfill / session-update) */
+            jobQueueDepth: number;
+            /** @description Count of universe_symbol rows with backfilled = false */
+            backfillRemaining: number;
         };
     };
     responses: {
@@ -966,6 +997,29 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    adminOps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Platform health snapshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalServerError"];
         };
     };

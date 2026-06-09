@@ -6,6 +6,10 @@ import type { components } from '../massive/massive.gen.js';
 import { insertBars } from './insertBars.js';
 import { publishPricesUpdated } from '../events/publisher.js';
 import { aggPath, MULTIPLIER, TIMESPAN } from './granularity.js';
+import { jobLogger } from '../log/logger.js';
+import { recordEodRun } from '../metrics/redis.js';
+
+const baseLog = jobLogger('session-update');
 
 type AggregatesResponse = components['schemas']['AggregatesResponse'];
 
@@ -22,9 +26,7 @@ function log(
   msg: string,
   extra?: object,
 ): void {
-  console[level](
-    JSON.stringify({ level, component: 'session-update', msg, ...extra }),
-  );
+  baseLog[level](extra ?? {}, msg);
 }
 
 function toCents(usd: number): number {
@@ -67,6 +69,7 @@ export async function runIntradayUpdate(redis: Redis): Promise<void> {
     to,
   });
 
+  const startedAt = Date.now();
   const asOf = new Date(nowMs).toISOString();
   const series: PricesResponse['series'] = {};
   let bars = 0;
@@ -104,6 +107,10 @@ export async function runIntradayUpdate(redis: Redis): Promise<void> {
   if (Object.keys(series).length > 0) {
     await publishPricesUpdated(redis, asOf, series);
   }
+
+  // Stamp the run for /admin/ops + the alerter (item 10). This is the platform's
+  // EOD-update health signal (snapshots/leaderboard were dropped in item 16).
+  await recordEodRun(redis, Date.now() - startedAt, bars);
 
   log('info', 'session update complete', {
     symbolsUpdated: Object.keys(series).length,
