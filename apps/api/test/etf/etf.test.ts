@@ -295,6 +295,22 @@ describe('createEtf', () => {
     expect(total).toBeCloseTo(1.0, 5);
   });
 
+  it('defaults baseDate to the latest member first-bar (earliest common bar date)', async () => {
+    await seedSymbol('AAPL');
+    await seedSymbol('MSFT');
+    await seedBar('AAPL', '2024-01-01T21:00:00Z', 10000);
+    await seedBar('MSFT', '2024-03-01T21:00:00Z', 20000); // later first bar
+
+    const { createEtf } = await import('../../src/etf/crud.js');
+    const etf = await createEtf(
+      { key: 'common', name: 'Common', weights: { AAPL: 1, MSFT: 1 } },
+      pool,
+    );
+
+    // Latest first-bar wins so both members have a price at base_date.
+    expect(etf.baseDate).toBe('2024-03-01');
+  });
+
   it('rejects when a member is not in universe', async () => {
     const { createEtf, EtfError } = await import('../../src/etf/crud.js');
     await expect(

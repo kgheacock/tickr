@@ -12,6 +12,7 @@ import { registerUniverseRoute } from '../routes/universe.js';
 import { registerPricesRoute } from '../routes/prices.js';
 import { registerEvaluateRoute } from '../routes/evaluate.js';
 import { registerEtfsRoutes } from '../routes/etfs.js';
+import { registerStrategyRoutes } from '../routes/strategies.js';
 import { getRedis } from '../redis.js';
 import { attachWsGateway } from '../ws/server.js';
 
@@ -48,6 +49,7 @@ export async function runApi(): Promise<void> {
       await registerPricesRoute(api);
       await registerEvaluateRoute(api);
       await registerEtfsRoutes(api);
+      await registerStrategyRoutes(api);
     },
     { prefix: '/api/v1' },
   );

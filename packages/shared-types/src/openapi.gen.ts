@@ -197,6 +197,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/strategies/sma-crossover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Backtest the built-in SMA-crossover strategy on an ETF */
+        post: operations["runSmaStrategy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/universe/upsert": {
         parameters: {
             query?: never;
@@ -468,6 +485,45 @@ export interface components {
             to: string;
             /** @description Total return % of the ETF over the window; null if no bars in window */
             returnPct: number | null;
+        };
+        SmaStrategyRequest: {
+            /** @description ETF key to backtest (e.g. "sp500") */
+            etfKey: string;
+            /** @description Short SMA window in daily closes (default 20) */
+            shortWindow?: number;
+            /** @description Long SMA window in daily closes (default 50) */
+            longWindow?: number;
+            /**
+             * Format: int64
+             * @description Cents; starting cash for the backtest (default 1000000 = $10,000)
+             */
+            startingCash?: number;
+            /** @description ISO date/datetime; window start (default full series) */
+            from?: string;
+            /** @description ISO date/datetime; window end (default now) */
+            to?: string;
+        };
+        StrategyLeg: {
+            /** @description Dense daily equity (cents) over the window */
+            equityCurve: components["schemas"]["EquityPoint"][];
+            /** @description Total return % vs startingCash; null if no data */
+            totalReturnPct: number | null;
+            /** @description Largest peak-to-trough drawdown as a positive %; null if no data */
+            maxDrawdownPct: number | null;
+        };
+        StrategyBacktestResponse: {
+            etfKey: string;
+            shortWindow: number;
+            longWindow: number;
+            /** Format: int64 */
+            startingCash: number;
+            from: string;
+            to: string;
+            strategy: components["schemas"]["StrategyLeg"];
+            /** @description Buy-and-hold baseline of the same ETF over the window */
+            buyHold: components["schemas"]["StrategyLeg"];
+            /** @description Faithful point-in-time fills from replaying the order series through /evaluate */
+            orders: components["schemas"]["EvaluatedOrder"][];
         };
         UpsertUniverseRequest: {
             /** @description Symbols to add or update in the corpus */
@@ -824,6 +880,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EtfReturnsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    runSmaStrategy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmaStrategyRequest"];
+            };
+        };
+        responses: {
+            /** @description Backtest result with strategy and buy-and-hold equity curves */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategyBacktestResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];

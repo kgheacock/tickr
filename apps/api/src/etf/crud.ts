@@ -62,8 +62,27 @@ export async function createEtf(
     );
   }
 
-  const resolvedBaseDate =
-    input.baseDate ?? new Date().toISOString().slice(0, 10);
+  // Default base_date to the documented "earliest common bar date": the latest
+  // first-bar across members, i.e. the earliest date on which *every* member
+  // already has a price. This is also what the synthetic series needs — before
+  // that date a not-yet-listed member's weight would be counted with no bar,
+  // producing a distorted pre-base ramp. (A barless member is still caught by
+  // the UNDEFINED_BASE check below.)
+  let resolvedBaseDate = input.baseDate;
+  if (!resolvedBaseDate) {
+    const { rows } = await pool.query<{ base_date: string | null }>(
+      `SELECT MAX(first_bar)::text AS base_date
+         FROM (
+           SELECT symbol, MIN(ts)::date AS first_bar
+             FROM price_bar
+            WHERE symbol = ANY($1)
+            GROUP BY symbol
+         ) s`,
+      [symbols],
+    );
+    resolvedBaseDate =
+      rows[0]?.base_date ?? new Date().toISOString().slice(0, 10);
+  }
 
   // Validate every member has a bar at or before base_date.
   const { rows: baseBarRows } = await pool.query<{ symbol: string }>(

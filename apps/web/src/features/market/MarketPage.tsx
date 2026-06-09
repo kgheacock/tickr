@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createChart, ColorType } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthProvider';
 import { client } from '../../api/client';
 import { socket } from '../../api/socket';
@@ -155,6 +155,9 @@ export function MarketPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <span className={styles.brand}>tickr</span>
+        <Link className={styles.navLink} to="/strategy">
+          Strategy
+        </Link>
         <div className={styles.headerRight}>
           <span className={styles.username}>{user?.displayName}</span>
           <button className={styles.logoutBtn} onClick={handleLogout}>
