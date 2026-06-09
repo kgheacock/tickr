@@ -1,6 +1,6 @@
 # 18 — Display logic: ETF editor, strategy & performance plot
 
-> **Status:** implemented (PR pending) • **Depends on:** 16, 17
+> **Status:** done • **Depends on:** 16, 17 • **PR:** https://github.com/kgheacock/tickr/pull/33
 >
 > Item 16 stops at the live-update spine (auth + CSRF + sessions + WS that
 > **logs to console**) with no display. This item is where that graduates
