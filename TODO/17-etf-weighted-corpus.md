@@ -1,6 +1,6 @@
 # 17 — ETF over a weighted corpus
 
-> **Status:** pending • **Depends on:** 16
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/31) • **Depends on:** 16
 
 ## Goal
 
@@ -98,11 +98,11 @@ This is the only weighted-subset abstraction on top of the single corpus
 
 ## Definition of done
 
-- [ ] An ETF can be created from a weighted set of universe symbols and read
+- [x] An ETF can be created from a weighted set of universe symbols and read
       back with normalized weights.
-- [ ] `GET /prices?symbols=etf:<key>` returns the rebased weighted index over
+- [x] `GET /prices?symbols=etf:<key>` returns the rebased weighted index over
       the window; a known 50/50 basket reproduces the expected return.
-- [ ] `POST /evaluate` accepts ETF handles and fills at the point-in-time
+- [x] `POST /evaluate` accepts ETF handles and fills at the point-in-time
       synthetic close.
-- [ ] Members must exist in `universe_symbol`; undefined-base and unknown
+- [x] Members must exist in `universe_symbol`; undefined-base and unknown
       members are rejected with clear errors.
