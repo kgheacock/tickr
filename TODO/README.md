@@ -86,11 +86,20 @@ trading, snapshots, realtime, frontend, deploy each live in their own item.
 Cross-cutting concerns (logging, metrics, rate limiting) bundle into
 item 10 so they aren't sprinkled half-implemented across other items.
 
+## Epics (v2+)
+
+Larger multi-item tracks live in their own folder with a self-contained index,
+so this root list stays a focused v1 plan. One line per epic:
+
+- [Fantasy Street](fantasy-street/README.md) — seasonal head-to-head stock
+  league (the "Seasons" concept). 12 items, `pending`.
+
 ## What's *not* in v1
 
 These belong to later phases — track separately when v2/v3 starts:
 
-- Seasons (`season` table, lifecycle, transitions)
+- Seasons (`season` table, lifecycle, transitions) — see
+  [Epics → Fantasy Street](fantasy-street/README.md)
 - Themes (`theme`, `theme_symbol`, watch list view)
 - The 6-strategy bot registry beyond `index`
 - User-authored algos
