@@ -1,6 +1,24 @@
 export type { paths, components, operations } from './openapi.gen.js';
 export type { WsTopic, WsClientMessage, WsServerMessage } from './ws.js';
 
+// --- Fantasy Street (epic v2) ---
+export type {
+  RosterConfig,
+  LeagueMember,
+  LeagueView,
+  LeagueSummary,
+  LeagueListResponse,
+  LeagueMembership,
+  Invite,
+  CreateLeagueRequest,
+  UpdateLeagueRequest,
+  CreateInviteRequest,
+  JoinLeagueRequest,
+  LeagueStatus,
+  JoinPolicy,
+  MemberRole,
+} from './fantasy.js';
+
 import type { components } from './openapi.gen.js';
 
 // --- Enums ---

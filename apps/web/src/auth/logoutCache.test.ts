@@ -25,6 +25,7 @@ const ME: MeResponse = {
   },
   identities: [],
   csrfToken: 'x',
+  leagues: [],
 };
 
 /** Mirrors AuthProvider's useQuery options. `getMe` is swapped to simulate the

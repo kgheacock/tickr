@@ -301,6 +301,8 @@ export interface components {
             identities: components["schemas"]["Identity"][];
             /** @description Rotating token required in X-CSRF-Token on state-changing requests */
             csrfToken: string;
+            /** @description Fantasy Street leagues the user is a member of, for client routing */
+            leagues: components["schemas"]["LeagueMembership"][];
         };
         UniverseItem: {
             symbol: string;
@@ -563,6 +565,107 @@ export interface components {
             jobQueueDepth: number;
             /** @description Count of universe_symbol rows with backfilled = false */
             backfillRemaining: number;
+        };
+        /** @description Slot layout for a league's weekly lineup plus bench depth */
+        RosterConfig: {
+            /** @description Named starting slots (Anchor, Growth, Momentum, Value, Defense, Wildcard) */
+            slots: string[];
+            /** @description Number of bench slots (0–4) */
+            bench: number;
+        };
+        LeagueMember: {
+            userId: string;
+            displayName: string;
+            teamName: string | null;
+            /** @enum {string} */
+            role: "commissioner" | "manager";
+            /** Format: date-time */
+            joinedAt: string;
+        };
+        LeagueView: {
+            id: string;
+            name: string;
+            commissionerUserId: string;
+            /** @description Max managers (4–12) */
+            size: number;
+            seasonLengthWeeks: number;
+            rosterConfig: components["schemas"]["RosterConfig"];
+            /** @enum {string} */
+            joinPolicy: "invite" | "open";
+            /** @enum {string} */
+            status: "forming" | "drafting" | "active" | "playoffs" | "archived";
+            /** Format: date-time */
+            createdAt: string;
+            members: components["schemas"]["LeagueMember"][];
+            /** @description size − current member count */
+            openSlots: number;
+        };
+        LeagueSummary: {
+            id: string;
+            name: string;
+            size: number;
+            seasonLengthWeeks: number;
+            /** @enum {string} */
+            joinPolicy: "invite" | "open";
+            /** @enum {string} */
+            status: "forming" | "drafting" | "active" | "playoffs" | "archived";
+            memberCount: number;
+            openSlots: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        LeagueListResponse: {
+            items: components["schemas"]["LeagueSummary"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /** @description A user's membership in a league, as surfaced on /me */
+        LeagueMembership: {
+            leagueId: string;
+            teamName: string | null;
+            /** @enum {string} */
+            role: "commissioner" | "manager";
+            /** @enum {string} */
+            status: "forming" | "drafting" | "active" | "playoffs" | "archived";
+        };
+        Invite: {
+            token: string;
+            leagueId: string;
+            /** Format: date-time */
+            expiresAt: string | null;
+            maxUses: number | null;
+            uses: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateLeagueRequest: {
+            name: string;
+            /** @description 4–12 */
+            size: number;
+            seasonLengthWeeks: number;
+            rosterConfig?: components["schemas"]["RosterConfig"];
+            /** @enum {string} */
+            joinPolicy: "invite" | "open";
+        };
+        /** @description Commissioner settings edit; allowed only while status = forming */
+        UpdateLeagueRequest: {
+            name?: string;
+            size?: number;
+            seasonLengthWeeks?: number;
+            rosterConfig?: components["schemas"]["RosterConfig"];
+            /** @enum {string} */
+            joinPolicy?: "invite" | "open";
+        };
+        CreateInviteRequest: {
+            /** @description Invite lifetime in hours; omit for no expiry */
+            expiresInHours?: number;
+            /** @description Cap on accepted joins; omit for unlimited until expiry */
+            maxUses?: number;
+        };
+        JoinLeagueRequest: {
+            /** @description Invite token; required for invite-only leagues, optional for open leagues */
+            token?: string;
         };
     };
     responses: {
