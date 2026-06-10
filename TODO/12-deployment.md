@@ -125,6 +125,13 @@ restore drill, and a one-command deploy from a fresh git pull.
       (CPU/mem headroom under realistic load, when to scale up off the CX22).
 - [x] Feed those deployment findings back into `README.md` and
       `CONTRIBUTING.md`, replacing the placeholder deployment TODOs in each.
+- [x] SPA cache-busting: Caddy serves content-hashed `/assets/*` as `immutable`
+      (`max-age=1y`) and `index.html`/SPA fallback as `no-cache`, so browsers
+      pick up a new deploy without a hard refresh (previously `file_server` set
+      no `Cache-Control`, so a stale `index.html` kept loading old bundles).
+      Config in `compose/Caddyfile.prod`; headers verified locally via
+      `caddy validate` + a header run. (PR #53 —
+      https://github.com/kgheacock/tickr/pull/53; live on next deploy.)
 
 > The remaining unchecked boxes require the live Hetzner VPS (TLS issuance,
 > `docker compose ps healthy`, nightly upload, a real restore drill, external

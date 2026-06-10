@@ -31,6 +31,22 @@ tickr.keithheacock.com {
 	# SPA: serve static assets, falling back to index.html for client routes.
 	handle {
 		root * /srv
+
+		# Cache busting. Vite emits content-hashed bundles under /assets/
+		# (e.g. index-yPiskd7U.js) — the URL changes whenever the content
+		# does, so they're safe to cache forever. index.html (and the SPA
+		# fallback for any client route) must NOT be cached, or browsers keep
+		# loading an old document that points at stale asset URLs. no-cache
+		# still allows a cheap ETag revalidation (304); it just forbids serving
+		# from cache without checking first. The matchers are mutually exclusive
+		# so exactly one applies, evaluated against the original request path
+		# (before the try_files fallback rewrite).
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+
+		@notassets not path /assets/*
+		header @notassets Cache-Control "no-cache"
+
 		try_files {path} /index.html
 		file_server
 	}
