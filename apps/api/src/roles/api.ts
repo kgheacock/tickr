@@ -61,6 +61,14 @@ export async function runApi(): Promise<void> {
     async (api) => {
       api.get('/health', async () => ({ ok: true }));
 
+      // Reports the commit SHA this image was deployed at. scripts/deploy.sh
+      // exports TICKR_IMAGE_TAG=<deployed SHA> before `up`, and prod compose
+      // passes it through as TICKR_COMMIT — so this tracks rollbacks too.
+      // Falls back to 'unknown' outside the prod compose (dev/local).
+      api.get('/meta', async () => ({
+        commit: process.env['TICKR_COMMIT'] ?? 'unknown',
+      }));
+
       await registerStartRoutes(api);
       await registerCallbackRoutes(api);
       await registerLogoutRoute(api);
