@@ -1,7 +1,5 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
-import { authLog } from '../auth/log';
+import { useLogout } from '../auth/useLogout';
 import styles from './LandingPage.module.css';
 
 // Google-account-gated request-access form (Google Forms with sign-in gate).
@@ -9,58 +7,90 @@ import styles from './LandingPage.module.css';
 // identity that later gets granted OAuth access. See TODO/20-ui-critiques.md.
 const REQUEST_ACCESS_URL = 'https://forms.gle/xhPHtFmtSvHByEqa6';
 
+const EDITION_DATE = new Date().toLocaleDateString('en-US', {
+  weekday: 'long',
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
 export function LandingPage() {
   const { user, isLoading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    authLog('LandingPage effect', { user: user?.email ?? null, isLoading });
-    if (!isLoading && user) {
-      authLog('LandingPage → redirecting to /market (user present)');
-      navigate('/market', { replace: true });
-    }
-  }, [isLoading, user, navigate]);
+  const handleLogout = useLogout();
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <span className={styles.wordmark}>tickr</span>
-        <div className={styles.providers}>
-          <a
-            href="/api/v1/auth/google/start"
-            className={`${styles.btn} ${styles.google}`}
-          >
-            <GoogleIcon />
-            <span>Sign in with Google</span>
-          </a>
-          <a
-            href="/api/v1/auth/github/start"
-            className={`${styles.btn} ${styles.github}`}
-          >
-            <GitHubIcon />
-            <span>Sign in with GitHub</span>
-          </a>
-        </div>
-      </header>
+      <div className={styles.paper}>
+        <header className={styles.masthead}>
+          <span className={styles.flag}>Closed Beta</span>
+          <h1 className={styles.wordmark}>tickr</h1>
+          <span className={styles.flag}>{EDITION_DATE}</span>
+        </header>
 
-      <main className={styles.hero}>
-        <h1 className={styles.title}>tickr</h1>
-        <p className={styles.tagline}>
-          Explore historical price data and backtest trading strategies against
-          the S&amp;P 500 universe.
+        <div className={styles.ruleHeavy} />
+        <p className={styles.subhead}>
+          Head-to-Head Stock Leagues · Draft the S&amp;P 500 · Est. MMXXVI
         </p>
-        <p className={styles.beta}>
-          tickr is in closed beta.{' '}
-          <a
-            href={REQUEST_ACCESS_URL}
-            className={styles.requestAccess}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Request access
-          </a>
-        </p>
-      </main>
+        <div className={styles.ruleThin} />
+
+        <main className={styles.hero}>
+          <article className={styles.lede}>
+            <p className={styles.kicker}>Fantasy Street</p>
+            <h2 className={styles.headline}>
+              Draft your team. Set your lineup. Earn your glory.
+            </h2>
+            <p className={styles.deck}>
+              Fantasy football where the players are stocks. Draft the S&amp;P
+              500 with your league — one owner per ticker — field a weekly
+              lineup, and go head-to-head into the playoffs.
+            </p>
+          </article>
+
+          <aside className={styles.column}>
+            {isLoading ? null : user ? (
+              <>
+                <p className={styles.columnHead}>Account</p>
+                <p className={styles.account}>{user.email}</p>
+                <button className={styles.signout} onClick={handleLogout}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <p className={styles.columnHead}>Sign In</p>
+                <div className={styles.providers}>
+                  <a
+                    href="/api/v1/auth/google/start"
+                    className={`${styles.btn} ${styles.google}`}
+                  >
+                    <GoogleIcon />
+                    <span>Continue with Google</span>
+                  </a>
+                  <a
+                    href="/api/v1/auth/github/start"
+                    className={`${styles.btn} ${styles.github}`}
+                  >
+                    <GitHubIcon />
+                    <span>Continue with GitHub</span>
+                  </a>
+                </div>
+                <div className={styles.columnRule} />
+                <p className={styles.beta}>
+                  tickr is presently in closed beta.{' '}
+                  <a
+                    href={REQUEST_ACCESS_URL}
+                    className={styles.requestAccess}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Request access →
+                  </a>
+                </p>
+              </>
+            )}
+          </aside>
+        </main>
+      </div>
     </div>
   );
 }

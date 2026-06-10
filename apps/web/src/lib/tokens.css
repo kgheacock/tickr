@@ -1,17 +1,22 @@
 :root {
-  --color-bg: #0f1117;
-  --color-surface: #1a1d27;
-  --color-border: #2a2d3a;
-  --color-text: #e2e8f0;
-  --color-text-muted: #7a8599;
-  --color-accent: #4f8ef7;
-  --color-accent-hover: #6ba3f9;
-  --color-success: #48bb78;
-  --color-danger: #fc8181;
+  /* Light "newsprint" theme — Wall Street Journal front-page aesthetic.
+     A warm paper sits on a slightly darker desk; ink is near-black, rules
+     are hairline, and the single accent is a sober editorial blue. */
+  --color-bg: #e7e3d8;
+  --color-surface: #fbfaf5;
+  --color-paper: #fbfaf5;
+  --color-border: #d8d3c5;
+  --color-rule: #15130f;
+  --color-text: #15130f;
+  --color-text-muted: #6c665a;
+  --color-accent: #1a4f8a;
+  --color-accent-hover: #2d6cb5;
+  --color-success: #1f7a4d;
+  --color-danger: #a52714;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -24,12 +29,13 @@
   --space-12: 48px;
 
   --font-mono: 'JetBrains Mono', 'Fira Mono', monospace;
-  --font-sans: system-ui, -apple-system, sans-serif;
+  --font-sans: 'Libre Franklin', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
   --font-size-sm: 13px;
-  --font-size-base: 15px;
-  --font-size-lg: 18px;
-  --font-size-xl: 24px;
-  --font-size-2xl: 32px;
+  --font-size-base: 16px;
+  --font-size-lg: 19px;
+  --font-size-xl: 26px;
+  --font-size-2xl: 38px;
 }
 
 *,
@@ -43,10 +49,11 @@
 body {
   background: var(--color-bg);
   color: var(--color-text);
-  font-family: var(--font-sans);
+  font-family: var(--font-serif);
   font-size: var(--font-size-base);
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button {
