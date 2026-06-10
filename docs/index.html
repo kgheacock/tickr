@@ -410,13 +410,9 @@
         background: rgba(15, 23, 42, 0.16);
         transform: translateY(-0.5px);
       }
+      /* a space is still a physical flap: blank tile + seam, no glyph */
       .ft--space {
-        background: none;
-        box-shadow: none;
-        min-width: 0.45em;
-      }
-      .ft--space::after {
-        display: none;
+        color: transparent;
       }
 
       /* ============ file-tree component (board panel) ============ */
@@ -992,7 +988,9 @@
           const tile = document.createElement("span");
           tile.setAttribute("aria-hidden", "true");
           if (ch === " ") {
+            // blank flap: a non-breaking space gives it a matching line box
             tile.className = "ft ft--space";
+            tile.textContent = "\u00A0";
           } else {
             tile.className = "ft";
             tile.textContent = ch;
