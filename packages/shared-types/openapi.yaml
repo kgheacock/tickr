@@ -788,6 +788,110 @@ components:
           type: string
           description: Invite token; required for invite-only leagues, optional for open leagues
 
+    # --- Players & grouping (item 02) ---
+
+    PlayerGroup:
+      type: string
+      description: A draftable slot family a stock can qualify for
+      enum: [anchor, growth, momentum, value, defense, wildcard]
+
+    PlayerMetrics:
+      type: object
+      description: Price-derived metrics behind a stock's group eligibility
+      required: [ret3mPct, ret12mPct, sigma, avgVolume]
+      properties:
+        ret3mPct:
+          type: ['number', 'null']
+          description: Trailing ~3-month price return, percent
+        ret12mPct:
+          type: ['number', 'null']
+          description: Trailing ~12-month price return, percent
+        sigma:
+          type: ['number', 'null']
+          description: Stddev of trailing daily returns (~90d), as a fraction
+        avgVolume:
+          type: ['number', 'null']
+          description: Mean daily volume over the window; null when unavailable
+
+    PlayerOwnership:
+      type: object
+      description: Per-league ownership status for a stock
+      required: [owned]
+      properties:
+        owned:
+          type: boolean
+        ownerTeam:
+          type: ['string', 'null']
+          description: Team name of the owning manager, when owned
+        isShort:
+          type: ['boolean', 'null']
+          description: Whether the owner holds it as a short (defense), when owned
+
+    PlayerInventoryItem:
+      type: object
+      required: [symbol, groups, recentReturnPct, ownership]
+      properties:
+        symbol:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerGroup'
+        recentReturnPct:
+          type: ['number', 'null']
+          description: Trailing ~3-month return, surfaced for scouting
+        ownership:
+          $ref: '#/components/schemas/PlayerOwnership'
+
+    PlayerListResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerInventoryItem'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    PlayerDetail:
+      type: object
+      required:
+        - symbol
+        - groups
+        - eligibleSlots
+        - recentReturnPct
+        - metrics
+        - ownership
+        - prices
+      properties:
+        symbol:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerGroup'
+        eligibleSlots:
+          type: array
+          description: Roster slot names this stock may fill
+          items:
+            type: string
+        recentReturnPct:
+          type: ['number', 'null']
+        metrics:
+          $ref: '#/components/schemas/PlayerMetrics'
+        ownership:
+          $ref: '#/components/schemas/PlayerOwnership'
+        prices:
+          type: array
+          description: Price-history window (~1y) for the detail chart
+          items:
+            $ref: '#/components/schemas/PriceBar'
+
 paths:
   # --- Auth & session ---
 
