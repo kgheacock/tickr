@@ -14,21 +14,38 @@
 # as an admin in the browser and copy the tickr_sid cookie value.
 #
 # Env:
-#   SMOKE_BASE_URL       default https://tickr.keithheacock.com
-#   SMOKE_ADMIN_COOKIE   admin tickr_sid value (optional; enables the ops check)
-#   SMOKE_MAX_LAG_SEC    default 93600 (26 h)
+#   SMOKE_BASE_URL        default https://tickr.keithheacock.com
+#   SMOKE_ADMIN_COOKIE    admin tickr_sid value (optional; enables the ops check)
+#   SMOKE_MAX_LAG_SEC     default 93600 (26 h)
+#   SMOKE_HEALTH_TIMEOUT  default 90 — seconds to wait for the stack to come up
+#   SMOKE_HEALTH_INTERVAL default 3 — seconds between health attempts
 set -euo pipefail
 
 BASE_URL="${SMOKE_BASE_URL:-https://tickr.keithheacock.com}"
 MAX_LAG="${SMOKE_MAX_LAG_SEC:-93600}"
+HEALTH_TIMEOUT="${SMOKE_HEALTH_TIMEOUT:-90}"
+HEALTH_INTERVAL="${SMOKE_HEALTH_INTERVAL:-3}"
 
 log() { echo "[smoke] $*"; }
 die() { echo "[smoke] FAIL: $*" >&2; exit 1; }
 
 # --- 1. Health ----------------------------------------------------------------
-log "GET ${BASE_URL}/api/v1/health"
-body="$(curl -fsS --max-time 10 "${BASE_URL}/api/v1/health")" \
-  || die "health endpoint did not return 2xx"
+# deploy.sh runs this immediately after `docker compose up -d`, which returns as
+# soon as containers are *started* — not ready. Two startup windows make a
+# single attempt flap: (a) the published :443 rule and Caddy's listener are
+# rebound during recreate (connection refused), and (b) caddy depends on api
+# with `service_started`, but the api has no healthcheck and Fastify takes a few
+# seconds to listen, so Caddy briefly returns 502. So poll until ready (curl -f
+# fails on refused, timeout, AND 5xx) rather than failing on the first attempt.
+log "GET ${BASE_URL}/api/v1/health (waiting up to ${HEALTH_TIMEOUT}s for readiness)"
+deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
+body=""
+until body="$(curl -fsS --max-time 5 "${BASE_URL}/api/v1/health" 2>/dev/null)"; do
+  if (( $(date +%s) >= deadline )); then
+    die "health endpoint not 2xx within ${HEALTH_TIMEOUT}s"
+  fi
+  sleep "$HEALTH_INTERVAL"
+done
 echo "$body" | grep -q '"ok":true' || die "health body unexpected: $body"
 log "health ok"
 
