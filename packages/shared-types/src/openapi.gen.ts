@@ -106,6 +106,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/symbols/{symbol}/logo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Company logo image (downloaded from Massive into symbol_branding) */
+        get: operations["getSymbolLogo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/symbols/{symbol}/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Company icon image (downloaded from Massive into symbol_branding) */
+        get: operations["getSymbolIcon"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/prices": {
         parameters: {
             query?: never;
@@ -754,6 +788,70 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalServerError"];
+        };
+    };
+    getSymbolLogo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Universe symbol, e.g. AAPL or BRK-B (case-insensitive) */
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The logo image bytes (SVG/PNG; see Content-Type) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                    "image/png": string;
+                };
+            };
+            /** @description Not modified (matched If-None-Match) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getSymbolIcon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Universe symbol, e.g. AAPL or BRK-B (case-insensitive) */
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The icon image bytes (PNG/JPEG; see Content-Type) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                };
+            };
+            /** @description Not modified (matched If-None-Match) */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     getPrices: {

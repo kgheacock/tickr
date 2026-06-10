@@ -8,7 +8,11 @@ import {
   afterEach,
 } from 'vitest';
 import { Redis } from 'ioredis';
-import { massiveGet, MassiveRateLimitError } from '../../src/massive/client.js';
+import {
+  massiveGet,
+  massiveGetBytes,
+  MassiveRateLimitError,
+} from '../../src/massive/client.js';
 
 const REDIS_URL = process.env['REDIS_URL'] ?? 'redis://localhost:6379';
 const REAL_API_KEY = process.env['MASSIVE_API_KEY'];
@@ -222,6 +226,51 @@ describe('massiveGet', () => {
     const serialized = JSON.stringify(logCalls);
     expect(serialized).not.toContain(apiKey);
     expect(serialized).not.toContain('Bearer');
+  });
+});
+
+describe('massiveGetBytes', () => {
+  it('returns the body bytes and content-type, acquiring one token', async () => {
+    const { acquire } = await import('../../src/massive/bucket.js');
+    vi.mocked(acquire).mockClear();
+
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a]);
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(png, {
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      }),
+    );
+
+    const { bytes, contentType } = await massiveGetBytes(
+      redis,
+      'https://api.massive.com/v1/reference/branding/x/icon.png',
+      mockFetch,
+    );
+
+    expect(acquire).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(contentType).toBe('image/png');
+    expect(Buffer.isBuffer(bytes)).toBe(true);
+    expect(bytes.equals(png)).toBe(true);
+  });
+
+  it('sends the Bearer header and surfaces 429 as MassiveRateLimitError', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValue(new Response('rate limited', { status: 429 }));
+
+    await expect(
+      massiveGetBytes(
+        redis,
+        'https://api.massive.com/v1/reference/branding/x/logo.svg',
+        mockFetch,
+      ),
+    ).rejects.toBeInstanceOf(MassiveRateLimitError);
+
+    const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Authorization']).toBe('Bearer test-key');
   });
 });
 
