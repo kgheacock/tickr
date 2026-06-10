@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from '../db/pool.js';
 import { requireAuth } from '../auth/middleware.js';
+import { getUserLeagues } from '../fantasy/leagues.js';
 
 export async function registerMeRoute(fastify: FastifyInstance): Promise<void> {
   fastify.get('/me', { preHandler: [requireAuth] }, async (req) => {
@@ -25,6 +26,7 @@ export async function registerMeRoute(fastify: FastifyInstance): Promise<void> {
     ]);
 
     const user = userRow.rows[0]!;
+    const leagues = await getUserLeagues(userId, pool);
     return {
       user: {
         id: user.id,
@@ -38,6 +40,7 @@ export async function registerMeRoute(fastify: FastifyInstance): Promise<void> {
         emailAtLink: r.email_at_link,
       })),
       csrfToken: req.session!.csrfToken,
+      leagues,
     };
   });
 }

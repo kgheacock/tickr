@@ -116,7 +116,7 @@ components:
 
     MeResponse:
       type: object
-      required: [user, identities, csrfToken]
+      required: [user, identities, csrfToken, leagues]
       properties:
         user:
           $ref: '#/components/schemas/User'
@@ -127,6 +127,11 @@ components:
         csrfToken:
           type: string
           description: Rotating token required in X-CSRF-Token on state-changing requests
+        leagues:
+          type: array
+          description: Fantasy Street leagues the user is a member of, for client routing
+          items:
+            $ref: '#/components/schemas/LeagueMembership'
 
     # --- Universe ---
 
@@ -569,6 +574,219 @@ components:
         backfillRemaining:
           type: integer
           description: Count of universe_symbol rows with backfilled = false
+
+    # --- Fantasy Street: leagues & membership (item 01) ---
+
+    RosterConfig:
+      type: object
+      description: Slot layout for a league's weekly lineup plus bench depth
+      required: [slots, bench]
+      properties:
+        slots:
+          type: array
+          description: Named starting slots (Anchor, Growth, Momentum, Value, Defense, Wildcard)
+          items:
+            type: string
+        bench:
+          type: integer
+          description: Number of bench slots (0–4)
+
+    LeagueMember:
+      type: object
+      required: [userId, displayName, teamName, role, joinedAt]
+      properties:
+        userId:
+          type: string
+        displayName:
+          type: string
+        teamName:
+          type: ['string', 'null']
+        role:
+          type: string
+          enum: [commissioner, manager]
+        joinedAt:
+          type: string
+          format: date-time
+
+    LeagueView:
+      type: object
+      required:
+        - id
+        - name
+        - commissionerUserId
+        - size
+        - seasonLengthWeeks
+        - rosterConfig
+        - joinPolicy
+        - status
+        - createdAt
+        - members
+        - openSlots
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        commissionerUserId:
+          type: string
+        size:
+          type: integer
+          description: Max managers (4–12)
+        seasonLengthWeeks:
+          type: integer
+        rosterConfig:
+          $ref: '#/components/schemas/RosterConfig'
+        joinPolicy:
+          type: string
+          enum: [invite, open]
+        status:
+          type: string
+          enum: [forming, drafting, active, playoffs, archived]
+        createdAt:
+          type: string
+          format: date-time
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueMember'
+        openSlots:
+          type: integer
+          description: size − current member count
+
+    LeagueSummary:
+      type: object
+      required:
+        - id
+        - name
+        - size
+        - seasonLengthWeeks
+        - joinPolicy
+        - status
+        - memberCount
+        - openSlots
+        - createdAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        size:
+          type: integer
+        seasonLengthWeeks:
+          type: integer
+        joinPolicy:
+          type: string
+          enum: [invite, open]
+        status:
+          type: string
+          enum: [forming, drafting, active, playoffs, archived]
+        memberCount:
+          type: integer
+        openSlots:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    LeagueListResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueSummary'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    LeagueMembership:
+      type: object
+      description: A user's membership in a league, as surfaced on /me
+      required: [leagueId, teamName, role, status]
+      properties:
+        leagueId:
+          type: string
+        teamName:
+          type: ['string', 'null']
+        role:
+          type: string
+          enum: [commissioner, manager]
+        status:
+          type: string
+          enum: [forming, drafting, active, playoffs, archived]
+
+    Invite:
+      type: object
+      required: [token, leagueId, expiresAt, maxUses, uses, createdAt]
+      properties:
+        token:
+          type: string
+        leagueId:
+          type: string
+        expiresAt:
+          type: ['string', 'null']
+          format: date-time
+        maxUses:
+          type: ['integer', 'null']
+        uses:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateLeagueRequest:
+      type: object
+      required: [name, size, seasonLengthWeeks, joinPolicy]
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+          description: 4–12
+        seasonLengthWeeks:
+          type: integer
+        rosterConfig:
+          $ref: '#/components/schemas/RosterConfig'
+        joinPolicy:
+          type: string
+          enum: [invite, open]
+
+    UpdateLeagueRequest:
+      type: object
+      description: Commissioner settings edit; allowed only while status = forming
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        seasonLengthWeeks:
+          type: integer
+        rosterConfig:
+          $ref: '#/components/schemas/RosterConfig'
+        joinPolicy:
+          type: string
+          enum: [invite, open]
+
+    CreateInviteRequest:
+      type: object
+      properties:
+        expiresInHours:
+          type: integer
+          description: Invite lifetime in hours; omit for no expiry
+        maxUses:
+          type: integer
+          description: Cap on accepted joins; omit for unlimited until expiry
+
+    JoinLeagueRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Invite token; required for invite-only leagues, optional for open leagues
 
 paths:
   # --- Auth & session ---
