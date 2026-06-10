@@ -10,32 +10,43 @@
       name="description"
       content="tickr — a stock-trading game built in TypeScript on Fastify, TimescaleDB, and Redis. Technical overview."
     />
+    <meta name="theme-color" content="#0a0c10" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap"
       rel="stylesheet"
     />
     <style>
       :root {
-        --bg: #ffffff;
-        --panel: #f8fafc;
-        --panel-2: #f1f5f9;
-        --border: #e2e8f0;
-        --line: #cbd5e1;
-        --text: #0f172a;
-        --muted: #475569;
-        --faint: #64748b;
-        --accent: #2563eb;
-        --radius: 10px;
-        --maxw: 880px;
-        --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas,
+        --bg: #0a0c10;
+        --bg-2: #0d1016;
+        --panel: #12161e;
+        --panel-2: #161b24;
+        --border: #232a36;
+        --border-2: #2c3543;
+        --line: #313b4a;
+        --text: #eef2f7;
+        --muted: #aab4c2;
+        --faint: #7b8696;
+        --accent: #f5c842; /* split-flap amber */
+        --accent-dim: #c79a1f;
+        --up: #45e08a; /* market green */
+        --down: #ff6a6a; /* market red */
+        --tile: #fcfcfa; /* the cream of the flap tiles */
+        --radius: 12px;
+        --maxw: 920px;
+        --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas,
           monospace;
-        --sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto,
+        --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto,
           Helvetica, Arial, sans-serif;
+        --display: "Bricolage Grotesque", var(--sans);
       }
       * {
         box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
       }
       body {
         margin: 0;
@@ -44,66 +55,417 @@
         font-family: var(--sans);
         line-height: 1.65;
         -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+        position: relative;
+        overflow-x: hidden;
       }
+      /* atmospheric backdrop: amber glow + cool depth + faint grain */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        background:
+          radial-gradient(
+            1100px 520px at 18% -8%,
+            rgba(245, 200, 66, 0.1),
+            transparent 60%
+          ),
+          radial-gradient(
+            900px 600px at 100% 0%,
+            rgba(69, 224, 138, 0.06),
+            transparent 55%
+          ),
+          linear-gradient(180deg, var(--bg-2), var(--bg) 40%);
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        opacity: 0.035;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      }
+
       a {
         color: var(--accent);
         text-decoration: none;
+        transition: color 0.15s ease;
       }
       a:hover {
-        text-decoration: underline;
+        color: #ffe089;
       }
+
+      /* ============ ticker tape (honest: real stack nouns) ============ */
+      .tape {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(10, 12, 16, 0.82);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+        overflow: hidden;
+        white-space: nowrap;
+        height: 38px;
+        display: flex;
+        align-items: center;
+        mask-image: linear-gradient(
+          90deg,
+          transparent,
+          #000 6%,
+          #000 94%,
+          transparent
+        );
+      }
+      .tape__track {
+        display: inline-flex;
+        align-items: center;
+        gap: 0;
+        will-change: transform;
+        animation: scroll-tape 38s linear infinite;
+      }
+      .tape:hover .tape__track {
+        animation-play-state: paused;
+      }
+      @keyframes scroll-tape {
+        from {
+          transform: translateX(0);
+        }
+        to {
+          transform: translateX(-50%);
+        }
+      }
+      .tick {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        padding: 0 22px;
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .tick b {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .tick .delta {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .tick .delta.up {
+        color: var(--up);
+      }
+      .tick .delta.down {
+        color: var(--down);
+      }
+      .tick::before {
+        content: "";
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--accent);
+        opacity: 0.5;
+      }
+
       .wrap {
         max-width: var(--maxw);
         margin: 0 auto;
-        padding: 56px 24px 72px;
+        padding: 60px 24px 80px;
       }
 
+      /* ============ header ============ */
       header .brand {
-        margin: 0 0 6px;
+        margin: 0 0 4px;
         line-height: 0;
+        display: inline-block;
+        position: relative;
+      }
+      header .brand::after {
+        /* glow seated under the logo board */
+        content: "";
+        position: absolute;
+        inset: -16px -10px;
+        z-index: -1;
+        background: radial-gradient(
+          closest-side,
+          rgba(245, 200, 66, 0.16),
+          transparent
+        );
       }
       header .brand img {
-        width: 200px;
+        width: 230px;
         height: auto;
         display: block;
+        filter: drop-shadow(0 6px 22px rgba(0, 0, 0, 0.55));
       }
-      header .links {
+
+      .kicker {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin: 30px 0 0;
         display: flex;
-        gap: 16px;
-        font-size: 14px;
-        flex-wrap: wrap;
-        margin-top: 10px;
+        align-items: center;
+        gap: 10px;
       }
+      .kicker::before {
+        content: "";
+        width: 22px;
+        height: 1px;
+        background: var(--accent);
+      }
+
+      h1.headline {
+        font-family: var(--display);
+        font-weight: 800;
+        font-size: clamp(30px, 5.4vw, 50px);
+        line-height: 1.04;
+        letter-spacing: -0.022em;
+        margin: 12px 0 0;
+        max-width: 17ch;
+      }
+      h1.headline em {
+        font-style: normal;
+        color: var(--accent);
+      }
+
       .lead {
-        margin: 26px 0 0;
+        margin: 22px 0 0;
         color: var(--muted);
-        font-size: 16px;
+        font-size: 16.5px;
+        max-width: 62ch;
       }
       .lead strong {
         color: var(--text);
-      }
-
-      hr {
-        border: none;
-        border-top: 1px solid var(--border);
-        margin: 40px 0;
-      }
-      h2 {
-        font-size: 12.5px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: var(--faint);
         font-weight: 500;
-        margin: 0 0 18px;
       }
 
-      /* ============ file-tree component ============ */
-      .treebox {
+      .links {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 30px;
+      }
+      .links a {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--text);
+        border: 1px solid var(--border-2);
+        background: linear-gradient(180deg, var(--panel-2), var(--panel));
+        padding: 9px 15px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition:
+          border-color 0.16s ease,
+          transform 0.16s ease,
+          color 0.16s ease;
+      }
+      .links a::after {
+        content: "↗";
+        color: var(--faint);
+        font-size: 12px;
+        transition: transform 0.16s ease, color 0.16s ease;
+      }
+      .links a:hover {
+        border-color: var(--accent);
+        color: #fff;
+        transform: translateY(-1px);
+      }
+      .links a:hover::after {
+        color: var(--accent);
+        transform: translate(2px, -2px);
+      }
+      .links a.primary {
+        border-color: var(--accent-dim);
+        background: linear-gradient(
+          180deg,
+          rgba(245, 200, 66, 0.16),
+          rgba(245, 200, 66, 0.06)
+        );
+      }
+
+      /* ============ spec strip ============ */
+      .specs {
+        margin: 38px 0 0;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1px;
+        background: var(--border);
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        background: var(--panel);
-        padding: 22px 24px;
+        overflow: hidden;
       }
+      .spec {
+        background: var(--panel);
+        padding: 16px 18px;
+      }
+      .spec .v {
+        font-family: var(--display);
+        font-weight: 700;
+        font-size: 22px;
+        letter-spacing: -0.01em;
+        color: var(--text);
+      }
+      .spec .v small {
+        color: var(--accent);
+        font-size: 0.62em;
+        font-weight: 600;
+      }
+      .spec .k {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--faint);
+        margin-top: 4px;
+      }
+      @media (max-width: 640px) {
+        .specs {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      /* ============ section rule + heading ============ */
+      .rule {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 56px 0 0;
+      }
+      h2 {
+        font-family: var(--mono);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--faint);
+        font-weight: 500;
+        margin: 44px 0 20px;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      h2::before {
+        content: "▸";
+        color: var(--accent);
+        font-size: 10px;
+      }
+
+      /* ---- split-flap section header: REAL text, CSS-tiled ----
+         The <h2> keeps its text content (selectable, resizable, one heading).
+         A small script wraps each character in an aria-hidden tile; the h2
+         carries an aria-label so screen readers hear the clean phrase. */
+      h2.flap-head {
+        flex-wrap: wrap;
+        gap: 4px;
+        font-size: 14px;
+        letter-spacing: 0;
+        color: var(--tile);
+        margin: 44px 0 22px;
+      }
+      h2.flap-head::before {
+        content: none;
+      }
+      /* progressive-enhancement: only show the leading tick once tiled */
+      h2.flap-head.is-tiled {
+        position: relative;
+        padding-left: 16px;
+      }
+      h2.flap-head.is-tiled::before {
+        content: "▸";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--accent);
+        font-size: 10px;
+      }
+      .ft {
+        position: relative;
+        min-width: 1.05em;
+        padding: 5px 4px 6px;
+        border-radius: 5px;
+        background: linear-gradient(180deg, #ffffff, #ededea);
+        color: #22242a;
+        text-align: center;
+        font-family: var(--display);
+        font-weight: 700;
+        line-height: 1;
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.55) inset,
+          0 2px 5px rgba(0, 0, 0, 0.4);
+      }
+      /* the signature split-flap seam across each tile */
+      .ft::after {
+        content: "";
+        position: absolute;
+        left: 3px;
+        right: 3px;
+        top: 50%;
+        height: 1px;
+        background: rgba(15, 23, 42, 0.16);
+        transform: translateY(-0.5px);
+      }
+      /* a space is still a physical flap: blank tile + seam, no glyph */
+      .ft--space {
+        color: transparent;
+      }
+
+      /* ============ file-tree component (board panel) ============ */
+      .treebox {
+        position: relative;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: linear-gradient(180deg, var(--panel-2), var(--panel));
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.03) inset,
+          0 24px 60px -28px rgba(0, 0, 0, 0.7);
+        overflow: hidden;
+      }
+      /* board title bar with split-flap-style seam */
+      .treebox__bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.18);
+      }
+      .treebox__bar .led {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--up);
+        box-shadow: 0 0 10px var(--up);
+      }
+      .treebox__bar .title {
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      .treebox__bar .hint {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--faint);
+      }
+      .treebox__bar .hint kbd {
+        font-family: var(--mono);
+        border: 1px solid var(--border-2);
+        border-radius: 4px;
+        padding: 1px 5px;
+        color: var(--muted);
+        background: var(--bg);
+      }
+      .treebox__body {
+        padding: 18px 22px 22px;
+      }
+
       .tree,
       .tree ul {
         list-style: none;
@@ -158,8 +520,13 @@
       .row {
         display: flex;
         align-items: center;
-        gap: 9px;
-        padding: 6px 0;
+        gap: 10px;
+        padding: 6px 8px 6px 0;
+        border-radius: 8px;
+        transition: background 0.14s ease;
+      }
+      .row:hover {
+        background: rgba(245, 200, 66, 0.05);
       }
       .handle {
         flex: none;
@@ -169,11 +536,11 @@
         place-items: center;
       }
       .toggle {
-        width: 15px;
-        height: 15px;
-        border: 1px solid #94a3b8;
-        border-radius: 3px;
-        background: #fff;
+        width: 16px;
+        height: 16px;
+        border: 1px solid var(--border-2);
+        border-radius: 4px;
+        background: var(--bg);
         color: var(--muted);
         font-size: 12px;
         line-height: 1;
@@ -181,28 +548,44 @@
         place-items: center;
         cursor: pointer;
         user-select: none;
+        transition:
+          border-color 0.14s ease,
+          color 0.14s ease;
       }
       .toggle:hover {
         border-color: var(--accent);
         color: var(--accent);
       }
       .dot {
-        width: 6px;
-        height: 6px;
+        width: 5px;
+        height: 5px;
         border-radius: 50%;
-        background: #94a3b8;
+        background: var(--faint);
       }
-      /* white splash chip behind every icon — guarantees contrast */
+      /* cream flap-tile chip behind every icon — echoes the logo's flip tiles */
       .chip {
+        position: relative;
         flex: none;
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
-        background: #fff;
-        border: 1px solid var(--border);
+        width: 32px;
+        height: 32px;
+        border-radius: 7px;
+        background: linear-gradient(180deg, #ffffff, #ededea);
         display: grid;
         place-items: center;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+        box-shadow:
+          0 1px 0 rgba(255, 255, 255, 0.5) inset,
+          0 2px 6px rgba(0, 0, 0, 0.4);
+      }
+      /* the split-flap seam across the tile */
+      .chip::after {
+        content: "";
+        position: absolute;
+        left: 4px;
+        right: 4px;
+        top: 50%;
+        height: 1px;
+        background: rgba(15, 23, 42, 0.12);
+        transform: translateY(-0.5px);
       }
       .chip img {
         width: 19px;
@@ -213,253 +596,341 @@
       .chip .emoji {
         font-size: 17px;
         line-height: 1;
-        filter: grayscale(1);
-        opacity: 0.85;
       }
       .label {
         font-weight: 500;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 13.5px;
+        letter-spacing: 0.01em;
       }
       a.label {
         color: var(--text);
         text-decoration: none;
+        transition: color 0.14s ease;
       }
       a.label:hover {
         color: var(--accent);
-        text-decoration: underline;
       }
       .nsub {
         color: var(--faint);
         font-size: 12px;
         margin-left: 2px;
+        font-family: var(--mono);
       }
-      @media (max-width: 520px) {
+      @media (max-width: 560px) {
         .nsub {
           display: none;
         }
       }
 
       footer {
-        margin-top: 48px;
+        margin-top: 56px;
+        padding-top: 22px;
+        border-top: 1px solid var(--border);
         color: var(--faint);
         font-size: 13px;
+        font-family: var(--mono);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      footer .sig {
+        color: var(--muted);
+      }
+
+      /* ============ load orchestration ============ */
+      @media (prefers-reduced-motion: no-preference) {
+        .reveal {
+          opacity: 0;
+          transform: translateY(14px);
+          animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+        }
+        .d1 {
+          animation-delay: 0.05s;
+        }
+        .d2 {
+          animation-delay: 0.13s;
+        }
+        .d3 {
+          animation-delay: 0.21s;
+        }
+        .d4 {
+          animation-delay: 0.29s;
+        }
+        .d5 {
+          animation-delay: 0.37s;
+        }
+        .d6 {
+          animation-delay: 0.45s;
+        }
+        @keyframes rise {
+          to {
+            opacity: 1;
+            transform: none;
+          }
+        }
       }
     </style>
   </head>
   <body>
+    <!-- honest ticker: the project's own stack + service roles, not fake quotes -->
+    <div class="tape" aria-hidden="true">
+      <div class="tape__track" id="tape"></div>
+    </div>
+
     <div class="wrap">
       <header>
-        <h1 class="brand">
+        <!-- site mark, not a heading: alt carries the accessible name -->
+        <div class="brand reveal d1">
           <img
             src="tickr-logo.svg"
             alt="tickr"
-            aria-label="tickr"
-            width="200"
-            height="60"
+            width="230"
+            height="70"
           />
+        </div>
+
+        <p class="kicker reveal d2">Technical overview</p>
+        <h1 class="headline reveal d2">
+          Paper-trade the S&amp;P 500.<br />Engineered like a
+          <em>trading desk.</em>
         </h1>
-        <div class="links">
-          <a href="https://github.com/kgheacock/tickr">Source on GitHub</a>
+
+        <p class="lead reveal d3">
+          Players manage a virtual portfolio of real S&amp;P 500 names and
+          compete on a <strong>perpetual leaderboard</strong>. Quotes and
+          historical OHLCV bars are ingested from external REST providers into
+          <strong>TimescaleDB</strong>, the single source of truth for every
+          fill, valuation, and ranking. TypeScript end to end, with contracts
+          shared across the wire.
+        </p>
+
+        <nav class="links reveal d3">
+          <a class="primary" href="https://github.com/kgheacock/tickr"
+            >Source on GitHub</a
+          >
           <a href="https://github.com/kgheacock/tickr/tree/main/docs"
             >Design docs</a
           >
           <a href="https://github.com/kgheacock/tickr/blob/main/TODO/README.md"
-            >v1 plan (TODO)</a
+            >v1 plan</a
           >
+        </nav>
+
+        <div class="specs reveal d4">
+          <div class="spec">
+            <div class="v">1<small>×</small> image</div>
+            <div class="k">Four roles via ROLE</div>
+          </div>
+          <div class="spec">
+            <div class="v">TS<small>·</small>e2e</div>
+            <div class="k">Shared contracts</div>
+          </div>
+          <div class="spec">
+            <div class="v">S&amp;P<small>500</small></div>
+            <div class="k">Real tickers</div>
+          </div>
+          <div class="spec">
+            <div class="v">1<small>×</small> VPS</div>
+            <div class="k">Compose stack</div>
+          </div>
         </div>
-        <p class="lead">
-          Players manage a virtual portfolio of real S&amp;P 500 names and
-          compete on a perpetual leaderboard. Quotes and historical OHLCV bars
-          are ingested from external REST providers into
-          TimescaleDB, which is the single source of truth for
-          every fill, valuation, and ranking. TypeScript end to end, with
-          contracts shared across the wire.
-        </p>
       </header>
 
-      <hr />
+      <hr class="rule reveal d5" />
 
-      <h2>Containers &amp; components</h2>
-      <div class="treebox">
-        <ul class="tree" role="tree">
-          <!-- Docker (root) -->
-          <li role="treeitem" aria-expanded="true">
-            <div class="row">
-              <span class="handle"><span class="toggle">−</span></span>
-              <span class="chip">
-                <img
-                  src="https://cdn.simpleicons.org/docker"
-                  alt="Docker"
-                  onerror="this.remove()"
-                />
-              </span>
-              <a
-                class="label"
-                href="https://github.com/kgheacock/tickr/tree/main/compose"
-                >Docker</a
-              >
-              <span class="nsub">— Compose stack on one VPS</span>
-            </div>
+      <div class="treebox reveal d6">
+        <div class="treebox__bar">
+          <span class="led"></span>
+          <span class="title">tickr / runtime topology</span>
+          <span class="hint">click <kbd>−</kbd> to fold</span>
+        </div>
+        <div class="treebox__body">
+          <ul class="tree" role="tree">
+            <!-- Docker (root) -->
+            <li role="treeitem" aria-expanded="true">
+              <div class="row">
+                <span class="handle"><span class="toggle">−</span></span>
+                <span class="chip">
+                  <img
+                    src="https://cdn.simpleicons.org/docker"
+                    alt="Docker"
+                    onerror="this.remove()"
+                  />
+                </span>
+                <a
+                  class="label"
+                  href="https://github.com/kgheacock/tickr/tree/main/compose"
+                  >Docker</a
+                >
+                <span class="nsub">— Compose stack on one VPS</span>
+              </div>
 
-            <ul>
-              <!-- PostgreSQL -->
-              <li role="treeitem">
-                <div class="row">
-                  <span class="handle"><span class="dot"></span></span>
-                  <span class="chip">
-                    <img
-                      src="https://cdn.simpleicons.org/postgresql"
-                      alt="PostgreSQL"
-                      onerror="this.remove()"
-                    />
-                  </span>
-                  <a
-                    class="label"
-                    href="https://github.com/kgheacock/tickr/tree/main/apps/api/src/db"
-                    >PostgreSQL</a
-                  >
-                  <span class="nsub">— system of record</span>
-                </div>
-              </li>
+              <ul>
+                <!-- PostgreSQL -->
+                <li role="treeitem">
+                  <div class="row">
+                    <span class="handle"><span class="dot"></span></span>
+                    <span class="chip">
+                      <img
+                        src="https://cdn.simpleicons.org/postgresql"
+                        alt="PostgreSQL"
+                        onerror="this.remove()"
+                      />
+                    </span>
+                    <a
+                      class="label"
+                      href="https://github.com/kgheacock/tickr/tree/main/apps/api/src/db"
+                      >PostgreSQL</a
+                    >
+                    <span class="nsub">— system of record</span>
+                  </div>
+                </li>
 
-              <!-- TimescaleDB -->
-              <li role="treeitem">
-                <div class="row">
-                  <span class="handle"><span class="dot"></span></span>
-                  <span class="chip">
-                    <img
-                      src="https://cdn.simpleicons.org/timescale"
-                      alt="TimescaleDB"
-                      onerror="this.remove()"
-                    />
-                  </span>
-                  <a
-                    class="label"
-                    style="font-weight: 400"
-                    href="https://github.com/kgheacock/tickr/blob/main/compose/postgres-init/01-timescaledb.sql"
-                    >TimescaleDB</a
-                  >
-                  <span class="nsub">— price_bar hypertable</span>
-                </div>
-              </li>
+                <!-- TimescaleDB -->
+                <li role="treeitem">
+                  <div class="row">
+                    <span class="handle"><span class="dot"></span></span>
+                    <span class="chip">
+                      <img
+                        src="https://cdn.simpleicons.org/timescale"
+                        alt="TimescaleDB"
+                        onerror="this.remove()"
+                      />
+                    </span>
+                    <a
+                      class="label"
+                      href="https://github.com/kgheacock/tickr/blob/main/compose/postgres-init/01-timescaledb.sql"
+                      >TimescaleDB</a
+                    >
+                    <span class="nsub">— price_bar hypertable</span>
+                  </div>
+                </li>
 
-              <!-- Redis -->
-              <li role="treeitem">
-                <div class="row">
-                  <span class="handle"><span class="dot"></span></span>
-                  <span class="chip">
-                    <img
-                      src="https://cdn.simpleicons.org/redis"
-                      alt="Redis"
-                      onerror="this.remove()"
-                    />
-                  </span>
-                  <a
-                    class="label"
-                    href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/redis.ts"
-                    >Redis</a
-                  >
-                  <span class="nsub">— queue · cache · rate limits</span>
-                </div>
-              </li>
+                <!-- Redis -->
+                <li role="treeitem">
+                  <div class="row">
+                    <span class="handle"><span class="dot"></span></span>
+                    <span class="chip">
+                      <img
+                        src="https://cdn.simpleicons.org/redis"
+                        alt="Redis"
+                        onerror="this.remove()"
+                      />
+                    </span>
+                    <a
+                      class="label"
+                      href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/redis.ts"
+                      >Redis</a
+                    >
+                    <span class="nsub">— queue · cache · rate limits</span>
+                  </div>
+                </li>
 
-              <!-- Fastify (parent of the app) -->
-              <li role="treeitem" aria-expanded="true">
-                <div class="row">
-                  <span class="handle"><span class="toggle">−</span></span>
-                  <span class="chip">
-                    <img
-                      src="https://cdn.simpleicons.org/fastify"
-                      alt="Fastify"
-                      onerror="this.remove()"
-                    />
-                  </span>
-                  <a
-                    class="label"
-                    href="https://github.com/kgheacock/tickr/tree/main/apps/api"
-                    >Fastify</a
-                  >
-                  <span class="nsub">— one image, four roles (ROLE env)</span>
-                </div>
+                <!-- Fastify (parent of the app) -->
+                <li role="treeitem" aria-expanded="true">
+                  <div class="row">
+                    <span class="handle"><span class="toggle">−</span></span>
+                    <span class="chip">
+                      <img
+                        src="https://cdn.simpleicons.org/fastify"
+                        alt="Fastify"
+                        onerror="this.remove()"
+                      />
+                    </span>
+                    <a
+                      class="label"
+                      href="https://github.com/kgheacock/tickr/tree/main/apps/api"
+                      >Fastify</a
+                    >
+                    <span class="nsub">— one image, four roles (ROLE env)</span>
+                  </div>
 
-                <ul>
-                  <!-- React -->
-                  <li role="treeitem">
-                    <div class="row">
-                      <span class="handle"><span class="dot"></span></span>
-                      <span class="chip">
-                        <img
-                          src="https://cdn.simpleicons.org/react"
-                          alt="React"
-                          onerror="this.remove()"
-                        />
-                      </span>
-                      <span class="label">React</span>
-                      <span class="nsub">— Vite + TypeScript SPA</span>
-                    </div>
-                  </li>
+                  <ul>
+                    <!-- React -->
+                    <li role="treeitem">
+                      <div class="row">
+                        <span class="handle"><span class="dot"></span></span>
+                        <span class="chip">
+                          <img
+                            src="https://cdn.simpleicons.org/react"
+                            alt="React"
+                            onerror="this.remove()"
+                          />
+                        </span>
+                        <span class="label">React</span>
+                        <span class="nsub">— Vite + TypeScript SPA</span>
+                      </div>
+                    </li>
 
-                  <!-- API -->
-                  <li role="treeitem">
-                    <div class="row">
-                      <span class="handle"><span class="dot"></span></span>
-                      <span class="chip"
-                        ><span class="emoji" role="img" aria-label="api"
-                          >🌐</span
-                        ></span
-                      >
-                      <a
-                        class="label"
-                        href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/api.ts"
-                        >API</a
-                      >
-                      <span class="nsub">— auth · orders · reads · WS</span>
-                    </div>
-                  </li>
+                    <!-- API -->
+                    <li role="treeitem">
+                      <div class="row">
+                        <span class="handle"><span class="dot"></span></span>
+                        <span class="chip"
+                          ><span class="emoji" role="img" aria-label="api"
+                            >🌐</span
+                          ></span
+                        >
+                        <a
+                          class="label"
+                          href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/api.ts"
+                          >API</a
+                        >
+                        <span class="nsub">— auth · orders · reads · WS</span>
+                      </div>
+                    </li>
 
-                  <!-- Bot -->
-                  <li role="treeitem">
-                    <div class="row">
-                      <span class="handle"><span class="dot"></span></span>
-                      <span class="chip"
-                        ><span class="emoji" role="img" aria-label="bot"
-                          >🤖</span
-                        ></span
-                      >
-                      <a
-                        class="label"
-                        href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/bot.ts"
-                        >Bot runner</a
-                      >
-                      <span class="nsub">— seeds the index bot</span>
-                    </div>
-                  </li>
+                    <!-- Bot -->
+                    <li role="treeitem">
+                      <div class="row">
+                        <span class="handle"><span class="dot"></span></span>
+                        <span class="chip"
+                          ><span class="emoji" role="img" aria-label="bot"
+                            >🤖</span
+                          ></span
+                        >
+                        <a
+                          class="label"
+                          href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/bot.ts"
+                          >Bot runner</a
+                        >
+                        <span class="nsub">— seeds the index bot</span>
+                      </div>
+                    </li>
 
-                  <!-- Worker -->
-                  <li role="treeitem">
-                    <div class="row">
-                      <span class="handle"><span class="dot"></span></span>
-                      <span class="chip"
-                        ><span class="emoji" role="img" aria-label="worker"
-                          >⚙️</span
-                        ></span
-                      >
-                      <a
-                        class="label"
-                        href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/worker.ts"
-                        >Worker</a
-                      >
-                      <span class="nsub">— ingest · daily price · snapshot</span>
-                    </div>
-                  </li>
-                </ul>
-              </li>
-            </ul>
-          </li>
-        </ul>
+                    <!-- Worker -->
+                    <li role="treeitem">
+                      <div class="row">
+                        <span class="handle"><span class="dot"></span></span>
+                        <span class="chip"
+                          ><span class="emoji" role="img" aria-label="worker"
+                            >⚙️</span
+                          ></span
+                        >
+                        <a
+                          class="label"
+                          href="https://github.com/kgheacock/tickr/blob/main/apps/api/src/roles/worker.ts"
+                          >Worker</a
+                        >
+                        <span class="nsub"
+                          >— ingest · daily price · snapshot</span
+                        >
+                      </div>
+                    </li>
+                  </ul>
+                </li>
+              </ul>
+            </li>
+          </ul>
+        </div>
       </div>
 
       <footer>
-        tickr — a portfolio project by Keith Heacock ·
+        <span class="sig">tickr — a portfolio project by Keith Heacock</span>
         <a href="https://github.com/kgheacock/tickr">github.com/kgheacock/tickr</a>
       </footer>
     </div>
@@ -473,6 +944,61 @@
           t.textContent = collapsed ? "+" : "−";
           li.setAttribute("aria-expanded", String(!collapsed));
         });
+      });
+
+      // Ticker tape: the project's real stack, in the split-flap idiom.
+      // "deltas" are schematic role/version labels — not fabricated market data.
+      const items = [
+        ["TYPESCRIPT", "e2e", "up"],
+        ["FASTIFY", "api", "up"],
+        ["TIMESCALEDB", "hypertable", "up"],
+        ["POSTGRESQL", "of record", "up"],
+        ["REDIS", "queue·cache", "up"],
+        ["REACT", "vite·spa", "up"],
+        ["DOCKER", "compose", "up"],
+        ["WORKER", "ingest", "up"],
+        ["BOT", "index", "up"],
+        ["WEBSOCKET", "live", "up"],
+      ];
+      const tape = document.getElementById("tape");
+      if (tape) {
+        const render = () =>
+          items
+            .map(
+              ([sym, sub, dir]) =>
+                `<span class="tick"><b>${sym}</b><span class="delta ${dir}">${sub}</span></span>`,
+            )
+            .join("");
+        // duplicate the sequence so the -50% loop is seamless
+        tape.innerHTML = render() + render();
+      }
+
+      // Split-flap headings: wrap each character of a .flap-head in a
+      // decorative cream tile. The heading keeps an aria-label of the original
+      // phrase and the tiles are aria-hidden, so screen readers announce the
+      // clean text ("Containers & components, heading level 2"), never the
+      // individual tiles. If this script never runs, the real heading text
+      // remains in the DOM — fully readable.
+      document.querySelectorAll("h2.flap-head").forEach((h) => {
+        const text = h.textContent.trim();
+        h.setAttribute("aria-label", text);
+        const frag = document.createDocumentFragment();
+        for (const ch of text) {
+          const tile = document.createElement("span");
+          tile.setAttribute("aria-hidden", "true");
+          if (ch === " ") {
+            // blank flap: a non-breaking space gives it a matching line box
+            tile.className = "ft ft--space";
+            tile.textContent = "\u00A0";
+          } else {
+            tile.className = "ft";
+            tile.textContent = ch;
+          }
+          frag.appendChild(tile);
+        }
+        h.textContent = "";
+        h.appendChild(frag);
+        h.classList.add("is-tiled");
       });
     </script>
   </body>
