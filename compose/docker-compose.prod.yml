@@ -42,6 +42,9 @@ services:
       - /srv/tickr/secrets/tickr.env
     environment:
       NODE_ENV: production
+      # Deployed commit SHA, surfaced by GET /api/v1/meta. Same value that pins
+      # the image tag above, so /meta always matches the running image.
+      TICKR_COMMIT: ${TICKR_IMAGE_TAG:-local}
     deploy:
       resources:
         limits:

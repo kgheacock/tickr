@@ -38,6 +38,39 @@ const LEVEL_SEVERITY: Record<string, number> = {
 
 const STREAM_ID_RE = /^\d+-\d+$/;
 
+// Where the commit chip links. One named constant — the project has prior
+// history of a `ticker`-vs-`tickr` typo in a prod string, so keep it in one
+// place and spelled `kgheacock/tickr`.
+const GITHUB_REPO_URL = 'https://github.com/kgheacock/tickr';
+// A real deployed SHA (api.ts guarantees TICKR_COMMIT is the deploy SHA).
+// The compose/dev fallbacks ('local', 'unknown') won't match, so they render
+// as a non-linkable label rather than a dead GitHub link.
+const COMMIT_SHA_RE = /^[0-9a-f]{7,40}$/i;
+
+function escapeHtml(s: string): string {
+  return s.replace(
+    /[&<>"]/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c,
+  );
+}
+
+/** The commit chip for the page header: a GitHub link for a real SHA, or a
+ *  dimmed label for the dev/local sentinels. */
+function commitChipHtml(commit: string): string {
+  const safe = escapeHtml(commit);
+  if (COMMIT_SHA_RE.test(commit)) {
+    return (
+      `<a class="commit" href="${GITHUB_REPO_URL}/commit/${commit}" ` +
+      `target="_blank" rel="noopener noreferrer" title="${safe}">` +
+      `⎇ ${commit.slice(0, 7)}</a>`
+    );
+  }
+  return (
+    `<span class="commit dim" title="TICKR_COMMIT not set to a deploy SHA ` +
+    `in this environment">⎇ ${safe}</span>`
+  );
+}
+
 interface ParsedLogEntry {
   id: string;
   level: string;
@@ -149,12 +182,17 @@ export async function registerAdminLogsRoutes(
     { preHandler: [requireAdmin], logLevel: 'warn' },
     async (_req, reply) => {
       reply.type('text/html; charset=utf-8');
-      return LOG_VIEWER_HTML;
+      // Bake the deployed commit into the page server-side (it's constant per
+      // process) so there's no client fetch/flash for it; the backfill bar,
+      // which genuinely changes, is polled from the client.
+      const commit = process.env['TICKR_COMMIT'] ?? 'unknown';
+      return renderLogViewer(commit);
     },
   );
 }
 
-const LOG_VIEWER_HTML = `<!doctype html>
+function renderLogViewer(commit: string): string {
+  return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -183,6 +221,22 @@ const LOG_VIEWER_HTML = `<!doctype html>
   header button { cursor: pointer; }
   header .status { margin-left: auto; color: #666; }
   header .status.err { color: #ff5f5f; }
+  header a.commit, header span.commit {
+    color: #8787d7; text-decoration: none; background: #111;
+    border: 1px solid #333; padding: 1px 6px; border-radius: 3px;
+  }
+  header a.commit:hover { border-color: #555; color: #afafff; }
+  header .commit.dim { color: #767676; }
+  header .backfill {
+    display: inline-flex; align-items: center; gap: 5px; color: #888;
+  }
+  header .backfill .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #767676; display: inline-block;
+  }
+  header .backfill.ok .dot { background: #5fd75f; }
+  header .backfill.busy .dot { background: #ffd75f; }
+  header .backfill.err .dot { background: #ff5f5f; }
   #log { flex: 1 1 auto; overflow-y: auto; padding: 6px 10px; white-space: pre-wrap; word-break: break-word; }
   .line { display: block; }
   .ts { color: #5f5f5f; }
@@ -204,6 +258,10 @@ const LOG_VIEWER_HTML = `<!doctype html>
 <body>
 <header>
   <span class="title">tickr logs</span>
+  ${commitChipHtml(commit)}
+  <span class="backfill" id="backfill" title="universe backfill status (polled from /admin/ops)">
+    <span class="dot"></span><span id="backfill-text">backfill…</span>
+  </span>
   <label>level
     <select id="level">
       <option value="">all</option>
@@ -301,13 +359,53 @@ const LOG_VIEWER_HTML = `<!doctype html>
     poll();
   }
 
+  // Minimal backfill status bar. Polled less often than the log tail (the ops
+  // endpoint isn't at logLevel:warn, so each call shows up as an info line in
+  // the very feed below) and kept honest: backfillRemaining is the primary
+  // signal; jobQueueDepth is reported as general job activity, not "backfill".
+  var backfillEl = document.getElementById('backfill');
+  var backfillTextEl = document.getElementById('backfill-text');
+  var opsTimer = null;
+
+  function pollOps() {
+    fetch('/api/v1/admin/ops', { credentials: 'same-origin', headers: { accept: 'application/json' } })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (d) {
+        var rem = d.backfillRemaining;
+        var depth = d.jobQueueDepth;
+        if (rem === 0) {
+          backfillEl.className = 'backfill ok';
+          backfillTextEl.textContent = 'backfill idle';
+        } else {
+          backfillEl.className = 'backfill busy';
+          backfillTextEl.textContent = 'backfill · ' + rem + ' remaining';
+        }
+        if (depth > 0) {
+          backfillTextEl.textContent += ' · ' + depth + ' job' + (depth === 1 ? '' : 's') + ' active';
+        }
+      })
+      .catch(function () {
+        backfillEl.className = 'backfill err';
+        backfillTextEl.textContent = 'backfill ?';
+      });
+  }
+
   levelEl.addEventListener('change', reload);
   document.getElementById('clear').addEventListener('click', function () { logEl.textContent = ''; });
 
   poll();
   timer = setInterval(poll, 2000);
-  window.addEventListener('beforeunload', function () { if (timer) clearInterval(timer); });
+  pollOps();
+  opsTimer = setInterval(pollOps, 20000);
+  window.addEventListener('beforeunload', function () {
+    if (timer) clearInterval(timer);
+    if (opsTimer) clearInterval(opsTimer);
+  });
 })();
 </script>
 </body>
 </html>`;
+}
