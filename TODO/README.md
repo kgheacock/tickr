@@ -44,6 +44,7 @@ of each file as you go.
 | 19 | [Data audit](19-data-audit.md) | 06, 13 | [done](https://github.com/kgheacock/tickr/pull/28) |
 | 21 | [Logout fix + dev auth](21-logout-fix-and-dev-auth.md) | 04, 11, 12 | [in review](https://github.com/kgheacock/tickr/pull/44) |
 | 22 | [Ticker metadata + branding](22-ticker-metadata-and-branding.md) | 13, 19 | [in review](https://github.com/kgheacock/tickr/pull/56) |
+| 23 | [Admin logs: deploy commit + backfill status](23-admin-logs-meta-and-status.md) | 10, 21 | [in review](https://github.com/kgheacock/tickr/pull/57) |
 
 > **Pivot (items 16–18):** the project is being re-scoped from a trading
 > *game* to a market-data + returns *platform*. Item 16 keeps the data corpus
