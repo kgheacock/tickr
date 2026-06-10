@@ -24,3 +24,11 @@ export type JoinLeagueRequest = Schemas['JoinLeagueRequest'];
 export type LeagueStatus = LeagueView['status'];
 export type JoinPolicy = LeagueView['joinPolicy'];
 export type MemberRole = LeagueMember['role'];
+
+// --- Players & grouping (item 02) ---
+export type PlayerGroup = Schemas['PlayerGroup'];
+export type PlayerMetrics = Schemas['PlayerMetrics'];
+export type PlayerOwnership = Schemas['PlayerOwnership'];
+export type PlayerInventoryItem = Schemas['PlayerInventoryItem'];
+export type PlayerListResponse = Schemas['PlayerListResponse'];
+export type PlayerDetail = Schemas['PlayerDetail'];

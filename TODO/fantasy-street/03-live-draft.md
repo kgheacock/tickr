@@ -52,7 +52,9 @@ of the epic. Auto-draft covers offline/expired picks so the draft never stalls.
      `acquired_via TEXT CHECK (acquired_via IN ('draft','waiver','trade'))`,
      `acquired_at`, `PRIMARY KEY (league_id, user_id, symbol)`,
      **`UNIQUE (league_id, symbol)`** ← single-owner invariant (FS-02/05/07
-     reference this).
+     reference this). **Already created** in FS-02's migration
+     `1700000000007_fs_classification.sql` (FS-02 ships first and must read it to
+     surface ownership) — FS-03 **writes** to it; do **not** re-create the table.
 2. **Snake order + schedule.** On `POST /leagues/:id/draft` (commissioner) with
    league `forming` and full: compute the snake order (1..N, N..1, …) over
    `total_rounds = slots + bench`, set league `status='drafting'`,
