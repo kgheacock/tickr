@@ -1,6 +1,6 @@
 # FS-02 · Players & grouping
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** market-data corpus
+**Status:** `done` ([#55](https://github.com/kgheacock/tickr/pull/55)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** market-data corpus
 
 ## User stories
 - As a manager, I want to browse the full inventory of players (stocks), so
@@ -91,13 +91,13 @@ this layer reads the existing corpus and adds a classification on top.
   `apps/api/src/routes/leagues/index.ts`, `packages/shared-types/src/fantasy.ts`.
 
 ## Definition of done
-- [ ] The classifier assigns each backfilled symbol to ≥1 group and writes
+- [x] The classifier assigns each backfilled symbol to ≥1 group and writes
       `metrics`; a second run changes nothing (idempotent).
-- [ ] `GET /leagues/:id/players` lists the corpus with groups, recent return,
+- [x] `GET /leagues/:id/players` lists the corpus with groups, recent return,
       and correct per-league ownership; `?group=` and `?available=true` filter.
-- [ ] The detail view returns classification, a price-history window, eligible
+- [x] The detail view returns classification, a price-history window, eligible
       slots, and ownership status.
-- [ ] `isEligible(symbol, 'defense')` is true for every tradeable symbol; the
+- [x] `isEligible(symbol, 'defense')` is true for every tradeable symbol; the
       eligibility helper is the single source consumed by FS-03/04/07.
-- [ ] Open data item noted: sector/cap-tier source for Anchor/Value is a static
+- [x] Open data item noted: sector/cap-tier source for Anchor/Value is a static
       seed pending a fundamentals feed.
