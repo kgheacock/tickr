@@ -1,31 +1,149 @@
+/* Wall Street Journal front-page treatment for the (only remaining) login
+   surface: a sheet of newsprint floating on a desk, a masthead with double
+   rule, a lead story, and a "Sign In" column set off by a vertical rule. */
+
 .page {
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(var(--space-4), 4vw, var(--space-12));
 }
 
-/* Sign-in lives in the top header (TODO-20 item 2): the dedicated login page
-   was removed and its branded OAuth buttons moved here. */
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.paper {
+  width: 100%;
+  max-width: 1000px;
+  background: var(--color-paper);
+  border: 1px solid var(--color-border);
+  box-shadow:
+    0 1px 0 rgba(21, 19, 15, 0.04),
+    0 18px 50px -28px rgba(21, 19, 15, 0.4);
+  padding: clamp(var(--space-6), 4vw, var(--space-12));
+}
+
+/* ── Masthead ─────────────────────────────────────────────── */
+
+.masthead {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
   gap: var(--space-4);
-  flex-wrap: wrap;
-  padding: var(--space-4) var(--space-8);
+}
+
+.flag {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.masthead .flag:last-child {
+  text-align: right;
 }
 
 .wordmark {
-  font-size: var(--font-size-lg);
+  font-family: var(--font-serif);
   font-weight: 700;
-  letter-spacing: -0.5px;
-  color: var(--color-accent);
+  font-size: clamp(48px, 9vw, 84px);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.ruleHeavy {
+  margin-top: var(--space-4);
+  border-top: 3px double var(--color-rule);
+  height: 4px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.subhead {
+  font-family: var(--font-sans);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding: var(--space-3) 0;
+}
+
+.ruleThin {
+  border-top: 1px solid var(--color-rule);
+}
+
+/* ── Lead story + sign-in column ──────────────────────────── */
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: clamp(var(--space-6), 4vw, var(--space-10));
+  padding-top: clamp(var(--space-6), 4vw, var(--space-10));
+}
+
+.kicker {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9c2b1b;
+  margin-bottom: var(--space-3);
+}
+
+.headline {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: clamp(32px, 5vw, 52px);
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+  color: var(--color-text);
+  text-wrap: balance;
+}
+
+.deck {
+  margin-top: var(--space-5);
+  font-size: clamp(17px, 1.6vw, 20px);
+  line-height: 1.6;
+  color: #2c2a24;
+  max-width: 40ch;
+}
+
+/* Editorial drop cap on the lead paragraph. */
+.deck::first-letter {
+  initial-letter: 3;
+  -webkit-initial-letter: 3;
+  font-weight: 600;
+  margin-right: 0.06em;
+  color: var(--color-text);
+}
+
+/* ── Sign-in column ───────────────────────────────────────── */
+
+.column {
+  border-left: 1px solid var(--color-rule);
+  padding-left: clamp(var(--space-5), 3vw, var(--space-8));
+}
+
+.columnHead {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-rule);
+  margin-bottom: var(--space-4);
 }
 
 .providers {
   display: flex;
+  flex-direction: column;
   gap: var(--space-3);
-  flex-wrap: wrap;
 }
 
 .btn {
@@ -33,13 +151,19 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   font-weight: 600;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   transition:
     background 0.15s,
-    border-color 0.15s;
+    border-color 0.15s,
+    transform 0.1s;
+}
+
+.btn:active {
+  transform: translateY(1px);
 }
 
 .icon {
@@ -51,7 +175,8 @@
 
 /* Google — dark theme per Sign in with Google branding guidelines:
    fill #131314, 1px stroke #8E918F, text #E3E3E3, unmodified multicolor G.
-   See docs/oauth-provider-approval.md. */
+   See docs/oauth-provider-approval.md. The dark chips read as a deliberate
+   contrast against the newsprint rather than a theme mismatch. */
 .google {
   background: #131314;
   border: 1px solid #8e918f;
@@ -79,37 +204,79 @@
   outline-offset: 2px;
 }
 
-.hero {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: var(--space-8);
-}
-
-.title {
-  font-size: var(--font-size-2xl);
-  font-weight: 700;
-  letter-spacing: -0.5px;
-  color: var(--color-accent);
+/* Logged-in account view: monospace email (it's an identifier) over an
+   outlined "ink" button that reads as part of the newsprint, not a chip. */
+.account {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--color-text);
+  word-break: break-all;
   margin-bottom: var(--space-4);
 }
 
-.tagline {
-  max-width: 480px;
-  font-size: var(--font-size-lg);
-  color: var(--color-text-muted);
-  line-height: 1.6;
-  margin-bottom: var(--space-8);
+.signout {
+  display: block;
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text);
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.1s;
+}
+
+.signout:hover {
+  background: var(--color-rule);
+  color: var(--color-paper);
+}
+
+.signout:active {
+  transform: translateY(1px);
+}
+
+.signout:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.columnRule {
+  border-top: 1px solid var(--color-border);
+  margin: var(--space-5) 0;
 }
 
 .beta {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15px;
+  line-height: 1.5;
   color: var(--color-text-muted);
 }
 
 .requestAccess {
+  font-style: normal;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Responsive: stack the columns on narrow screens ──────── */
+
+@media (max-width: 720px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .column {
+    border-left: none;
+    border-top: 1px solid var(--color-rule);
+    padding-left: 0;
+    padding-top: var(--space-6);
+  }
 }
