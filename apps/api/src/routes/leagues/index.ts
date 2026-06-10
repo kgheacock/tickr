@@ -1,0 +1,27 @@
+/**
+ * Fantasy Street leagues routes (item 01), mounted under /api/v1.
+ *   POST   /leagues            create
+ *   GET    /leagues            discovery (?mine, ?open)
+ *   GET    /leagues/:id        league view
+ *   PATCH  /leagues/:id        commissioner settings (forming only)
+ *   POST   /leagues/:id/invites mint an invite (commissioner)
+ *   POST   /leagues/:id/join   join via token / open policy
+ */
+import type { FastifyInstance } from 'fastify';
+import { registerCreateLeagueRoute } from './create.js';
+import { registerViewLeagueRoute } from './view.js';
+import { registerListLeaguesRoute } from './list.js';
+import { registerInviteRoute } from './invites.js';
+import { registerJoinLeagueRoute } from './join.js';
+import { registerSettingsRoute } from './settings.js';
+
+export async function registerLeaguesRoutes(
+  fastify: FastifyInstance,
+): Promise<void> {
+  registerCreateLeagueRoute(fastify);
+  registerListLeaguesRoute(fastify);
+  registerViewLeagueRoute(fastify);
+  registerSettingsRoute(fastify);
+  registerInviteRoute(fastify);
+  registerJoinLeagueRoute(fastify);
+}

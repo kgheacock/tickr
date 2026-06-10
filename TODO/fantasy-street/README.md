@@ -20,7 +20,7 @@ user stories — same slicing rationale as v1.
 | # | Item | Depends on | Status |
 |---|---|---|---|
 | 00 | [UI groundwork (light theme & login surface)](00-ui-groundwork.md) | platform auth | done ([#48](https://github.com/kgheacock/tickr/pull/48)) |
-| 01 | [Leagues & membership](01-leagues-and-membership.md) | platform auth | pending |
+| 01 | [Leagues & membership](01-leagues-and-membership.md) | platform auth | done ([#54](https://github.com/kgheacock/tickr/pull/54)) |
 | 02 | [Players & grouping](02-players-and-grouping.md) | corpus | pending |
 | 03 | [Live draft](03-live-draft.md) | 01, 02 | pending |
 | 04 | [Rosters & weekly lineups](04-rosters-and-lineups.md) | 03 | pending |
