@@ -53,14 +53,16 @@ function buildUrl(
 }
 
 // One request to an absolute Massive URL, with the token bucket, timeout and
-// transient-error retry. Used both for the first page (built from path+query)
-// and for following a next_url (already an absolute URL). One bucket token is
-// acquired per call, so each page of a paginated fetch is rate-limited.
-async function fetchWithRetry<T>(
+// transient-error retry, returning the raw OK `Response`. Used both for the
+// first page (built from path+query) and for following a next_url (already an
+// absolute URL). One bucket token is acquired per call, so each page of a
+// paginated fetch — and every image download — is rate-limited. Callers decode
+// the body (`.json()` / `.arrayBuffer()`) once it returns.
+async function requestRaw(
   redis: Redis,
   url: string,
   fetchFn: typeof globalThis.fetch,
-): Promise<T> {
+): Promise<Response> {
   await acquire(redis);
 
   // Key is in the Authorization header — the URL is safe to log.
@@ -101,7 +103,7 @@ async function fetchWithRetry<T>(
       }
 
       log('debug', 'massive response ok', { url, status: res.status });
-      return (await res.json()) as T;
+      return res;
     } catch (err) {
       clearTimeout(timer);
       if (err instanceof MassiveRateLimitError) throw err;
@@ -128,7 +130,7 @@ async function fetchWithRetry<T>(
     }
   }
 
-  throw new Error('massiveGet: unexpected exit');
+  throw new Error('requestRaw: unexpected exit');
 }
 
 export async function massiveGet<T>(
@@ -137,7 +139,31 @@ export async function massiveGet<T>(
   query?: Record<string, string | number | boolean>,
   fetchFn: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<T> {
-  return fetchWithRetry<T>(redis, buildUrl(path, query), fetchFn);
+  const res = await requestRaw(redis, buildUrl(path, query), fetchFn);
+  return (await res.json()) as T;
+}
+
+export interface MassiveBytes {
+  bytes: Buffer;
+  contentType: string;
+}
+
+/**
+ * Download a binary asset (a branding logo/icon) from an absolute Massive URL
+ * on the same bucket + retry path as the JSON calls — so no code path fetches
+ * `api.massive.com` outside this module, and image downloads count against the
+ * same rate-limit budget as everything else.
+ */
+export async function massiveGetBytes(
+  redis: Redis,
+  url: string,
+  fetchFn: typeof globalThis.fetch = globalThis.fetch,
+): Promise<MassiveBytes> {
+  const res = await requestRaw(redis, url, fetchFn);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const contentType =
+    res.headers.get('content-type') ?? 'application/octet-stream';
+  return { bytes, contentType };
 }
 
 interface AggPage<TBar> {
@@ -157,7 +183,7 @@ const MAX_PAGES = 2_000;
  * The free Massive tier caps each response at ~4k bars and returns a `next_url`
  * for the remainder; a single request can therefore not be trusted to return a
  * full range. We follow next_url (an absolute URL carrying the cursor) until it
- * is absent. Each page is a separate rate-limited request via fetchWithRetry.
+ * is absent. Each page is a separate rate-limited request via requestRaw.
  */
 export async function massiveGetPaged<TBar>(
   redis: Redis,
@@ -169,11 +195,8 @@ export async function massiveGetPaged<TBar>(
   let url: string | undefined = buildUrl(path, query);
   let pages = 0;
   while (url) {
-    const page: AggPage<TBar> = await fetchWithRetry<AggPage<TBar>>(
-      redis,
-      url,
-      fetchFn,
-    );
+    const res = await requestRaw(redis, url, fetchFn);
+    const page = (await res.json()) as AggPage<TBar>;
     const results = page.results ?? [];
     if (results.length > 0) await onPage(results);
     pages += 1;

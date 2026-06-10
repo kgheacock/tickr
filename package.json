@@ -20,7 +20,8 @@
     "gen:massive": "openapi-typescript schema/massive.com/openapi.json -o apps/api/src/massive/massive.gen.ts && prettier --write apps/api/src/massive/massive.gen.ts",
     "lint:openapi": "redocly lint packages/shared-types/openapi.yaml",
     "data-audit": "tsx scripts/data-audit.ts",
-    "backfill": "pnpm --filter @tickr/api run backfill"
+    "backfill": "pnpm --filter @tickr/api run backfill",
+    "metadata": "pnpm --filter @tickr/api run metadata"
   },
   "devDependencies": {
     "@redocly/cli": "^2.31.5",

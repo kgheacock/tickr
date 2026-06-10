@@ -684,6 +684,68 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /symbols/{symbol}/logo:
+    get:
+      summary: Company logo image (downloaded from Massive into symbol_branding)
+      operationId: getSymbolLogo
+      tags: [platform]
+      # Public: non-sensitive logos, served unauthenticated and CDN-cacheable.
+      security: []
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Universe symbol, e.g. AAPL or BRK-B (case-insensitive)
+      responses:
+        '200':
+          description: The logo image bytes (SVG/PNG; see Content-Type)
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: Not modified (matched If-None-Match)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /symbols/{symbol}/icon:
+    get:
+      summary: Company icon image (downloaded from Massive into symbol_branding)
+      operationId: getSymbolIcon
+      tags: [platform]
+      # Public: non-sensitive icons, served unauthenticated and CDN-cacheable.
+      security: []
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Universe symbol, e.g. AAPL or BRK-B (case-insensitive)
+      responses:
+        '200':
+          description: The icon image bytes (PNG/JPEG; see Content-Type)
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '304':
+          description: Not modified (matched If-None-Match)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /prices:
     get:
       summary: Pricing history for a corpus, from price_bar
