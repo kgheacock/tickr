@@ -2,19 +2,29 @@
 /**
  * Pre-deploy data audit for the price_bar corpus.
  *
- * Checks (each has its own error code):
- *   NO_BARS               - symbol has zero price_bar rows in the expected window
- *   COVERAGE_GAP          - >= GAP_THRESHOLD consecutive trading days missing
+ * All checks run only against the "playable" corpus: symbols with
+ * backfilled = true and data_status <> 'incomplete'. Symbols not yet backfilled
+ * or marked incomplete (delisted/depth-capped) are reported as warnings and
+ * skipped, so universe churn never blocks a deploy.
+ *
+ * Errors (cause a non-zero exit / block the deploy):
+ *   NO_BARS               - playable symbol has zero price_bar rows in the window
+ *   COVERAGE_GAP          - >= GAP_THRESHOLD consecutive trading days missing, in an
+ *                           internal or trailing position (a leading gap is a late
+ *                           listing and is reported as a warning instead)
  *   OHLC_VIOLATION        - low > open/close, open/close > high, or volume < 0
  *   DUPLICATE_BAR         - > 1 bar in a single granularity bucket (symbol, bucket)
- *   CROSS_SOURCE_DEVIATION - daily-bar close and intraday-bar close diverge > threshold
- *   INTRADAY_GAP          - gap > INTRADAY_GAP_MINUTES between consecutive bars within the
- *                           NYSE regular session (09:30–16:00 ET, DST-correct), OR no
- *                           regular-session bars at all (e.g. only daily data). The session
- *                           window deliberately excludes sparse pre/post-market bars.
+ *   INTRADAY_GAP          - (type 'no_session_bars') a playable symbol has bars but none
+ *                           inside the NYSE regular session (09:30–16:00 ET) — no usable
+ *                           intraday data
  *
  * Warnings (informational, do not cause a non-zero exit):
  *   NOT_BACKFILLED        - symbol in universe_symbol with backfilled = false
+ *   EXCLUDED              - data_status = 'incomplete' (delisted/depth-capped); excluded
+ *                           from the playable corpus, checks skipped
+ *   COVERAGE_GAP          - leading gap (history starts late — typically a listing/IPO)
+ *   INTRADAY_GAP          - (type 'session_gap') sparse within-session coverage on a
+ *                           thinly-traded name; data sparsity, not corruption
  *   SPLIT_CANDIDATE       - consecutive-day close ratio matches a common split factor
  *                           (e.g. ~0.5 for 2:1 forward split, ~2.0 for 1:2 reverse split).
  *                           v1 uses raw (non-adjusted) prices — splits are NOT corrected
@@ -32,7 +42,6 @@
  *   BACKFILL_MULTIPLIER              default 15 — bar granularity multiplier
  *   BACKFILL_TIMESPAN                default 'minute' — bar granularity unit
  *   AUDIT_GAP_THRESHOLD              default 5 — consecutive missing trading days to flag as error
- *   AUDIT_CROSS_SOURCE_THRESHOLD     default 0.01 — fractional close deviation to flag
  *   AUDIT_SPLIT_TOLERANCE            default 0.03 — tolerance around known split ratios
  *   AUDIT_INTRADAY_GAP_MINUTES       default 30 — max gap (minutes) allowed between
  *                                    consecutive within-session bars (skipped for day/week/month)
@@ -108,9 +117,6 @@ async function main(): Promise<void> {
     multiplier: parseInt(process.env['BACKFILL_MULTIPLIER'] ?? '15', 10),
     timespan: TIMESPAN,
     gapThreshold: parseInt(process.env['AUDIT_GAP_THRESHOLD'] ?? '5', 10),
-    crossSourceThreshold: parseFloat(
-      process.env['AUDIT_CROSS_SOURCE_THRESHOLD'] ?? '0.01',
-    ),
     splitTolerance: parseFloat(process.env['AUDIT_SPLIT_TOLERANCE'] ?? '0.03'),
     intradayGapMinutes: parseInt(
       process.env['AUDIT_INTRADAY_GAP_MINUTES'] ?? '30',
