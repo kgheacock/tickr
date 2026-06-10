@@ -1,6 +1,6 @@
 # 23 — Admin log viewer: deploy commit + backfill status
 
-> **Status:** [in review](https://github.com/kgheacock/tickr/pull/57) • **Depends on:** 10, 21
+> **Status:** [done](https://github.com/kgheacock/tickr/pull/57) • **Depends on:** 10, 21
 >
 > Small enhancement to the admin log viewer (item 21): surface the **deployed
 > commit** (linked to GitHub) and a **minimal backfill status bar** in the page
