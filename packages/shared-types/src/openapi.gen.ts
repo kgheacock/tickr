@@ -701,6 +701,54 @@ export interface components {
             /** @description Invite token; required for invite-only leagues, optional for open leagues */
             token?: string;
         };
+        /**
+         * @description A draftable slot family a stock can qualify for
+         * @enum {string}
+         */
+        PlayerGroup: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard";
+        /** @description Price-derived metrics behind a stock's group eligibility */
+        PlayerMetrics: {
+            /** @description Trailing ~3-month price return, percent */
+            ret3mPct: number | null;
+            /** @description Trailing ~12-month price return, percent */
+            ret12mPct: number | null;
+            /** @description Stddev of trailing daily returns (~90d), as a fraction */
+            sigma: number | null;
+            /** @description Mean daily volume over the window; null when unavailable */
+            avgVolume: number | null;
+        };
+        /** @description Per-league ownership status for a stock */
+        PlayerOwnership: {
+            owned: boolean;
+            /** @description Team name of the owning manager, when owned */
+            ownerTeam?: string | null;
+            /** @description Whether the owner holds it as a short (defense), when owned */
+            isShort?: boolean | null;
+        };
+        PlayerInventoryItem: {
+            symbol: string;
+            groups: components["schemas"]["PlayerGroup"][];
+            /** @description Trailing ~3-month return, surfaced for scouting */
+            recentReturnPct: number | null;
+            ownership: components["schemas"]["PlayerOwnership"];
+        };
+        PlayerListResponse: {
+            items: components["schemas"]["PlayerInventoryItem"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        PlayerDetail: {
+            symbol: string;
+            groups: components["schemas"]["PlayerGroup"][];
+            /** @description Roster slot names this stock may fill */
+            eligibleSlots: string[];
+            recentReturnPct: number | null;
+            metrics: components["schemas"]["PlayerMetrics"];
+            ownership: components["schemas"]["PlayerOwnership"];
+            /** @description Price-history window (~1y) for the detail chart */
+            prices: components["schemas"]["PriceBar"][];
+        };
     };
     responses: {
         /** @description Unauthenticated */

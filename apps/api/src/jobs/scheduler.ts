@@ -5,11 +5,14 @@ import { runIntradayUpdate } from './intraday-update.js';
 import { tryAcquireLock, releaseLock } from './locks.js';
 import { isNyseHoliday } from '../market/holidays.js';
 import { runAlertCheck } from '../alerts/checker.js';
+import { runClassifier } from '../fantasy/classify.js';
+import { pool } from '../db/pool.js';
 import { jobLogger } from '../log/logger.js';
 
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const BACKFILL_LOCK = 'massive:job:backfill';
 const SESSION_UPDATE_LOCK = 'massive:job:session-update';
+const CLASSIFY_LOCK = 'fs:job:classify';
 
 const baseLog = jobLogger('scheduler');
 
@@ -74,5 +77,20 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   });
 
-  log('info', 'scheduler registered (backfill + session-update + alerts)');
+  // Fantasy Street player classifier (FS-02): weekly, Sunday 06:00 UTC. Reads
+  // price_bar and recomputes fs_player_classification. Idempotent and cheap;
+  // also runnable on demand via runClassifier(pool).
+  cron.schedule('0 0 6 * * 0', () => {
+    void withLock(redis, CLASSIFY_LOCK, async () => {
+      const n = await runClassifier(pool);
+      log('info', 'classifier run complete', { symbols: n });
+    }).catch((err: unknown) => {
+      log('error', 'classifier failed', { err: String(err) });
+    });
+  });
+
+  log(
+    'info',
+    'scheduler registered (backfill + session-update + alerts + classifier)',
+  );
 }

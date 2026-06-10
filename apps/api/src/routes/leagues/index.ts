@@ -14,6 +14,7 @@ import { registerListLeaguesRoute } from './list.js';
 import { registerInviteRoute } from './invites.js';
 import { registerJoinLeagueRoute } from './join.js';
 import { registerSettingsRoute } from './settings.js';
+import { registerPlayersRoutes } from './players.js';
 
 export async function registerLeaguesRoutes(
   fastify: FastifyInstance,
@@ -24,4 +25,5 @@ export async function registerLeaguesRoutes(
   registerSettingsRoute(fastify);
   registerInviteRoute(fastify);
   registerJoinLeagueRoute(fastify);
+  registerPlayersRoutes(fastify);
 }

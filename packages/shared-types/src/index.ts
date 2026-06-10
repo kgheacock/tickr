@@ -17,6 +17,12 @@ export type {
   LeagueStatus,
   JoinPolicy,
   MemberRole,
+  PlayerGroup,
+  PlayerMetrics,
+  PlayerOwnership,
+  PlayerInventoryItem,
+  PlayerListResponse,
+  PlayerDetail,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';
