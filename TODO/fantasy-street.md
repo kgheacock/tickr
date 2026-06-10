@@ -18,6 +18,9 @@ field a **weekly lineup** of position-typed slots, and play **head-to-head**
 into playoffs. Skill comes from drafting, start/sit, and trades; luck comes
 from the weekly head-to-head schedule and real market variance.
 
+In-game, stocks are surfaced as **players**: you scout an inventory, open a
+player's detail view, and draft them onto your team.
+
 ## Locked decisions
 
 | Dimension | Decision |
@@ -34,11 +37,23 @@ from the weekly head-to-head schedule and real market variance.
 
 ## User stories
 
+### Players (stocks)
+- As a manager, I want to browse the full inventory of players (stocks), so
+  that I can scout who to draft or pick up.
+- As a manager, I want to filter the inventory by group (anchor, growth,
+  momentum, value, defense, wildcard) and see who's already owned, so that I
+  can find candidates for a specific slot.
+- As a manager, I want to open a player's detail view — recent performance,
+  price history, the slots they qualify for, and their ownership status — so
+  that I can make an informed pick.
+
 ### Leagues & membership
 - As a manager, I want to create a league and invite 3–11 friends, so that we
   can compete in a small private group.
 - As a manager, I want to join a league from an invite, so that I can take part
   without setup hassle.
+- As a manager, I want to find and look up open leagues, so that I can join a
+  game even without a direct invite.
 - As a commissioner, I want to set league size, season length, and roster
   slots, so that the league fits our group.
 
@@ -117,10 +132,14 @@ from the weekly head-to-head schedule and real market variance.
 - As a commissioner, I want to fill empty spots with auto-managers, so that we
   can play even without a full group.
 
-### Staying in the loop
-- As a manager, I want reminders when the draft starts and before lineups lock,
-  so that I don't miss key moments.
-- As a manager, I want weekly-result notifications, so that I know how I did.
+### Reminders & recaps
+- As a manager, I want a reminder each week to set my team before the Monday
+  lock, so that I never get auto-filled by accident.
+- As a manager, I want a reminder when the draft is about to start, so that I
+  don't miss it.
+- As a manager, I want a weekly recap of my matchup and the league — final
+  scores, biggest movers, notable wins and blowups — so that I can relive the
+  week and keep tabs on my rivals.
 
 ### Running the league
 - As a commissioner, I want to manage settings, resolve scoring disputes, and
@@ -180,8 +199,9 @@ weekly total          = sum of all started slots   (losses included, uncapped)
 
 ## Rough order
 
-Leagues → positions/ownership → live draft → rosters & lineups → scoring (with
-shorting) → matchups & standings → waivers & trades → season & playoffs.
-Dashboard spans all of it; auto-managers, notifications, and commissioner tools
-are cross-cutting. Split into numbered TODO items and add them under a v2
-section of the [README](README.md) when this is greenlit.
+Leagues → positions/ownership → player inventory & detail → live draft →
+rosters & lineups → scoring (with shorting) → matchups & standings → waivers &
+trades → season & playoffs. Dashboard spans all of it; auto-managers,
+reminders & recaps, and commissioner tools are cross-cutting. Split into
+numbered TODO items and add them under a v2 section of the
+[README](README.md) when this is greenlit.
