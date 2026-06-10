@@ -59,6 +59,7 @@ export class FantasyError extends Error {
       | 'NOT_FOUND'
       | 'FORBIDDEN'
       | 'CONFLICT'
+      | 'ALREADY_OWNED'
       | 'INVALID_TOKEN',
     message: string,
   ) {
@@ -75,6 +76,7 @@ export function fantasyErrorStatus(code: FantasyError['code']): number {
     case 'FORBIDDEN':
       return 403;
     case 'CONFLICT':
+    case 'ALREADY_OWNED':
       return 409;
     case 'VALIDATION':
     case 'INVALID_TOKEN':

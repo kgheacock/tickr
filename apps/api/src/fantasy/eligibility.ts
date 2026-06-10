@@ -8,8 +8,11 @@
  * Defense and Wildcard are UNIVERSAL: any tradeable symbol may be shorted into
  * Defense or dropped into Wildcard, so they never depend on classification.
  */
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type { PlayerGroup } from '@tickr/shared-types';
+
+/** Either a pool or a transaction-bound client — eligibility reads work on both. */
+type Db = Pool | PoolClient;
 
 /** Roster slot label → classification group. */
 export function slotToGroup(slot: string): PlayerGroup | null {
@@ -31,7 +34,7 @@ const UNIVERSAL: ReadonlySet<PlayerGroup> = new Set(['defense', 'wildcard']);
 
 /** The classification groups a symbol qualifies for (eligible rows only). */
 export async function groupsFor(
-  pool: Pool,
+  pool: Db,
   symbol: string,
 ): Promise<PlayerGroup[]> {
   const { rows } = await pool.query<{ group: PlayerGroup }>(
@@ -44,7 +47,7 @@ export async function groupsFor(
 }
 
 /** The roster slot labels a symbol may fill (Title-cased group names). */
-export async function slotsFor(pool: Pool, symbol: string): Promise<string[]> {
+export async function slotsFor(pool: Db, symbol: string): Promise<string[]> {
   const groups = new Set(await groupsFor(pool, symbol));
   // Universal slots are always available, even before/without classification.
   for (const u of UNIVERSAL) groups.add(u);
@@ -53,7 +56,7 @@ export async function slotsFor(pool: Pool, symbol: string): Promise<string[]> {
 
 /** Whether `symbol` may fill `slot`. Universal slots are always eligible. */
 export async function isEligible(
-  pool: Pool,
+  pool: Db,
   symbol: string,
   slot: string,
 ): Promise<boolean> {

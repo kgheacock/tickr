@@ -749,6 +749,64 @@ export interface components {
             /** @description Price-history window (~1y) for the detail chart */
             prices: components["schemas"]["PriceBar"][];
         };
+        /**
+         * @description Lifecycle of a league's snake draft
+         * @enum {string}
+         */
+        DraftStatus: "scheduled" | "in_progress" | "complete";
+        /** @description One landed pick in the snake order; the immutable draft log */
+        DraftPick: {
+            /** @description 1-based position in the overall snake order */
+            overallPick: number;
+            /** @description 1-based draft round */
+            round: number;
+            userId: string;
+            symbol: string;
+            /** @description Drafted as a short (Defense), scored as the inverse return */
+            isShort: boolean;
+            /** @description True when the pick clock expired and auto-draft chose it */
+            auto: boolean;
+            /** Format: date-time */
+            pickedAt: string;
+        };
+        /** @description A seat in the snake order, present whether or not it is filled */
+        DraftSlot: {
+            overallPick: number;
+            round: number;
+            /** @description Manager on the clock for this position */
+            userId: string;
+        };
+        /** @description The live draft board — order, picks so far, and the clock */
+        DraftState: {
+            id: string;
+            leagueId: string;
+            status: components["schemas"]["DraftStatus"];
+            pickSeconds: number;
+            /** @description slots + bench; every manager makes this many picks */
+            totalRounds: number;
+            /** @description size × totalRounds; the length of the snake order */
+            totalPicks: number;
+            /** @description Position on the clock; exceeds totalPicks once complete */
+            currentOverallPick: number;
+            /** @description Manager currently on the clock; null when complete */
+            onClockUserId: string | null;
+            /**
+             * Format: date-time
+             * @description When the current pick expires; null when not in progress
+             */
+            deadline: string | null;
+            /** @description The full snake order, one seat per overall pick */
+            order: components["schemas"]["DraftSlot"][];
+            picks: components["schemas"]["DraftPick"][];
+        };
+        MakePickRequest: {
+            symbol: string;
+            /**
+             * @description Draft the stock as a short into the Defense slot
+             * @default false
+             */
+            isShort: boolean;
+        };
     };
     responses: {
         /** @description Unauthenticated */

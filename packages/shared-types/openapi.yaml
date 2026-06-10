@@ -892,6 +892,112 @@ components:
           items:
             $ref: '#/components/schemas/PriceBar'
 
+    # --- Live draft (item 03) ---
+
+    DraftStatus:
+      type: string
+      description: Lifecycle of a league's snake draft
+      enum: [scheduled, in_progress, complete]
+
+    DraftPick:
+      type: object
+      description: One landed pick in the snake order; the immutable draft log
+      required: [overallPick, round, userId, symbol, isShort, auto, pickedAt]
+      properties:
+        overallPick:
+          type: integer
+          description: 1-based position in the overall snake order
+        round:
+          type: integer
+          description: 1-based draft round
+        userId:
+          type: string
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+          description: Drafted as a short (Defense), scored as the inverse return
+        auto:
+          type: boolean
+          description: True when the pick clock expired and auto-draft chose it
+        pickedAt:
+          type: string
+          format: date-time
+
+    DraftSlot:
+      type: object
+      description: A seat in the snake order, present whether or not it is filled
+      required: [overallPick, round, userId]
+      properties:
+        overallPick:
+          type: integer
+        round:
+          type: integer
+        userId:
+          type: string
+          description: Manager on the clock for this position
+
+    DraftState:
+      type: object
+      description: The live draft board — order, picks so far, and the clock
+      required:
+        - id
+        - leagueId
+        - status
+        - pickSeconds
+        - totalRounds
+        - totalPicks
+        - currentOverallPick
+        - onClockUserId
+        - deadline
+        - order
+        - picks
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        status:
+          $ref: '#/components/schemas/DraftStatus'
+        pickSeconds:
+          type: integer
+        totalRounds:
+          type: integer
+          description: slots + bench; every manager makes this many picks
+        totalPicks:
+          type: integer
+          description: size × totalRounds; the length of the snake order
+        currentOverallPick:
+          type: integer
+          description: Position on the clock; exceeds totalPicks once complete
+        onClockUserId:
+          type: ['string', 'null']
+          description: Manager currently on the clock; null when complete
+        deadline:
+          type: ['string', 'null']
+          format: date-time
+          description: When the current pick expires; null when not in progress
+        order:
+          type: array
+          description: The full snake order, one seat per overall pick
+          items:
+            $ref: '#/components/schemas/DraftSlot'
+        picks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftPick'
+
+    MakePickRequest:
+      type: object
+      required: [symbol]
+      properties:
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+          description: Draft the stock as a short into the Defense slot
+          default: false
+
 paths:
   # --- Auth & session ---
 
