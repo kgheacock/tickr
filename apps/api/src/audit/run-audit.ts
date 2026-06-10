@@ -8,9 +8,9 @@ export const CODE = {
   COVERAGE_GAP: 'COVERAGE_GAP',
   OHLC_VIOLATION: 'OHLC_VIOLATION',
   DUPLICATE_BAR: 'DUPLICATE_BAR',
-  CROSS_SOURCE_DEVIATION: 'CROSS_SOURCE_DEVIATION',
   INTRADAY_GAP: 'INTRADAY_GAP',
   NOT_BACKFILLED: 'NOT_BACKFILLED',
+  EXCLUDED: 'EXCLUDED',
   SPLIT_CANDIDATE: 'SPLIT_CANDIDATE',
 } as const;
 
@@ -38,8 +38,6 @@ export interface AuditConfig {
   timespan: string;
   /** Consecutive missing trading days before flagging COVERAGE_GAP. */
   gapThreshold: number;
-  /** Fractional close deviation before flagging CROSS_SOURCE_DEVIATION. */
-  crossSourceThreshold: number;
   /** Fractional tolerance around known split ratios. */
   splitTolerance: number;
   /** Max gap (minutes) between consecutive within-session bars. */
@@ -61,7 +59,6 @@ export interface AuditReport {
   config: {
     expectedStartDate: string;
     gapThresholdDays: number;
-    crossSourceThreshold: number;
     granularity: string;
   };
   summary: {
@@ -106,10 +103,19 @@ export function computeExpectedTradingDays(
 }
 
 /**
- * Where a gap sits in the expected window. `trailing` gaps (the symbol stops
- * before the window end) are the low-severity "backfill hasn't caught the last
- * few days" case; `leading`/`internal` gaps mean real history is missing and
- * warrant a re-fetch. See docs/12-data-remediation-plan.md (Findings 2A vs 2B/2C).
+ * Where a gap sits in the expected window. This drives severity (see runAudit
+ * coverage check):
+ *   - `leading` — the symbol's history simply starts after the window start.
+ *     For a multi-year window this is almost always a listing/IPO after the
+ *     window opened (e.g. EXE/Expand Energy, formed Oct 2024); the pre-listing
+ *     data does not exist and cannot be fetched. Benign → **warning**.
+ *   - `internal` — a hole in the middle of otherwise-present history. Real data
+ *     loss/corruption → **error**.
+ *   - `trailing` — the symbol stops before the window end. On a playable
+ *     (`backfilled = true`, not `data_status = 'incomplete'`) symbol this means
+ *     ingestion stalled near now → **error**. Delisted/depth-capped symbols are
+ *     marked `incomplete` and skipped before this check, so they never reach it.
+ * See docs/12-data-remediation-plan.md (Findings 2A vs 2B/2C).
  */
 export type GapPosition = 'leading' | 'internal' | 'trailing';
 
@@ -242,7 +248,6 @@ export async function runAudit(
     multiplier,
     timespan,
     gapThreshold,
-    crossSourceThreshold,
     splitTolerance,
     intradayGapMinutes,
     sessionOpenEt,
@@ -262,14 +267,24 @@ export async function runAudit(
   const { rows: symbolRows } = await pool.query<{
     symbol: string;
     backfilled: boolean;
-  }>('SELECT symbol, backfilled FROM universe_symbol ORDER BY symbol');
+    data_status: string | null;
+  }>(
+    'SELECT symbol, backfilled, data_status FROM universe_symbol ORDER BY symbol',
+  );
 
   const allSymbols = symbolRows.map((r) => r.symbol);
   for (const { symbol } of symbolRows) {
     audits.set(symbol, makeAudit());
   }
 
-  for (const { symbol, backfilled } of symbolRows) {
+  // The "playable" corpus is what the product actually serves. Every hard
+  // data-quality check below runs ONLY against these symbols, so universe churn
+  // (a symbol that hasn't been backfilled yet, or a delisted/depth-capped one
+  // marked data_status='incomplete' — see migration ...005 and TODO/12) never
+  // blocks a deploy. Excluded symbols still surface as warnings so they stay
+  // visible in the report.
+  const playable = new Set<string>();
+  for (const { symbol, backfilled, data_status } of symbolRows) {
     if (!backfilled) {
       addWarning(audits, symbol, {
         code: CODE.NOT_BACKFILLED,
@@ -277,7 +292,20 @@ export async function runAudit(
           message: 'universe_symbol.backfilled = false; no bars expected yet',
         },
       });
+      continue;
     }
+    if (data_status === 'incomplete') {
+      addWarning(audits, symbol, {
+        code: CODE.EXCLUDED,
+        detail: {
+          message:
+            "data_status = 'incomplete' — delisted/depth-capped, excluded " +
+            'from the playable corpus; data-quality checks are skipped',
+        },
+      });
+      continue;
+    }
+    playable.add(symbol);
   }
 
   // ─── 1: Coverage ────────────────────────────────────────────────────────────
@@ -304,8 +332,8 @@ export async function runAudit(
     s.add(row.bar_date);
   }
 
-  for (const { symbol, backfilled } of symbolRows) {
-    if (!backfilled) continue;
+  for (const { symbol } of symbolRows) {
+    if (!playable.has(symbol)) continue;
 
     const presentDates = symbolDates.get(symbol) ?? new Set<string>();
 
@@ -322,10 +350,12 @@ export async function runAudit(
       presentDates,
       gapThreshold,
     )) {
-      addError(audits, symbol, {
-        code: CODE.COVERAGE_GAP,
-        detail: gap,
-      });
+      // A leading gap is a late listing (pre-listing data can't be fetched) —
+      // benign, warn only. Internal/trailing gaps are real missing data on a
+      // live symbol — error. See the GapPosition doc above.
+      const issue = { code: CODE.COVERAGE_GAP, detail: gap };
+      if (gap.position === 'leading') addWarning(audits, symbol, issue);
+      else addError(audits, symbol, issue);
     }
   }
 
@@ -356,6 +386,7 @@ export async function runAudit(
   );
 
   for (const row of ohlcRows) {
+    if (!playable.has(row.symbol)) continue;
     addError(audits, row.symbol, {
       code: CODE.OHLC_VIOLATION,
       detail: {
@@ -393,6 +424,7 @@ export async function runAudit(
   );
 
   for (const row of dupRows) {
+    if (!playable.has(row.symbol)) continue;
     addError(audits, row.symbol, {
       code: CODE.DUPLICATE_BAR,
       detail: {
@@ -403,74 +435,20 @@ export async function runAudit(
     });
   }
 
-  // ─── 4: Cross-source reconciliation ─────────────────────────────────────────
-
-  const { rows: crossRows } = await pool.query<{
-    symbol: string;
-    bar_date: string;
-    daily_close: number;
-    intraday_close: number;
-    deviation: number;
-  }>(
-    `WITH daily_bars AS (
-       SELECT symbol, ts::date AS bar_date, close
-       FROM price_bar
-       WHERE EXTRACT(hour   FROM ts AT TIME ZONE 'UTC') = 0
-         AND EXTRACT(minute FROM ts AT TIME ZONE 'UTC') = 0
-         AND EXTRACT(second FROM ts AT TIME ZONE 'UTC') = 0
-     ),
-     intraday_last AS (
-       SELECT DISTINCT ON (symbol, ts::date)
-         symbol, ts::date AS bar_date, close
-       FROM price_bar
-       WHERE NOT (
-         EXTRACT(hour   FROM ts AT TIME ZONE 'UTC') = 0
-         AND EXTRACT(minute FROM ts AT TIME ZONE 'UTC') = 0
-         AND EXTRACT(second FROM ts AT TIME ZONE 'UTC') = 0
-       )
-       ORDER BY symbol, ts::date, ts DESC
-     )
-     SELECT
-       d.symbol,
-       d.bar_date::text                                         AS bar_date,
-       d.close                                                  AS daily_close,
-       i.close                                                  AS intraday_close,
-       ABS(d.close::double precision - i.close::double precision)
-         / NULLIF(d.close::double precision, 0)                AS deviation
-     FROM daily_bars d
-     JOIN intraday_last i ON d.symbol = i.symbol AND d.bar_date = i.bar_date
-     WHERE ABS(d.close::double precision - i.close::double precision)
-           / NULLIF(d.close::double precision, 0) > $1
-     ORDER BY d.symbol, deviation DESC
-     LIMIT 500`,
-    [crossSourceThreshold],
-  );
-
-  const crossBySymbol = new Map<string, typeof crossRows>();
-  for (const row of crossRows) {
-    let arr = crossBySymbol.get(row.symbol);
-    if (!arr) {
-      arr = [];
-      crossBySymbol.set(row.symbol, arr);
-    }
-    arr.push(row);
-  }
-
-  for (const [symbol, deviations] of crossBySymbol) {
-    addError(audits, symbol, {
-      code: CODE.CROSS_SOURCE_DEVIATION,
-      detail: {
-        deviatingDates: deviations.length,
-        maxDeviation: deviations[0]?.deviation,
-        samples: deviations.slice(0, 5).map((r) => ({
-          date: r.bar_date,
-          dailyClose: r.daily_close,
-          intradayClose: r.intraday_close,
-          deviation: r.deviation,
-        })),
-      },
-    });
-  }
+  // ─── 4: (removed) Cross-source reconciliation ───────────────────────────────
+  //
+  // This check used to compare a "daily" close against the day's "intraday"
+  // close, keying "daily bars" off ts being exactly 00:00:00 UTC. That premise
+  // does not hold for this corpus: we ingest a single granularity (15-minute
+  // bars, BACKFILL_TIMESPAN=minute) — there is no separate daily/EOD source.
+  // A bar at 00:00:00 UTC is just the 15-min grid bar that landed on midnight
+  // UTC = 19:00 ET, i.e. a thin post-market print from the PREVIOUS ET session.
+  // So the check compared two different trading days' prices and flagged every
+  // volatile name with a multi-percent "deviation" (49 symbols on prod, all
+  // false positives — daily[D] consistently equalled the real intraday close of
+  // D-1). Removed rather than retuned: it cannot be made correct without a
+  // genuine second price source. Re-introduce only if a real daily/EOD feed is
+  // ingested alongside the intraday bars.
 
   // ─── 5: Intraday gap detection ───────────────────────────────────────────────
 
@@ -500,8 +478,9 @@ export async function runAudit(
     );
 
     for (const row of noSessionRows) {
-      const meta = symbolRows.find((r) => r.symbol === row.symbol);
-      if (meta && !meta.backfilled) continue;
+      if (!playable.has(row.symbol)) continue;
+      // Hard error: a playable symbol with bars but NONE in the regular session
+      // means we have no usable intraday data for it (e.g. daily-only corpus).
       addError(audits, row.symbol, {
         code: CODE.INTRADAY_GAP,
         detail: {
@@ -544,7 +523,13 @@ export async function runAudit(
     );
 
     for (const row of sessionGapRows) {
-      addError(audits, row.symbol, {
+      if (!playable.has(row.symbol)) continue;
+      // Warning, not error: a within-session gap is data sparsity, not
+      // corruption. Thin/high-priced names (ERIE, AZO, GWW, BKNG…) genuinely
+      // don't trade in every 15-min window, and re-backfilling can't conjure
+      // trades that never happened — so this must not block a deploy. Kept
+      // visible as a warning so a sudden jump in gaps is still noticeable.
+      addWarning(audits, row.symbol, {
         code: CODE.INTRADAY_GAP,
         detail: {
           type: 'session_gap',
@@ -612,6 +597,7 @@ export async function runAudit(
   }
 
   for (const [symbol, splits] of splitBySymbol) {
+    if (!playable.has(symbol)) continue;
     addWarning(audits, symbol, {
       code: CODE.SPLIT_CANDIDATE,
       detail: {
@@ -635,9 +621,9 @@ export async function runAudit(
     COVERAGE_GAP: 0,
     OHLC_VIOLATION: 0,
     DUPLICATE_BAR: 0,
-    CROSS_SOURCE_DEVIATION: 0,
     INTRADAY_GAP: 0,
     NOT_BACKFILLED: 0,
+    EXCLUDED: 0,
     SPLIT_CANDIDATE: 0,
   };
 
@@ -665,7 +651,6 @@ export async function runAudit(
     config: {
       expectedStartDate: new Date(startMs).toISOString().slice(0, 10),
       gapThresholdDays: gapThreshold,
-      crossSourceThreshold,
       granularity: `${multiplier} ${timespan}`,
     },
     summary: {

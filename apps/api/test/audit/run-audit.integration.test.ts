@@ -60,12 +60,16 @@ async function insertBar(
   );
 }
 
-async function seedSymbol(symbol: string, backfilled = true): Promise<void> {
+async function seedSymbol(
+  symbol: string,
+  backfilled = true,
+  dataStatus: string | null = null,
+): Promise<void> {
   await client.query(
-    `INSERT INTO universe_symbol (symbol, backfilled)
-     VALUES ($1, $2)
+    `INSERT INTO universe_symbol (symbol, backfilled, data_status)
+     VALUES ($1, $2, $3)
      ON CONFLICT (symbol) DO NOTHING`,
-    [symbol, backfilled],
+    [symbol, backfilled, dataStatus],
   );
 }
 
@@ -112,7 +116,6 @@ function weekConfig(overrides: Partial<AuditConfig> = {}): AuditConfig {
     multiplier: 15,
     timespan: 'minute',
     gapThreshold: 3,
-    crossSourceThreshold: 0.01,
     splitTolerance: 0.03,
     intradayGapMinutes: 30,
     sessionOpenEt: '09:30',
@@ -145,7 +148,6 @@ describe('clean corpus', () => {
     expect(report.errorCounts[CODE.OHLC_VIOLATION]).toBe(0);
     expect(report.errorCounts[CODE.DUPLICATE_BAR]).toBe(0);
     expect(report.errorCounts[CODE.INTRADAY_GAP]).toBe(0);
-    expect(report.errorCounts[CODE.CROSS_SOURCE_DEVIATION]).toBe(0);
   });
 });
 
@@ -276,41 +278,76 @@ describe('DUPLICATE_BAR', () => {
   });
 });
 
-// ─── CROSS_SOURCE_DEVIATION ───────────────────────────────────────────────────
+// ─── COVERAGE_GAP severity by position ────────────────────────────────────────
 
-describe('CROSS_SOURCE_DEVIATION', () => {
-  it('fires when midnight bar and intraday close diverge > 1%', async () => {
-    await seedSymbol('ORCL');
-    const midnight = new Date(T0);
-    midnight.setUTCHours(0, 0, 0, 0);
-    await insertBar('ORCL', midnight, { close: 10000 });
-
-    const intraday = new Date(T0);
-    intraday.setUTCHours(20, 0, 0, 0);
-    await insertBar('ORCL', intraday, { close: 10200 }); // 2% deviation
+describe('COVERAGE_GAP severity by position', () => {
+  // A leading gap = history starts late (almost always a listing/IPO after the
+  // window start, e.g. EXE/Expand Energy). The pre-listing data cannot be
+  // fetched, so it must be a warning, not a deploy-blocking error.
+  it('leading gap is a warning, not an error', async () => {
+    await seedSymbol('EXE');
+    // Present only on the last two days → the leading days are missing.
+    // tradingDay() stays at noon UTC so each bar lands on its intended date.
+    await insertBar('EXE', tradingDay(3)); // Thu
+    await insertBar('EXE', tradingDay(4)); // Fri
 
     const report = await runAudit(
       pool,
-      weekConfig({ crossSourceThreshold: 0.01 }),
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
     );
-    expect(report.errorCounts[CODE.CROSS_SOURCE_DEVIATION]).toBe(1);
+    const issue = report.symbols['EXE']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect((issue?.detail as { position: string }).position).toBe('leading');
+    expect(issue?.severity).toBe('warning');
+    expect(report.symbols['EXE']?.status).toBe('warning');
+    expect(report.summary.symbolsWithErrors).toBe(0);
   });
 
-  it('does not fire when deviation is within threshold', async () => {
-    await seedSymbol('IBM');
-    const midnight = new Date(T0);
-    midnight.setUTCHours(0, 0, 0, 0);
-    await insertBar('IBM', midnight, { close: 10000 });
-
-    const intraday = new Date(T0);
-    intraday.setUTCHours(20, 0, 0, 0);
-    await insertBar('IBM', intraday, { close: 10005 }); // 0.05% deviation
+  // An internal gap = a hole in the middle of otherwise-present history = real
+  // data loss → must stay an error.
+  it('internal gap is an error', async () => {
+    await seedSymbol('TSLA');
+    await insertBar('TSLA', tradingDay(0)); // Mon
+    await insertBar('TSLA', tradingDay(4)); // Fri — Tue/Wed/Thu missing = internal
 
     const report = await runAudit(
       pool,
-      weekConfig({ crossSourceThreshold: 0.01 }),
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
     );
-    expect(report.errorCounts[CODE.CROSS_SOURCE_DEVIATION]).toBe(0);
+    const issue = report.symbols['TSLA']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect((issue?.detail as { position: string }).position).toBe('internal');
+    expect(issue?.severity).toBe('error');
+    expect(report.summary.symbolsWithErrors).toBe(1);
+  });
+});
+
+// ─── EXCLUDED (data_status = 'incomplete') ────────────────────────────────────
+
+describe("EXCLUDED — data_status = 'incomplete'", () => {
+  // Delisted/depth-capped symbols are excluded from the playable corpus. They
+  // would otherwise trip COVERAGE_GAP (trailing) or NO_BARS, but must be skipped
+  // and surfaced as a warning so they never block a deploy.
+  it('skips all hard checks and warns instead', async () => {
+    await seedSymbol('CTLT', true, 'incomplete');
+    // Only the first day has data → a long trailing gap that would be an error
+    // for a playable symbol.
+    await insertBar('CTLT', new Date(T0 + 0 * DAY_MS + 14 * 3600_000));
+
+    const report = await runAudit(
+      pool,
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
+    );
+    expect(report.summary.symbolsWithErrors).toBe(0);
+    expect(report.errorCounts[CODE.COVERAGE_GAP]).toBe(0);
+    expect(report.symbols['CTLT']?.status).toBe('warning');
+    expect(
+      report.symbols['CTLT']?.issues.some(
+        (i) => i.code === CODE.EXCLUDED && i.severity === 'warning',
+      ),
+    ).toBe(true);
   });
 });
 
@@ -351,22 +388,33 @@ describe('INTRADAY_GAP — no_session_bars (daily-only data)', () => {
 });
 
 describe('INTRADAY_GAP — session_gap', () => {
-  it('fires when consecutive within-session bars are > 30 min apart', async () => {
+  // A within-session gap is data sparsity (thin/high-priced names), not
+  // corruption — so it is a warning and must NOT block a deploy.
+  it('flags a within-session gap as a warning, not an error', async () => {
     await seedSymbol('WMT');
-    const base = new Date(T0);
-    base.setUTCHours(14, 30, 0, 0);
-    await insertBar('WMT', base);
-    await insertBar('WMT', new Date(base.getTime() + 90 * 60_000)); // 90 min gap
+    // Full 15-min session coverage every day so the symbol has no coverage gap;
+    // the ONLY issue is a single 90-min hole on day 0 (skip 14:15–15:15 UTC).
+    for (let dayOff = 0; dayOff <= 4; dayOff++) {
+      const dayBase = new Date(T0 + dayOff * DAY_MS);
+      dayBase.setUTCHours(0, 0, 0, 0);
+      for (let minOff = 0; minOff < 6 * 60; minOff += 15) {
+        if (dayOff === 0 && minOff > 0 && minOff < 90) continue;
+        await insertBar(
+          'WMT',
+          new Date(dayBase.getTime() + 14 * 3600_000 + minOff * 60_000),
+        );
+      }
+    }
 
     const report = await runAudit(pool, weekConfig({ intradayGapMinutes: 30 }));
-    const issues = report.symbols['WMT']?.issues ?? [];
-    expect(
-      issues.some(
-        (i) =>
-          i.code === CODE.INTRADAY_GAP &&
-          (i.detail as { type: string }).type === 'session_gap',
-      ),
-    ).toBe(true);
+    const issue = report.symbols['WMT']?.issues.find(
+      (i) =>
+        i.code === CODE.INTRADAY_GAP &&
+        (i.detail as { type: string }).type === 'session_gap',
+    );
+    expect(issue?.severity).toBe('warning');
+    expect(report.symbols['WMT']?.status).toBe('warning');
+    expect(report.summary.symbolsWithErrors).toBe(0);
   });
 
   it('does not fire when the gap is at or below threshold', async () => {
