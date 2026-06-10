@@ -23,6 +23,11 @@ export type {
   PlayerInventoryItem,
   PlayerListResponse,
   PlayerDetail,
+  DraftStatus,
+  DraftPick,
+  DraftSlot,
+  DraftState,
+  MakePickRequest,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';
