@@ -1,0 +1,514 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 736 564" width="736" height="564" role="img" aria-label="split-flap alphabet a to z">
+  <defs>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&amp;display=swap");
+      .glyph {
+        font-family: "Bricolage Grotesque", "Geist", system-ui, sans-serif;
+        font-weight: 700;
+        font-size: 78px;
+        fill: #22242A;
+        text-anchor: middle;
+        dominant-baseline: central;
+      }
+      /* mechanical flip-in: top flap lifts away, bottom flap drops in.
+         transform-origin is the seam (y=60), faked via translate sandwich. */
+      .leaf { animation-duration: 0.85s; animation-iteration-count: 1;
+              animation-fill-mode: both;
+              animation-timing-function: cubic-bezier(.45,.05,.35,1);
+              animation-delay: var(--d, .25s); }
+      .top  { animation-name: flapTop; }
+      .bot  { animation-name: flapBot; }
+      @keyframes flapTop {
+        0%   { transform: translate(0,60px) scaleY(1) translate(0,-60px); }
+        50%,100% { transform: translate(0,60px) scaleY(0) translate(0,-60px); }
+      }
+      @keyframes flapBot {
+        0%,50% { transform: translate(0,60px) scaleY(0) translate(0,-60px); }
+        100%   { transform: translate(0,60px) scaleY(1) translate(0,-60px); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .leaf { animation: none; }
+        .top  { transform: translate(0,60px) scaleY(0) translate(0,-60px); }
+      }
+    </style>
+    <linearGradient id="seam" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#000" stop-opacity="0"/>
+      <stop offset=".45" stop-color="#000" stop-opacity=".18"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="tileclip"><rect width="88" height="120" rx="8"/></clipPath>
+    <clipPath id="ct"><rect width="88" height="60"/></clipPath>
+    <clipPath id="cb"><rect y="60" width="88" height="60"/></clipPath>
+
+    <symbol id="flap-a" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.25s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">a</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">a</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-b" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.31s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">b</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">b</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-c" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.37s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">c</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">c</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-d" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.43s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">d</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">d</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-e" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.49s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">e</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">e</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-f" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.55s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">f</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">f</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-g" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.61s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">g</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">g</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-h" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.67s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">h</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">h</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-i" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.73s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">i</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">i</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-j" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.79s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">j</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">j</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-k" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.85s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">k</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">k</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-l" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.91s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">l</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">l</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-m" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:0.97s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">m</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">m</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-n" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.03s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">n</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">n</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-o" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.09s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">o</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">o</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-p" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.15s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">p</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">p</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-q" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.21s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">q</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">q</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-r" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.27s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">r</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">r</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-s" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.33s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">s</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">s</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-t" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.39s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">t</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">t</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-u" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.45s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">u</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">u</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-v" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.51s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">v</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">v</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-w" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.57s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">w</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">w</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-x" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.63s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">x</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">x</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-y" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.69s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">y</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">y</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+    <symbol id="flap-z" viewBox="0 0 88 120" overflow="visible">
+      <g clip-path="url(#tileclip)" style="--d:1.75s">
+        <rect width="88" height="120" fill="#FCFCFA"/>
+        <!-- top half of the glyph, revealed when the top flap lifts -->
+        <g clip-path="url(#ct)"><text class="glyph" x="44" y="60">z</text></g>
+        <!-- the top flap: cream cover that flips up out of the way -->
+        <rect class="leaf top" width="88" height="60" fill="#FCFCFA"/>
+        <!-- the bottom flap: drops down carrying the glyph's lower half -->
+        <g class="leaf bot">
+          <rect y="60" width="88" height="60" fill="#FCFCFA"/>
+          <g clip-path="url(#cb)"><text class="glyph" x="44" y="60">z</text></g>
+        </g>
+        <rect y="57" width="88" height="6" fill="url(#seam)"/>
+      </g>
+      <rect x="1" y="1" width="86" height="118" rx="8"
+            fill="none" stroke="#BCBCB6" stroke-width="2"/>
+    </symbol>
+  </defs>
+
+  <rect width="736" height="564" fill="#0a0c10"/>
+  <use href="#flap-a" x="18" y="18" width="88" height="120"/>
+  <use href="#flap-b" x="120" y="18" width="88" height="120"/>
+  <use href="#flap-c" x="222" y="18" width="88" height="120"/>
+  <use href="#flap-d" x="324" y="18" width="88" height="120"/>
+  <use href="#flap-e" x="426" y="18" width="88" height="120"/>
+  <use href="#flap-f" x="528" y="18" width="88" height="120"/>
+  <use href="#flap-g" x="630" y="18" width="88" height="120"/>
+  <use href="#flap-h" x="18" y="154" width="88" height="120"/>
+  <use href="#flap-i" x="120" y="154" width="88" height="120"/>
+  <use href="#flap-j" x="222" y="154" width="88" height="120"/>
+  <use href="#flap-k" x="324" y="154" width="88" height="120"/>
+  <use href="#flap-l" x="426" y="154" width="88" height="120"/>
+  <use href="#flap-m" x="528" y="154" width="88" height="120"/>
+  <use href="#flap-n" x="630" y="154" width="88" height="120"/>
+  <use href="#flap-o" x="18" y="290" width="88" height="120"/>
+  <use href="#flap-p" x="120" y="290" width="88" height="120"/>
+  <use href="#flap-q" x="222" y="290" width="88" height="120"/>
+  <use href="#flap-r" x="324" y="290" width="88" height="120"/>
+  <use href="#flap-s" x="426" y="290" width="88" height="120"/>
+  <use href="#flap-t" x="528" y="290" width="88" height="120"/>
+  <use href="#flap-u" x="630" y="290" width="88" height="120"/>
+  <use href="#flap-v" x="18" y="426" width="88" height="120"/>
+  <use href="#flap-w" x="120" y="426" width="88" height="120"/>
+  <use href="#flap-x" x="222" y="426" width="88" height="120"/>
+  <use href="#flap-y" x="324" y="426" width="88" height="120"/>
+  <use href="#flap-z" x="426" y="426" width="88" height="120"/>
+</svg>
