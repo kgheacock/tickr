@@ -176,6 +176,16 @@ export function attachWsGateway(
         return;
       }
     }
+    if (topic.kind === 'matchup') {
+      // Live scores are league-private — only members may follow the matchup.
+      if (!(await isLeagueMember(topic.leagueId, conn.userId))) {
+        sendError(conn.socket, {
+          code: 'FORBIDDEN',
+          message: 'League membership required to follow this matchup',
+        });
+        return;
+      }
+    }
     conn.topics.add(topicKey(topic));
   }
 

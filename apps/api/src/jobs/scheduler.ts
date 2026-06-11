@@ -7,6 +7,7 @@ import { isNyseHoliday } from '../market/holidays.js';
 import { runAlertCheck } from '../alerts/checker.js';
 import { runClassifier } from '../fantasy/classify.js';
 import { lockLineups, isFirstTradingDayOfWeek } from '../fantasy/lock.js';
+import { runWeeklyScoring } from './scoring.js';
 import { pool } from '../db/pool.js';
 import { jobLogger } from '../log/logger.js';
 
@@ -15,11 +16,25 @@ const BACKFILL_LOCK = 'massive:job:backfill';
 const SESSION_UPDATE_LOCK = 'massive:job:session-update';
 const CLASSIFY_LOCK = 'fs:job:classify';
 const LINEUP_LOCK_LOCK = 'fs:job:lineup-lock';
+const SCORING_LOCK = 'fs:job:scoring';
+
+// Fixed UTC-5 (ET standard) offset, matching holidays.ts / lock.ts. The scoring
+// crons fire at ~21:35 UTC, well clear of the midnight boundary.
+const ET_OFFSET_MS = 5 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // TODO(FS-06): derive the scoring week from the season schedule. Until then the
-// season has a single week; the lock job always targets week 1.
+// season has a single week; the scoring + lock jobs always target week 1.
 function currentWeek(): number {
   return 1;
+}
+
+/** The Friday of `now`'s week (ET) — today on Friday, the coming Friday Mon–Thu. */
+function currentFriday(now: Date): Date {
+  const et = new Date(now.getTime() - ET_OFFSET_MS);
+  const dow = et.getUTCDay(); // 0 = Sun … 5 = Fri … 6 = Sat
+  const daysUntilFriday = (5 - dow + 7) % 7;
+  return new Date(now.getTime() + daysUntilFriday * DAY_MS);
 }
 
 const baseLog = jobLogger('scheduler');
@@ -116,8 +131,56 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   });
 
+  // FS-05 weekly settle: Friday 21:35 UTC, just after the session update appends
+  // Friday's close. Scores every active league's just-closed week from the
+  // Friday close (point-in-time, so a holiday-short week resolves to the last
+  // available close), persists it, and publishes score.updated + the final
+  // matchup.updated. Runs every Friday — a holiday Friday simply settles off the
+  // last close, so no holiday skip here.
+  cron.schedule('0 35 21 * * 5', () => {
+    const now = new Date();
+    void withLock(redis, SCORING_LOCK, async () => {
+      const result = await runWeeklyScoring(
+        pool,
+        { week: currentWeek(), weekEnd: currentFriday(now) },
+        redis,
+      );
+      log('info', 'weekly settle complete', result);
+    }).catch((err: unknown) => {
+      log('error', 'weekly settle failed', { err: String(err) });
+    });
+  });
+
+  // FS-05 provisional scores: Mon–Thu 21:35 UTC, after the day's close lands.
+  // Best-effort live totals from the latest close; pushed as matchup.updated and
+  // never persisted. Skipped on a holiday (no fresh bars to score).
+  cron.schedule('0 35 21 * * 1-4', () => {
+    const now = new Date();
+    if (isNyseHoliday(now)) {
+      log('info', 'holiday — skipping provisional scoring', {
+        date: now.toISOString().slice(0, 10),
+      });
+      return;
+    }
+    void withLock(redis, SCORING_LOCK, async () => {
+      const result = await runWeeklyScoring(
+        pool,
+        {
+          week: currentWeek(),
+          weekEnd: currentFriday(now),
+          provisional: true,
+          asOf: now,
+        },
+        redis,
+      );
+      log('info', 'provisional scoring complete', result);
+    }).catch((err: unknown) => {
+      log('error', 'provisional scoring failed', { err: String(err) });
+    });
+  });
+
   log(
     'info',
-    'scheduler registered (backfill + session-update + alerts + classifier + lineup-lock)',
+    'scheduler registered (backfill + session-update + alerts + classifier + lineup-lock + scoring)',
   );
 }
