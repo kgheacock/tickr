@@ -30,10 +30,9 @@ lead paragraph's drop cap.
   re-keyed so a `rotateX(-92deg → 0)` "flap-drop" animation replays — a fresh
   flap swinging down into place. Decorative, so the whole tile is `aria-hidden`
   and the animation is disabled under `prefers-reduced-motion` (it still cycles).
-- **Drop cap without breaking the text.** The flipper floats as the lead
-  paragraph's drop cap; the literal "F" is kept but visually hidden (`.srOnly`),
-  so the tile stands in for it while the paragraph still reads "Fantasy…" for
-  screen readers and selection. The old `::first-letter` drop cap is removed.
+- **Drop cap beside the word.** The flipper floats as the lead paragraph's drop
+  cap, to the left of the opening word "Fantasy" (which keeps its visible "F").
+  The old `::first-letter` drop cap is removed so it no longer enlarges the F.
 - **Visual language.** Cream gradient tile + center seam echo the split-flap
   tiles in `docs/index.html`, reusing the newsprint design tokens.
 
@@ -44,9 +43,9 @@ lead paragraph's drop cap.
    `setInterval` advances the index and a `FlapFace` subcomponent owns the
    logo→glyph fallback state. A single tile sized as a drop cap.
 2. **Landing page drop cap** (`apps/web/src/pages/LandingPage.tsx` +
-   `.module.css`). The flipper floats in at the start of the lead paragraph in
-   place of the "F"; the literal "F" is wrapped in a `.srOnly` span and the old
-   `.deck::first-letter` drop cap is removed.
+   `.module.css`). The flipper floats in at the start of the lead paragraph,
+   beside the opening word "Fantasy"; the old `.deck::first-letter` drop cap is
+   removed so it no longer enlarges the "F".
 
 ## Entry point
 
@@ -68,6 +67,6 @@ lead paragraph's drop cap.
       tile never shows a broken-image icon.
 - [x] Each change replays a flap-drop animation; the flip honors
       `prefers-reduced-motion`.
-- [x] Sits as the landing page's lead drop cap in place of the "F", with the
-      letter preserved for screen readers / selection.
+- [x] Sits as the landing page's lead drop cap, beside the opening word
+      "Fantasy" (which keeps its visible "F").
 - [x] `tsc --noEmit`, eslint, and prettier are clean.

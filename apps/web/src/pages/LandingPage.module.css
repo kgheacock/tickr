@@ -113,19 +113,7 @@
 }
 
 /* The lead paragraph's drop cap is the split-flap logo flipper (see FlapBoard),
-   floated in via the .flap class; the literal "F" below is kept for screen
-   readers and text selection but hidden from sight. */
-.srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
+   floated in beside the opening word via the .flap class. */
 
 /* ── Sign-in column ───────────────────────────────────────── */
 
