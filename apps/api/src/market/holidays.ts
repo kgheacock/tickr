@@ -101,3 +101,42 @@ export function isNyseHoliday(utcDate: Date): boolean {
   const ymd = etDate.toISOString().slice(0, 10);
   return NYSE_HOLIDAYS.has(ymd);
 }
+
+const SESSION_OPEN_MIN = 9 * 60 + 30; // 09:30 ET
+const SESSION_CLOSE_MIN = 16 * 60; // 16:00 ET
+
+/**
+ * Returns true if `now` falls within the NYSE *regular* trading session —
+ * weekdays 09:30 (inclusive) to 16:00 (exclusive) ET, excluding holidays.
+ *
+ * Unlike isNyseHoliday's fixed-offset approximation, this needs the real ET
+ * wall-clock minute, which shifts an hour with daylight saving — so it resolves
+ * the America/New_York zone via Intl rather than a hardcoded offset. Half-day
+ * early closes (1pm ET) are not modeled; on those days a sweep just runs to 4pm
+ * and re-fetches the same closed-session bars (idempotent), which is acceptable.
+ */
+export function isRegularSession(now: Date): boolean {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(now);
+  const part = (type: string): string =>
+    parts.find((p) => p.type === type)?.value ?? '';
+
+  const weekday = part('weekday');
+  if (weekday === 'Sat' || weekday === 'Sun') return false;
+
+  const ymd = `${part('year')}-${part('month')}-${part('day')}`;
+  if (NYSE_HOLIDAYS.has(ymd)) return false;
+
+  // Intl with hour12:false can render midnight as '24' in some runtimes.
+  const hour = parseInt(part('hour'), 10) % 24;
+  const minuteOfDay = hour * 60 + parseInt(part('minute'), 10);
+  return minuteOfDay >= SESSION_OPEN_MIN && minuteOfDay < SESSION_CLOSE_MIN;
+}
