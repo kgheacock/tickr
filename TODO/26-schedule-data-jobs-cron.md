@@ -5,13 +5,22 @@
 ## Goal
 
 Make the data corpus **self-maintaining** instead of relying on manual
-`pnpm backfill` / `pnpm metadata` runs. Before this, the `worker` role only ran a
-one-shot backfill at startup; the universe reconcile (Wikipedia) and the
-metadata/branding refresh had **no schedule at all** — they only ran via the
-bootstrap entrypoints. That left newly-added S&P 500 members without prices or
-logos until someone ran the scripts by hand (exactly what the PR #64 prod deploy
-required). This is the open follow-up from
-[item 25](25-universe-from-wikipedia.md).
+`pnpm backfill` / `pnpm metadata` runs, and keep prices as fresh as the free
+Massive tier allows. Before this, the `worker` role only ran a one-shot backfill
+at startup plus a single post-close session update; the universe reconcile
+(Wikipedia) and the metadata/branding refresh had **no schedule at all**. That
+left newly-added S&P 500 members without prices or logos until someone ran the
+scripts by hand (exactly what the PR #64 prod deploy required). This is the open
+follow-up from [item 25](25-universe-from-wikipedia.md).
+
+## Rate-limit reality
+
+The free Massive tier is **5 req/min** and intraday aggregates are one request
+per symbol, so a full ~500-symbol sweep takes **~100 min**. A real-time corpus is
+therefore not achievable on the free tier (it would need ~9 req/min just to touch
+every symbol within the hour, ~34 for true 15-min freshness). The chosen approach
+is a **best-effort continuous live tail** during market hours, with every other
+Massive job pushed **off-hours** so it never competes for the daytime budget.
 
 ## Pre-reads
 
@@ -20,36 +29,51 @@ required). This is the open follow-up from
 - [TODO/22-ticker-metadata-and-branding.md](22-ticker-metadata-and-branding.md) —
   `runMetadataRefresh` (names + logos/icons) chained after the reconcile.
 - `apps/api/src/jobs/scheduler.ts` — `registerScheduledJobs`, run by the worker
-  role; existing session-update + alerts crons and the `withLock` helper.
+  role; the `withLock` helper and the shared `massive:bucket` token bucket.
 
 ## Steps
 
-1. **Hourly backfill** — `cron.schedule('0 0 * * * *')` → `runBackfill` under the
-   existing `massive:job:backfill` lock. No-op when the corpus is current (the job
-   self-terminates with nothing pending); does real work after the reconcile adds
-   members. Startup catch-up backfill retained.
-2. **M/W/Sat universe refresh** — `cron.schedule('0 0 0 * * 1,3,6')` (00:00 UTC
-   Mon/Wed/Sat): `seedUniverse()` (Wikipedia pull, **default 0.1 departure cap**)
-   then `runMetadataRefresh()` **directly after**, under a new
-   `massive:job:universe-refresh` lock.
-3. **Lock TTL fix** — a large catch-up backfill runs >1h (the 76-symbol prod run
-   took 1h20m). The shared 30-min TTL would expire mid-run and let the next hourly
-   firing start a second concurrent backfill. Add a 6h TTL for the backfill +
-   universe-refresh locks (released in `finally` on normal completion, so the TTL
-   is only a crash net); session-update keeps its tight 30-min TTL.
-4. **Tests** — `test/jobs/scheduler.test.ts` (node-cron mocked).
+1. **Intraday live tail** — `cron.schedule('0 */5 * * * *')`, runs only when
+   `isRegularSession(now)` (new DST-aware helper: weekdays 09:30–16:00 ET, NYSE
+   holidays excluded). `SESSION_UPDATE_LOCK` serializes the 5-min firings into
+   continuous back-to-back sweeps. Replaces the fixed 21:30 post-close cron: each
+   sweep re-fetches a trailing multi-day window with `ON CONFLICT` inserts and
+   stamps the EOD health signal, so bars a near-close sweep missed self-heal on
+   the next session — no separate post-close pass needed.
+2. **Off-hours backfill** — startup catch-up + hourly `cron.schedule('0 0 * * * *')`,
+   both gated to **skip while `isRegularSession(now)`**. Hydrates members added by
+   the reconcile; a no-op once the corpus is current.
+3. **M/W/Sat universe refresh** — `cron.schedule('0 0 0 * * 1,3,6')` (00:00 UTC,
+   off-hours): `seedUniverse()` (Wikipedia pull, **default 0.1 departure cap**)
+   then `runMetadataRefresh()` **directly after**, under `massive:job:universe-refresh`.
+4. **Lock TTL** — every Massive-job lock acquisition (intraday, backfill,
+   universe refresh) uses a **6h TTL**. A ~100-min sweep under the old 30-min TTL
+   would be lapped by the next 5-min firing and stack concurrent sweeps,
+   multiplying spend. Released in `withLock`'s `finally` on normal completion, so
+   the TTL is only a crash net.
+5. **Tests** — `test/jobs/scheduler.test.ts` (node-cron + deps mocked) and
+   `test/market/holidays.test.ts` (DST/edge cases for `isRegularSession`).
 
 ## Definition of done
 
-- [x] Hourly price-backfill cron registered; startup catch-up retained.
-- [x] M/W/Sat cron runs the universe reconcile then the metadata refresh, in that
-      order, under a dedicated lock; reconcile uses the default 0.1 cap (the
-      one-time 0.2 backlog clear is **not** baked into the schedule).
-- [x] Backfill + universe-refresh locks use a TTL longer than the longest
-      plausible run, so a slow run can't be lapped by the next hourly firing.
-- [x] `test/jobs/scheduler.test.ts` covers the cron expressions, the
-      reconcile→metadata ordering, the long-TTL locking, and the lock-held skip;
-      typecheck + eslint clean.
+- [x] Intraday live tail runs every 5 min **only during the regular session**,
+      serialized by the session lock into continuous best-effort sweeps; the fixed
+      post-close cron is removed (completeness self-heals via the trailing-window
+      `ON CONFLICT` re-fetch).
+- [x] Backfill (startup + hourly) is **gated off-hours** so it never spends the
+      rate budget during market hours.
+- [x] M/W/Sat cron runs the reconcile then the metadata refresh, in that order,
+      under a dedicated lock; reconcile uses the default 0.1 cap (the one-time 0.2
+      backlog clear is **not** baked into the schedule).
+- [x] All Massive-job locks use a TTL longer than the longest plausible run, so a
+      slow run can't be lapped by the next firing.
+- [x] `isRegularSession` is DST-correct (America/New_York) and excludes weekends +
+      holidays, with direct unit tests; scheduler test covers the schedules,
+      session gating, ordering, and lock-held skip; typecheck + eslint clean.
 - [ ] **Verify on prod:** after merge + redeploy, confirm the worker logs the new
-      schedule and the next M/W/Sat firing reconciles + refreshes without a manual
-      run.
+      schedule, the live tail sweeps during market hours, and backfill/refresh run
+      off-hours.
+
+> **Known limitation (accepted):** best-effort only — at 5 req/min each symbol's
+> tail can be up to ~one sweep (~100 min) stale. Closing this needs a higher
+> `MASSIVE_RPS_LIMIT` (paid tier) or a smaller live-tail universe.
