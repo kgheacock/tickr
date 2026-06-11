@@ -998,6 +998,88 @@ components:
           description: Draft the stock as a short into the Defense slot
           default: false
 
+    # --- Fantasy Street: rosters & weekly lineups (item 04) ---
+
+    LineupSlot:
+      type: object
+      description: One filled slot in a weekly lineup
+      required: [slot, slotIndex, symbol, isShort]
+      properties:
+        slot:
+          type: string
+          enum: [anchor, growth, momentum, value, defense, wildcard, bench]
+        slotIndex:
+          type: integer
+          description: Disambiguates repeated slots (bench, duplicate slots)
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+          description: True for a Defense short; false for every long slot
+
+    Lineup:
+      type: object
+      description: A manager's weekly starting lineup and its lock state
+      required:
+        - leagueId
+        - userId
+        - season
+        - week
+        - locked
+        - lockedAt
+        - autoFilled
+        - slots
+      properties:
+        leagueId:
+          type: string
+        userId:
+          type: string
+        season:
+          type: integer
+        week:
+          type: integer
+        locked:
+          type: boolean
+          description: True once the scoring week's market open froze the lineup
+        lockedAt:
+          type: ['string', 'null']
+          format: date-time
+        autoFilled:
+          type: boolean
+          description: True when the lock job auto-filled one or more slots
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/LineupSlot'
+
+    SetLineupSlot:
+      type: object
+      required: [slot, symbol]
+      properties:
+        slot:
+          type: string
+          enum: [anchor, growth, momentum, value, defense, wildcard, bench]
+        slotIndex:
+          type: integer
+          default: 0
+          description: Position within a repeated slot; defaults to 0
+        symbol:
+          type: string
+
+    SetLineupRequest:
+      type: object
+      required: [week, slots]
+      properties:
+        week:
+          type: integer
+        season:
+          type: integer
+          default: 1
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SetLineupSlot'
+
 paths:
   # --- Auth & session ---
 

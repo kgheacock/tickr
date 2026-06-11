@@ -6,6 +6,7 @@ import { tryAcquireLock, releaseLock } from './locks.js';
 import { isNyseHoliday } from '../market/holidays.js';
 import { runAlertCheck } from '../alerts/checker.js';
 import { runClassifier } from '../fantasy/classify.js';
+import { lockLineups, isFirstTradingDayOfWeek } from '../fantasy/lock.js';
 import { pool } from '../db/pool.js';
 import { jobLogger } from '../log/logger.js';
 
@@ -13,6 +14,13 @@ const LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const BACKFILL_LOCK = 'massive:job:backfill';
 const SESSION_UPDATE_LOCK = 'massive:job:session-update';
 const CLASSIFY_LOCK = 'fs:job:classify';
+const LINEUP_LOCK_LOCK = 'fs:job:lineup-lock';
+
+// TODO(FS-06): derive the scoring week from the season schedule. Until then the
+// season has a single week; the lock job always targets week 1.
+function currentWeek(): number {
+  return 1;
+}
 
 const baseLog = jobLogger('scheduler');
 
@@ -89,8 +97,27 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   });
 
+  // FS-04 lineup lock: market open (~14:30 UTC) Mon–Fri, but only on the week's
+  // first NYSE trading day — so a holiday Monday defers the lock to the next
+  // open. Freezes every active league's lineups and auto-fills incomplete ones.
+  cron.schedule('0 30 14 * * 1-5', () => {
+    const now = new Date();
+    if (!isFirstTradingDayOfWeek(now)) return;
+
+    void withLock(redis, LINEUP_LOCK_LOCK, async () => {
+      const result = await lockLineups(
+        pool,
+        { week: currentWeek(), now },
+        redis,
+      );
+      log('info', 'lineup lock complete', result);
+    }).catch((err: unknown) => {
+      log('error', 'lineup lock failed', { err: String(err) });
+    });
+  });
+
   log(
     'info',
-    'scheduler registered (backfill + session-update + alerts + classifier)',
+    'scheduler registered (backfill + session-update + alerts + classifier + lineup-lock)',
   );
 }
