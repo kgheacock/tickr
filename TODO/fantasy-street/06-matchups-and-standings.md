@@ -1,6 +1,6 @@
 # FS-06 · Matchups, schedule & standings
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03, 05
+**Status:** `done` ([#65](https://github.com/kgheacock/tickr/pull/65)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03, 05
 
 ## User stories
 - As a manager, I want to face one opponent each week and win or lose on total
@@ -74,11 +74,11 @@ the win/loss spine FS-08 (playoffs) builds the bracket on.
   `apps/api/src/routes/leagues/index.ts`, `packages/shared-types/src/fantasy.ts`.
 
 ## Definition of done
-- [ ] When the draft completes, a full round-robin schedule is generated; an
+- [x] When the draft completes, a full round-robin schedule is generated; an
       odd-sized league has exactly one bye per week, rotating.
-- [ ] After the Friday score settles, each week's matchups go `final` with the
+- [x] After the Friday score settles, each week's matchups go `final` with the
       higher total winning (ties recorded), and standings update.
-- [ ] Standings rank by the documented tiebreaker order and expose the fields.
-- [ ] A re-scored week (FS-12) re-settles its matchups and re-ranks standings.
-- [ ] `GET /schedule`, `/matchups`, and `/standings` return correct data for an
+- [x] Standings rank by the documented tiebreaker order and expose the fields.
+- [x] A re-scored week (FS-12) re-settles its matchups and re-ranks standings.
+- [x] `GET /schedule`, `/matchups`, and `/standings` return correct data for an
       in-progress season.
