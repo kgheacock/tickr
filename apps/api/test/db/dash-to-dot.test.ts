@@ -12,12 +12,15 @@ const migrationsDir = fileURLToPath(
   new URL('../../migrations', import.meta.url),
 );
 
-// 011 (the dash→dot rename) sorts last; everything before it is "the schema as
-// it stood before the rename".
+// Everything before the dash→dot rename (011) is "the schema as it stood before
+// the rename"; later FS migrations (012+) sort after it, so locate 011 by name
+// rather than assuming it is the last file.
 const allMigrations = readdirSync(migrationsDir)
   .filter((f) => f.endsWith('.sql'))
   .sort();
-const beforeRenameCount = allMigrations.length - 1;
+const beforeRenameCount = allMigrations.findIndex((f) =>
+  f.includes('universe-dash-to-dot'),
+);
 
 let container: StartedPostgreSqlContainer;
 let client: pg.Client;
@@ -72,7 +75,7 @@ beforeAll(async () => {
      VALUES ('BRK-B', 'image/svg+xml')`,
   );
 
-  // Now apply the rename migration (011).
+  // Now apply the rename migration (011) and any later migrations.
   await runner({
     databaseUrl,
     dir: migrationsDir,

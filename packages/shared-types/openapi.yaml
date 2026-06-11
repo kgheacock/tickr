@@ -165,6 +165,62 @@ components:
           items:
             $ref: '#/components/schemas/UniverseItem'
 
+    # --- Symbol metadata ---
+
+    SymbolMetadata:
+      type: object
+      description: >
+        Company reference fields for a single symbol, sourced from Massive
+        (GET /v3/reference/tickers/{ticker}) by the metadata refresh job and
+        stored in symbol_metadata. Logo/icon images are served separately under
+        /symbols/{symbol}/logo and /icon.
+      required:
+        - symbol
+        - name
+        - primaryExchange
+        - type
+        - marketCap
+        - sicCode
+        - sicDescription
+        - homepageUrl
+        - listDate
+        - totalEmployees
+        - description
+        - fetchedAt
+      properties:
+        symbol:
+          type: string
+        name:
+          type: ['string', 'null']
+          description: Company name
+        primaryExchange:
+          type: ['string', 'null']
+          description: MIC, e.g. XNAS / XNYS
+        type:
+          type: ['string', 'null']
+          description: Security type, e.g. CS / ETF
+        marketCap:
+          type: ['number', 'null']
+          description: Market capitalization in whole currency units (not cents)
+        sicCode:
+          type: ['string', 'null']
+        sicDescription:
+          type: ['string', 'null']
+          description: SIC industry description — closest field to a sector
+        homepageUrl:
+          type: ['string', 'null']
+        listDate:
+          type: ['string', 'null']
+          format: date
+        totalEmployees:
+          type: ['integer', 'null']
+        description:
+          type: ['string', 'null']
+        fetchedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the metadata was last fetched from upstream
+
     # --- Prices ---
 
     PriceBar:
@@ -1533,6 +1589,32 @@ paths:
                 $ref: '#/components/schemas/UniverseResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /symbols/{symbol}/metadata:
+    get:
+      summary: Company reference metadata for a symbol (from symbol_metadata)
+      operationId: getSymbolMetadata
+      tags: [platform]
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Universe symbol, e.g. AAPL or BRK.B (case-insensitive)
+      responses:
+        '200':
+          description: Symbol metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SymbolMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
