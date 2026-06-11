@@ -1,6 +1,6 @@
 # FS-05 · Scoring & shorting
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 02, 04
+**Status:** `done` ([#63](https://github.com/kgheacock/tickr/pull/63)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 02, 04
 
 ## User stories
 - As a manager, I want my weekly score to come from how my started stocks moved
@@ -89,12 +89,27 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
   `packages/shared-types/src/ws.ts` + `fantasy.ts`.
 
 ## Definition of done
-- [ ] Each README short example reproduces exactly (+40 / −40 / +1000 floored /
+- [x] Each README short example reproduces exactly (+40 / −40 / +1000 floored /
       −300), and a long slot scores `r × 10`.
-- [ ] Weekly total is the uncapped sum of started slots with losses included;
+- [x] Weekly total is the uncapped sum of started slots with losses included;
       the `breakdown` sums to `total_points`.
-- [ ] The Friday post-close job scores every active league's just-closed week
+- [x] The Friday post-close job scores every active league's just-closed week
       and publishes `score.updated`; re-running overwrites cleanly.
-- [ ] The per-slot breakdown is queryable and is the data FS-06 and FS-11 read.
-- [ ] A shorted ticker is unavailable to every other manager in the league
+- [x] The per-slot breakdown is queryable and is the data FS-06 and FS-11 read.
+- [x] A shorted ticker is unavailable to every other manager in the league
       (single-owner invariant holds for shorts).
+
+## Implementation notes
+- Migration `1700000000010_fs_scores.sql` (`fs_weekly_score`: total +
+  JSONB breakdown, idempotent upsert). Domain in `fantasy/returns.ts`
+  (point-in-time `weeklyReturn`, holiday-aware, `asOf` for provisional) and
+  `fantasy/score.ts` (scorer + settle + read functions). Job in `jobs/scoring.ts`
+  driven by two `jobs/scheduler.ts` crons: Friday post-close settle
+  (`score.updated`) and Mon–Thu provisional push (`matchup.updated`).
+- Live `matchup` WS topic (member-gated in `ws/server.ts`, keyed per league+week
+  in `ws/topics.ts` + `shared-types/ws.ts`); `score.updated` is a plain domain
+  event in `events/publisher.ts`, mirroring `lineup.locked`.
+- Read routes in `routes/leagues/scores.ts`. Tests in
+  `test/fantasy/score.test.ts` + `returns.test.ts`.
+- Deferred to later items: schedule→week mapping (the job targets week 1 until
+  FS-06); FS-06 consumes `score.updated` to settle matchups.

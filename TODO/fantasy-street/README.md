@@ -24,7 +24,7 @@ user stories — same slicing rationale as v1.
 | 02 | [Players & grouping](02-players-and-grouping.md) | corpus | done ([#55](https://github.com/kgheacock/tickr/pull/55)) |
 | 03 | [Live draft](03-live-draft.md) | 01, 02 | done ([#59](https://github.com/kgheacock/tickr/pull/59)) |
 | 04 | [Rosters & weekly lineups](04-rosters-and-lineups.md) | 03 | done ([#61](https://github.com/kgheacock/tickr/pull/61)) |
-| 05 | [Scoring & shorting](05-scoring-and-shorting.md) | 02, 04 | pending |
+| 05 | [Scoring & shorting](05-scoring-and-shorting.md) | 02, 04 | done ([#63](https://github.com/kgheacock/tickr/pull/63)) |
 | 06 | [Matchups, schedule & standings](06-matchups-and-standings.md) | 03, 05 | pending |
 | 07 | [Waivers & trades](07-waivers-and-trades.md) | 04, 06 | pending |
 | 08 | [Season & playoffs](08-season-and-playoffs.md) | 06 | pending |
