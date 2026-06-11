@@ -112,8 +112,17 @@
   max-width: 40ch;
 }
 
-/* The lead paragraph's drop cap is the split-flap logo flipper (see FlapBoard),
-   floated in beside the opening word via the .flap class. */
+/* The lead paragraph opens with a serif drop cap — the classic newspaper lede
+   ornament — floated into the first two lines. */
+.deck::first-letter {
+  float: left;
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 3.1em;
+  line-height: 0.78;
+  padding: 0.02em 0.08em 0 0;
+  color: var(--color-text);
+}
 
 /* ── Sign-in column ───────────────────────────────────────── */
 

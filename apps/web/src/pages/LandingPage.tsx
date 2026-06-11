@@ -1,10 +1,10 @@
 import { useAuth } from '../auth/AuthProvider';
 import { useLogout } from '../auth/useLogout';
-import { FlapBoard } from '../components/FlapBoard';
+import { TickerTape } from '../components/TickerTape';
 import styles from './LandingPage.module.css';
 
-// A spread of recognizable S&P 500 names for the masthead ticker band. Symbols
-// without a stored logo fall back to their ticker glyph inside FlapBoard.
+// A spread of recognizable S&P 500 names for the masthead markets strip.
+// Symbols without a stored logo simply show their ticker inside TickerTape.
 const MARKET_TICKERS = [
   'AAPL',
   'MSFT',
@@ -54,6 +54,8 @@ export function LandingPage() {
         </p>
         <div className={styles.ruleThin} />
 
+        <TickerTape tickers={MARKET_TICKERS} />
+
         <main className={styles.hero}>
           <article className={styles.lede}>
             <p className={styles.kicker}>Fantasy Street</p>
@@ -61,9 +63,8 @@ export function LandingPage() {
               Draft your team. Set your lineup. Earn your glory.
             </h2>
             <p className={styles.deck}>
-              {/* The flap flipper floats as the lead drop cap, beside the
-                  paragraph's opening word. */}
-              <FlapBoard tickers={MARKET_TICKERS} />
+              {/* The opening "F" is set as a serif drop cap via ::first-letter
+                  (see the stylesheet) — the classic newspaper lede treatment. */}
               Fantasy football where the players are stocks. Draft the S&amp;P
               500 with your league — one owner per ticker — field a weekly
               lineup, and go head-to-head into the playoffs.

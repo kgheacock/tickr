@@ -1,12 +1,19 @@
-# 24 — Landing page: split-flap logo flipper
+# 24 — Landing page: logo board → markets ribbon
 
-> **Status:** [in review](https://github.com/kgheacock/tickr/pull/60) • **Depends on:** 11, 22
+> **Status:** flap board [shipped](https://github.com/kgheacock/tickr/pull/60),
+> then **superseded** by the markets ribbon
+> [in review](https://github.com/kgheacock/tickr/pull/62) • **Depends on:** 11, 22
 >
 > A reusable `FlapBoard` SPA component that takes an array of tickers and, as a
 > **single split-flap tile**, flips through them one at a time — dropping a
 > fresh flap with each symbol's logo (served by item 22's branding endpoint).
 > The first consumer is the landing page, where it stands in for the lead
 > paragraph's drop-cap "F".
+>
+> **Superseded (PR #62):** the flap tile read as out of place in the
+> WSJ-front-page layout, so it was replaced by a scrolling **markets ribbon**
+> (`TickerTape`) and a restored serif drop cap. See the follow-up section below;
+> `FlapBoard` is removed.
 
 ## Goal
 
@@ -69,4 +76,47 @@ lead paragraph's drop cap.
       `prefers-reduced-motion`.
 - [x] Sits as the landing page's lead drop cap, beside the opening word
       "Fantasy" (which keeps its visible "F").
+- [x] `tsc --noEmit`, eslint, and prettier are clean.
+
+## Follow-up — markets ribbon redesign (PR #62)
+
+> **Status:** [in review](https://github.com/kgheacock/tickr/pull/62)
+
+The flap tile, used as the lede's drop cap, didn't fit the newspaper layout.
+Keep the dynamic logos but move them into a newspaper-native treatment: a
+scrolling **markets ribbon** under the masthead, plus a real serif drop cap.
+
+### Steps (as built)
+
+1. **`TickerTape` component** (`apps/web/src/components/TickerTape.tsx` +
+   `.module.css`). Props `{ tickers: string[]; label?: string }`. A fixed
+   editorial label ("The Tape") sits in a ruled cell, followed by an overflow
+   window whose track holds two concatenated copies of the run and translates
+   `-50%` for a seamless loop. Slow linear drift, pause-on-hover, edge fades,
+   and `animation: none` under `prefers-reduced-motion`. Each `Quote` is just
+   the brand logo, pinned to a common height (width free, `max-width` clamp) so
+   icon marks and wide wordmarks align without distortion; a symbol whose logo
+   404s renders `null` and drops out of the tape, so only real logos show.
+2. **Landing page** (`apps/web/src/pages/LandingPage.tsx` + `.module.css`).
+   `<TickerTape>` is placed below the masthead rules, above the hero. The lede's
+   `.deck::first-letter` serif drop cap is restored.
+3. **Remove `FlapBoard`** (`.tsx` + `.module.css` deleted; no other consumers).
+
+### Files
+
+- `apps/web/src/components/TickerTape.tsx` _(ribbon + per-logo drop-on-404)_
+- `apps/web/src/components/TickerTape.module.css` _(strip + seamless marquee)_
+- `apps/web/src/pages/LandingPage.tsx` _(ribbon placement; flap board removed)_
+- `apps/web/src/pages/LandingPage.module.css` _(restored `::first-letter` drop cap)_
+- ~~`apps/web/src/components/FlapBoard.tsx` / `.module.css`~~ _(deleted)_
+
+### Definition of done
+
+- [x] `TickerTape` takes `tickers: string[]` and scrolls their logos under a
+      fixed label as an endless, hairline-framed markets strip.
+- [x] Logos only: a symbol whose logo 404s drops out of the tape entirely.
+- [x] Logos share a baseline (fixed height, free width, `max-width` clamp) so
+      icon marks and wordmarks don't distort.
+- [x] Tape pauses on hover and holds still under `prefers-reduced-motion`.
+- [x] The lede regains a serif `::first-letter` drop cap; `FlapBoard` is removed.
 - [x] `tsc --noEmit`, eslint, and prettier are clean.
