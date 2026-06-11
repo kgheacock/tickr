@@ -32,6 +32,7 @@ user stories — same slicing rationale as v1.
 | 10 | [Auto-managers (bots)](10-auto-managers.md) | 03, 04 | pending |
 | 11 | [Reminders & recaps](11-reminders-and-recaps.md) | 04, 05, 06 | pending |
 | 12 | [Commissioner & admin tools](12-commissioner-and-admin.md) | 01 | pending |
+| 13 | [QA release review (PR #70 → main)](13-qa-release-review.md) | 01–07 | in-progress ([#70](https://github.com/kgheacock/tickr/pull/70)) |
 
 ## Dependency graph (at a glance)
 
