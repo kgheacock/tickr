@@ -1,6 +1,11 @@
 # 26 — Schedule data jobs in the worker cron
 
-> **Status:** [in review](https://github.com/kgheacock/tickr/pull/66) • **Depends on:** 22, 25
+> **Status:** [in review](https://github.com/kgheacock/tickr/pull/69) • **Depends on:** 22, 25
+>
+> Landed in two PRs: [#66](https://github.com/kgheacock/tickr/pull/66) (merged —
+> startup/hourly backfill + M/W/Sat universe refresh) and
+> [#69](https://github.com/kgheacock/tickr/pull/69) (the intraday live tail +
+> off-hours gating that completes the DoD below).
 
 ## Goal
 
