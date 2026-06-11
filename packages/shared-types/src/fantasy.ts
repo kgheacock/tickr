@@ -45,3 +45,8 @@ export type LineupSlot = Schemas['LineupSlot'];
 export type Lineup = Schemas['Lineup'];
 export type SetLineupSlot = Schemas['SetLineupSlot'];
 export type SetLineupRequest = Schemas['SetLineupRequest'];
+
+// --- Scoring & shorting (item 05) ---
+export type ScoreBreakdownItem = Schemas['ScoreBreakdownItem'];
+export type WeeklyScore = Schemas['WeeklyScore'];
+export type LeagueScoresResponse = Schemas['LeagueScoresResponse'];

@@ -847,6 +847,42 @@ export interface components {
             season: number;
             slots: components["schemas"]["SetLineupSlot"][];
         };
+        /** @description One started slot's contribution to a manager's weekly score */
+        ScoreBreakdownItem: {
+            /** @enum {string} */
+            slot: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard" | "bench";
+            symbol: string;
+            /** @description True for a Defense short (scored as −r×10) */
+            isShort: boolean;
+            /** @description Prior-Friday close in cents, or null if no bar resolved */
+            lastClose: number | null;
+            /** @description This-Friday (or as-of) close in cents, or null */
+            thisClose: number | null;
+            /** @description Week percent return, or null when a close was missing */
+            returnPct: number | null;
+            /** @description Slot points (r×10 long, −r×10 short), rounded to 2 dp */
+            points: number;
+        };
+        /** @description A manager's weekly point total and its per-slot breakdown */
+        WeeklyScore: {
+            leagueId: string;
+            userId: string;
+            season: number;
+            week: number;
+            /** @description Uncapped sum of started slots (losses included) */
+            totalPoints: number;
+            /** Format: date-time */
+            computedAt: string;
+            /** @description True for an in-week live total; false once Friday-settled */
+            provisional: boolean;
+            breakdown: components["schemas"]["ScoreBreakdownItem"][];
+        };
+        /** @description Every manager's settled score for one league week */
+        LeagueScoresResponse: {
+            season: number;
+            week: number;
+            scores: components["schemas"]["WeeklyScore"][];
+        };
     };
     responses: {
         /** @description Unauthenticated */

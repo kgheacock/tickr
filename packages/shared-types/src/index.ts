@@ -32,6 +32,9 @@ export type {
   Lineup,
   SetLineupSlot,
   SetLineupRequest,
+  ScoreBreakdownItem,
+  WeeklyScore,
+  LeagueScoresResponse,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';

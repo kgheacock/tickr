@@ -1080,6 +1080,82 @@ components:
           items:
             $ref: '#/components/schemas/SetLineupSlot'
 
+    # --- Scoring & shorting (item 05) ---
+    ScoreBreakdownItem:
+      type: object
+      description: One started slot's contribution to a manager's weekly score
+      required: [slot, symbol, isShort, lastClose, thisClose, returnPct, points]
+      properties:
+        slot:
+          type: string
+          enum: [anchor, growth, momentum, value, defense, wildcard, bench]
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+          description: True for a Defense short (scored as −r×10)
+        lastClose:
+          type: ['number', 'null']
+          description: Prior-Friday close in cents, or null if no bar resolved
+        thisClose:
+          type: ['number', 'null']
+          description: This-Friday (or as-of) close in cents, or null
+        returnPct:
+          type: ['number', 'null']
+          description: Week percent return, or null when a close was missing
+        points:
+          type: number
+          description: Slot points (r×10 long, −r×10 short), rounded to 2 dp
+
+    WeeklyScore:
+      type: object
+      description: A manager's weekly point total and its per-slot breakdown
+      required:
+        - leagueId
+        - userId
+        - season
+        - week
+        - totalPoints
+        - computedAt
+        - provisional
+        - breakdown
+      properties:
+        leagueId:
+          type: string
+        userId:
+          type: string
+        season:
+          type: integer
+        week:
+          type: integer
+        totalPoints:
+          type: number
+          description: Uncapped sum of started slots (losses included)
+        computedAt:
+          type: string
+          format: date-time
+        provisional:
+          type: boolean
+          description: True for an in-week live total; false once Friday-settled
+        breakdown:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScoreBreakdownItem'
+
+    LeagueScoresResponse:
+      type: object
+      description: Every manager's settled score for one league week
+      required: [season, week, scores]
+      properties:
+        season:
+          type: integer
+        week:
+          type: integer
+        scores:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyScore'
+
 paths:
   # --- Auth & session ---
 
