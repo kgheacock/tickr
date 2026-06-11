@@ -102,3 +102,34 @@ export async function publishDraftComplete(
     draftId,
   });
 }
+
+// --- Rosters & weekly lineups (item 04) ---
+
+/**
+ * A manager's weekly lineup was frozen at market open. A plain domain event on
+ * its own Redis channel (not a WS gateway message) — FS-09/11 will subscribe to
+ * surface "lineup locked" follows and recaps; until then it has no consumer.
+ */
+export const LINEUP_LOCKED_CHANNEL = 'fs:lineup:locked';
+
+export interface LineupLockedEvent {
+  type: 'lineup.locked';
+  leagueId: string;
+  userId: string;
+  season: number;
+  week: number;
+  autoFilled: boolean;
+}
+
+export async function publishLineupLocked(
+  redis: Redis,
+  event: Omit<LineupLockedEvent, 'type'>,
+): Promise<void> {
+  await redis.publish(
+    LINEUP_LOCKED_CHANNEL,
+    JSON.stringify({
+      type: 'lineup.locked',
+      ...event,
+    } satisfies LineupLockedEvent),
+  );
+}
