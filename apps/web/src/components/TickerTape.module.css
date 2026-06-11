@@ -1,0 +1,104 @@
+/* Markets strip for the masthead: a fixed editorial label, then an endless
+   tape of logo + ticker quotes scrolling beneath it. Kept hairline-quiet so it
+   reads as a newspaper data band rather than a web marquee. */
+
+.ribbon {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--color-rule);
+  background: var(--color-paper);
+}
+
+/* The section label sits in a fixed cell, set off by a vertical rule like an
+   agate column head ("Markets", "The Tape"). */
+.label {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  border-right: 1px solid var(--color-rule);
+  white-space: nowrap;
+}
+
+/* The scrolling window. Edges fade into the newsprint so quotes ease in and
+   out rather than clipping hard against the label and the page margin. */
+.window {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+
+.window::before,
+.window::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.window::before {
+  left: 0;
+  background: linear-gradient(90deg, var(--color-paper), transparent);
+}
+
+.window::after {
+  right: 0;
+  background: linear-gradient(270deg, var(--color-paper), transparent);
+}
+
+/* Two concatenated copies of the run translate -50% for a seamless loop.
+   Slow and linear: editorial drift, not a carousel. Hover holds it so a
+   reader can settle on a name. */
+.track {
+  display: flex;
+  width: max-content;
+  animation: tape 70s linear infinite;
+}
+
+.window:hover .track {
+  animation-play-state: paused;
+}
+
+@keyframes tape {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Hold the tape still for readers who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .track {
+    animation: none;
+  }
+}
+
+.quote {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-6);
+  border-right: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+/* Every logo is pinned to a common height with width free, so square icon
+   marks (AAPL) and wide wordmarks (KO) line up on one baseline without
+   distortion; max-width keeps a long wordmark from dominating the tape. */
+.logo {
+  height: 18px;
+  width: auto;
+  max-width: 84px;
+  object-fit: contain;
+  display: block;
+}
