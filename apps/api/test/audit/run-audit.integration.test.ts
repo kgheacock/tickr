@@ -64,12 +64,13 @@ async function seedSymbol(
   symbol: string,
   backfilled = true,
   dataStatus: string | null = null,
+  removedAt: Date | null = null,
 ): Promise<void> {
   await client.query(
-    `INSERT INTO universe_symbol (symbol, backfilled, data_status)
-     VALUES ($1, $2, $3)
+    `INSERT INTO universe_symbol (symbol, backfilled, data_status, removed_at)
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (symbol) DO NOTHING`,
-    [symbol, backfilled, dataStatus],
+    [symbol, backfilled, dataStatus, removedAt?.toISOString() ?? null],
   );
 }
 
@@ -319,6 +320,63 @@ describe('COVERAGE_GAP severity by position', () => {
       (i) => i.code === CODE.COVERAGE_GAP,
     );
     expect((issue?.detail as { position: string }).position).toBe('internal');
+    expect(issue?.severity).toBe('error');
+    expect(report.summary.symbolsWithErrors).toBe(1);
+  });
+});
+
+// ─── COVERAGE_GAP — ticker transition (retired predecessor) ───────────────────
+
+describe('COVERAGE_GAP — ticker transition', () => {
+  // A rename (BK → BNY): the active successor has a hole where its history was
+  // served under the now-retired predecessor ticker. The bars can't be fetched
+  // under the new symbol, so the gap is benign → warning, not a deploy blocker.
+  it('downgrades an internal gap to a warning when a retired predecessor covers it', async () => {
+    // Successor: Mon + Fri present, Tue–Thu missing = internal gap.
+    await seedSymbol('BNY');
+    await insertBar('BNY', tradingDay(0)); // Mon
+    await insertBar('BNY', tradingDay(4)); // Fri
+    // Predecessor: retired (removed_at set), holds the missing Tue–Thu.
+    await seedSymbol('BK', true, null, new Date(T0 + 4 * DAY_MS));
+    for (const dayOff of [1, 2, 3]) {
+      await insertBar('BK', tradingDay(dayOff));
+    }
+
+    const report = await runAudit(
+      pool,
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
+    );
+    const issue = report.symbols['BNY']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect((issue?.detail as { position: string }).position).toBe('internal');
+    expect(issue?.severity).toBe('warning');
+    expect(
+      (issue?.detail as { transitionPredecessor?: string })
+        .transitionPredecessor,
+    ).toBe('BK');
+    expect(report.symbols['BNY']?.status).toBe('warning');
+    expect(report.summary.symbolsWithErrors).toBe(0);
+  });
+
+  // Guard: the covering sibling must be RETIRED. If an active symbol happens to
+  // cover the window it is NOT a transition, so the gap stays a real error.
+  it('keeps the error when the covering symbol is not retired', async () => {
+    await seedSymbol('BNY');
+    await insertBar('BNY', tradingDay(0)); // Mon
+    await insertBar('BNY', tradingDay(4)); // Fri
+    await seedSymbol('OTHR'); // active (removed_at = null)
+    for (const dayOff of [1, 2, 3]) {
+      await insertBar('OTHR', tradingDay(dayOff));
+    }
+
+    const report = await runAudit(
+      pool,
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
+    );
+    const issue = report.symbols['BNY']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
     expect(issue?.severity).toBe('error');
     expect(report.summary.symbolsWithErrors).toBe(1);
   });

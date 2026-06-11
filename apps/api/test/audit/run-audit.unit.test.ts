@@ -5,7 +5,9 @@ import {
   computeExpectedTradingDays,
   findCoverageGaps,
   buildBucketExpr,
+  findTransitionPredecessor,
 } from '../../src/audit/run-audit.js';
+import type { CoverageGap } from '../../src/audit/run-audit.js';
 
 // ─── splitLabel ───────────────────────────────────────────────────────────────
 
@@ -166,6 +168,70 @@ describe('findCoverageGaps', () => {
     );
     const gaps = findCoverageGaps(days, present, 3);
     expect(gaps[0]?.position).toBe('internal');
+  });
+});
+
+// ─── findTransitionPredecessor ────────────────────────────────────────────────
+
+describe('findTransitionPredecessor', () => {
+  const expectedDays = [
+    '2024-01-08',
+    '2024-01-09',
+    '2024-01-10',
+    '2024-01-11',
+    '2024-01-12',
+  ];
+  // Internal gap: the middle three days are missing on the active symbol.
+  const gap: CoverageGap = {
+    gapStart: '2024-01-09',
+    gapEnd: '2024-01-11',
+    missingTradingDays: 3,
+    position: 'internal',
+  };
+
+  it('returns the retired symbol that covers the gap window', () => {
+    const symbolDates = new Map([
+      ['BK', new Set(['2024-01-09', '2024-01-10', '2024-01-11'])],
+    ]);
+    expect(
+      findTransitionPredecessor(gap, ['BK'], symbolDates, expectedDays, 0.9),
+    ).toBe('BK');
+  });
+
+  it('returns null when no candidate covers enough of the gap', () => {
+    const symbolDates = new Map([
+      ['BK', new Set(['2024-01-09'])], // only 1 of 3 gap days
+    ]);
+    expect(
+      findTransitionPredecessor(gap, ['BK'], symbolDates, expectedDays, 0.9),
+    ).toBeNull();
+  });
+
+  it('returns null when there are no retired candidates', () => {
+    const symbolDates = new Map([
+      ['OTHR', new Set(['2024-01-09', '2024-01-10', '2024-01-11'])],
+    ]);
+    expect(
+      findTransitionPredecessor(gap, [], symbolDates, expectedDays, 0.9),
+    ).toBeNull();
+  });
+
+  it('tolerates a single missing gap day at the 0.9 threshold', () => {
+    // 9 of 10 gap days covered = 0.9, exactly the threshold.
+    const tenDays = Array.from(
+      { length: 10 },
+      (_, i) => `2024-02-${String(i + 1).padStart(2, '0')}`,
+    );
+    const wideGap: CoverageGap = {
+      gapStart: tenDays[0]!,
+      gapEnd: tenDays[9]!,
+      missingTradingDays: 10,
+      position: 'internal',
+    };
+    const symbolDates = new Map([['BK', new Set(tenDays.slice(0, 9))]]);
+    expect(
+      findTransitionPredecessor(wideGap, ['BK'], symbolDates, tenDays, 0.9),
+    ).toBe('BK');
   });
 });
 
