@@ -7,8 +7,14 @@ import type {
 type MessageHandler = (msg: WsServerMessage) => void;
 
 function topicKey(topic: WsTopic): string {
-  if (topic.kind === 'universe') return 'universe';
-  return `prices:${[...topic.symbols].sort().join(',')}`;
+  switch (topic.kind) {
+    case 'universe':
+      return 'universe';
+    case 'draft':
+      return `draft:${topic.leagueId}`;
+    case 'prices':
+      return `prices:${[...topic.symbols].sort().join(',')}`;
+  }
 }
 
 class TickrSocket {
