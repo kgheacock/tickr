@@ -12,6 +12,8 @@ function topicKey(topic: WsTopic): string {
       return 'universe';
     case 'draft':
       return `draft:${topic.leagueId}`;
+    case 'matchup':
+      return `matchup:${topic.leagueId}:${topic.week}`;
     case 'prices':
       return `prices:${[...topic.symbols].sort().join(',')}`;
   }

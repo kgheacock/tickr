@@ -5,10 +5,12 @@ import type {
   PricesResponse,
   DraftPick,
 } from '@tickr/shared-types';
+import type { WeeklyScore } from '@tickr/shared-types';
 import {
   UNIVERSE_CHANNEL,
   PRICES_CHANNEL,
   draftChannel,
+  matchupChannel,
 } from '../ws/topics.js';
 
 /**
@@ -132,4 +134,56 @@ export async function publishLineupLocked(
       ...event,
     } satisfies LineupLockedEvent),
   );
+}
+
+// --- Scoring & shorting (item 05) ---
+
+/**
+ * A league's week was settled at the Friday close. A plain domain event on its
+ * own Redis channel (not a WS gateway message) — FS-06 listens to settle the
+ * matchup, FS-11 to build recaps. No WS consumer yet.
+ */
+export const SCORE_UPDATED_CHANNEL = 'fs:score:updated';
+
+export interface ScoreUpdatedEvent {
+  type: 'score.updated';
+  leagueId: string;
+  season: number;
+  week: number;
+}
+
+export async function publishScoreUpdated(
+  redis: Redis,
+  event: Omit<ScoreUpdatedEvent, 'type'>,
+): Promise<void> {
+  await redis.publish(
+    SCORE_UPDATED_CHANNEL,
+    JSON.stringify({
+      type: 'score.updated',
+      ...event,
+    } satisfies ScoreUpdatedEvent),
+  );
+}
+
+/**
+ * Live per-manager scores for a league week — provisional (in-week) or final
+ * (Friday-settled). A WS gateway message on the per-(league, week) matchup
+ * channel; the dashboard (FS-09) follows it for a live scoreboard.
+ */
+export async function publishMatchupUpdated(
+  redis: Redis,
+  leagueId: string,
+  season: number,
+  week: number,
+  scores: WeeklyScore[],
+  provisional: boolean,
+): Promise<void> {
+  await publishMessage(redis, matchupChannel(leagueId, week), {
+    type: 'matchup.updated',
+    leagueId,
+    season,
+    week,
+    provisional,
+    scores,
+  });
 }
