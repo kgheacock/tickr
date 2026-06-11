@@ -54,8 +54,6 @@ export function LandingPage() {
         </p>
         <div className={styles.ruleThin} />
 
-        <FlapBoard tickers={MARKET_TICKERS} />
-
         <main className={styles.hero}>
           <article className={styles.lede}>
             <p className={styles.kicker}>Fantasy Street</p>
@@ -63,9 +61,13 @@ export function LandingPage() {
               Draft your team. Set your lineup. Earn your glory.
             </h2>
             <p className={styles.deck}>
-              Fantasy football where the players are stocks. Draft the S&amp;P
-              500 with your league — one owner per ticker — field a weekly
-              lineup, and go head-to-head into the playoffs.
+              {/* The flap flipper stands in for the drop-cap "F"; the real F is
+                  kept (visually hidden) so the text still reads "Fantasy…". */}
+              <FlapBoard tickers={MARKET_TICKERS} />
+              <span className={styles.srOnly}>F</span>antasy football where the
+              players are stocks. Draft the S&amp;P 500 with your league — one
+              owner per ticker — field a weekly lineup, and go head-to-head into
+              the playoffs.
             </p>
           </article>
 

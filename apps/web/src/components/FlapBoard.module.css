@@ -1,77 +1,46 @@
-/* Split-flap ticker board: a clipped, looping marquee of cream flap tiles.
-   Tile look (gradient + center seam) echoes docs/index.html's split-flap. */
+/* A single split-flap tile that flips through logos, sized to sit as a drop cap.
+   Tile look (cream gradient + center seam) echoes docs/index.html's split-flap;
+   each new face drops in on a top hinge like a physical flap. */
 
-.board {
-  overflow: hidden;
-  border-block: 1px solid var(--color-rule);
-  background: var(--color-paper);
-  padding-block: var(--space-3);
-  /* Fade the edges so tiles slide in/out rather than popping at a hard clip. */
-  -webkit-mask-image: linear-gradient(
-    90deg,
-    transparent,
-    #000 6%,
-    #000 94%,
-    transparent
-  );
-  mask-image: linear-gradient(
-    90deg,
-    transparent,
-    #000 6%,
-    #000 94%,
-    transparent
-  );
-}
-
-.track {
-  display: flex;
-  width: max-content;
-  gap: var(--space-3);
-  animation: flap-scroll 40s linear infinite;
-}
-
-.track:hover,
-.paused {
-  animation-play-state: paused;
-}
-
-/* No padding: the gap between the two runs must equal the intra-run gap so the
-   strip is uniform and the -50% loop is seamless (see @keyframes below). */
-.run {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  list-style: none;
-}
-
-/* One physical flap: cream tile, soft bevel, and the signature seam. */
-.tile {
+.flap {
   position: relative;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  padding: 8px;
+  float: left;
+  width: 2.9em;
+  height: 2.9em;
+  margin: 0.1em 0.32em 0.04em 0;
+  perspective: 260px;
   border-radius: var(--radius-md);
   background: linear-gradient(180deg, #ffffff, #ededea);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.55) inset,
-    0 2px 5px rgba(0, 0, 0, 0.18);
+    0 2px 6px rgba(0, 0, 0, 0.18);
 }
 
-/* The split-flap seam across the tile; the logo sits above it (z-index). */
-.tile::after {
+/* The signature split-flap seam across the tile, above the faces. */
+.flap::after {
   content: '';
   position: absolute;
-  left: 6px;
-  right: 6px;
+  left: 5px;
+  right: 5px;
   top: 50%;
   height: 1px;
-  background: rgba(15, 23, 42, 0.14);
+  background: rgba(15, 23, 42, 0.16);
   transform: translateY(-0.5px);
+  z-index: 2;
   pointer-events: none;
+}
+
+/* The flap face, hinged at the top so it swings down into place. */
+.leaf {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.36em;
+  transform-origin: center top;
+  backface-visibility: hidden;
+  animation: flap-drop 520ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 
 .logo {
@@ -88,23 +57,29 @@
   z-index: 1;
   font-family: var(--font-sans);
   font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.02em;
+  font-size: 0.58em;
+  letter-spacing: 0.01em;
   color: #22242a;
+  line-height: 1;
 }
 
-/* Respect a reduced-motion preference: hold the board still. */
+/* Respect reduced motion: still cycle, but drop in without the swing. */
 @media (prefers-reduced-motion: reduce) {
-  .track {
+  .leaf {
     animation: none;
   }
 }
 
-/* The track is [run | gap | run]; one full period is a run plus one gap. Half
-   the track width is short of that by half a gap, so subtract it to land
-   exactly on the clone — a perfectly seamless wrap. */
-@keyframes flap-scroll {
-  to {
-    transform: translateX(calc(-50% - var(--space-3) / 2));
+@keyframes flap-drop {
+  0% {
+    transform: rotateX(-92deg);
+    opacity: 0.2;
+  }
+  60% {
+    transform: rotateX(6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotateX(0deg);
   }
 }

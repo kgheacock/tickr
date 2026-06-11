@@ -1,68 +1,60 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import styles from './FlapBoard.module.css';
 
 interface FlapBoardProps {
-  /** Ticker symbols to render, in order; each becomes one split-flap tile. */
+  /** Symbols to flip through, in order; the board cycles them indefinitely. */
   tickers: string[];
-  /**
-   * Pause the scroll. The marquee is also auto-paused under
-   * `prefers-reduced-motion`, so this is for explicit/host control only.
-   */
-  paused?: boolean;
+  /** Milliseconds each logo is held before the flap drops to the next. */
+  intervalMs?: number;
 }
 
 /**
- * A split-flap ticker board: an iterating, continuously-scrolling row of
- * company logos, one cream flap tile per ticker. Logos come from the public
- * branding endpoint (`/api/v1/symbols/:symbol/logo`); a symbol with no stored
- * logo 404s, in which case the tile falls back to the bare ticker glyph — so
- * the board always renders something legible. Echoes the split-flap idiom of
- * the marketing page (docs/index.html) in the SPA's newsprint surface.
+ * A single split-flap tile that flips through company logos — one "flapboard
+ * logo flipper". On each tick it advances to the next ticker and drops a fresh
+ * flap showing that symbol's logo (from `/api/v1/symbols/:symbol/logo`). A
+ * symbol with no stored logo 404s and the flap falls back to the bare ticker
+ * glyph, so it always shows something legible. Used as the drop cap on the
+ * landing page. Decorative: marked `aria-hidden`, and under
+ * `prefers-reduced-motion` it still cycles but without the flip animation.
  */
-export function FlapBoard({ tickers, paused = false }: FlapBoardProps) {
-  if (tickers.length === 0) return null;
+export function FlapBoard({ tickers, intervalMs = 2600 }: FlapBoardProps) {
+  const [index, setIndex] = useState(0);
 
-  // Render the sequence twice so the -50% translate loops seamlessly (the
-  // second run backfills the gap as the first scrolls off). The clone is
-  // aria-hidden so assistive tech reads each symbol once.
+  useEffect(() => {
+    if (tickers.length <= 1) return;
+    const id = setInterval(
+      () => setIndex((i) => (i + 1) % tickers.length),
+      intervalMs,
+    );
+    return () => clearInterval(id);
+  }, [tickers.length, intervalMs]);
+
+  const symbol = tickers[index];
+  if (!symbol) return null;
+
   return (
-    <section
-      className={styles.board}
-      aria-label={`Market tickers: ${tickers.join(', ')}`}
-    >
-      <div className={`${styles.track} ${paused ? styles.paused : ''}`}>
-        <ul className={styles.run}>
-          {tickers.map((symbol) => (
-            <FlapTile key={symbol} symbol={symbol} />
-          ))}
-        </ul>
-        <ul className={styles.run} aria-hidden="true">
-          {tickers.map((symbol) => (
-            <FlapTile key={`clone-${symbol}`} symbol={symbol} />
-          ))}
-        </ul>
-      </div>
-    </section>
+    <span className={styles.flap} aria-hidden="true">
+      {/* `key` remounts the leaf each change so the drop animation replays. */}
+      <span key={index} className={styles.leaf}>
+        <FlapFace symbol={symbol} />
+      </span>
+    </span>
   );
 }
 
-/** One flap tile: the logo image, falling back to the ticker text on 404. */
-function FlapTile({ symbol }: { symbol: string }) {
+/** One flap face: the logo image, falling back to the ticker glyph on 404. */
+function FlapFace({ symbol }: { symbol: string }) {
   const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <span className={styles.glyph}>{symbol}</span>;
+  }
   return (
-    <li className={styles.tile}>
-      {failed ? (
-        <span className={styles.glyph}>{symbol}</span>
-      ) : (
-        <img
-          className={styles.logo}
-          src={`/api/v1/symbols/${encodeURIComponent(symbol)}/logo`}
-          alt={symbol}
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailed(true)}
-        />
-      )}
-    </li>
+    <img
+      className={styles.logo}
+      src={`/api/v1/symbols/${encodeURIComponent(symbol)}/logo`}
+      alt=""
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
   );
 }

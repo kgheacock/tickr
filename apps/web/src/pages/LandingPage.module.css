@@ -112,13 +112,19 @@
   max-width: 40ch;
 }
 
-/* Editorial drop cap on the lead paragraph. */
-.deck::first-letter {
-  initial-letter: 3;
-  -webkit-initial-letter: 3;
-  font-weight: 600;
-  margin-right: 0.06em;
-  color: var(--color-text);
+/* The lead paragraph's drop cap is the split-flap logo flipper (see FlapBoard),
+   floated in via the .flap class; the literal "F" below is kept for screen
+   readers and text selection but hidden from sight. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ── Sign-in column ───────────────────────────────────────── */
