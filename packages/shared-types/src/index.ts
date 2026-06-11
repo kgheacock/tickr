@@ -40,6 +40,14 @@ export type {
   MatchupsResponse,
   Standing,
   StandingsResponse,
+  WaiverClaim,
+  WaiverOrderEntry,
+  SubmitWaiverRequest,
+  WaiversResponse,
+  TradeItem,
+  Trade,
+  ProposeTradeRequest,
+  TradesResponse,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';

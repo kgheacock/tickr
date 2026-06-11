@@ -8,6 +8,7 @@ import { runAlertCheck } from '../alerts/checker.js';
 import { runClassifier } from '../fantasy/classify.js';
 import { lockLineups, isFirstTradingDayOfWeek } from '../fantasy/lock.js';
 import { runWeeklyScoring } from './scoring.js';
+import { runWaivers } from '../fantasy/waivers.js';
 import { pool } from '../db/pool.js';
 import { jobLogger } from '../log/logger.js';
 
@@ -17,6 +18,7 @@ const SESSION_UPDATE_LOCK = 'massive:job:session-update';
 const CLASSIFY_LOCK = 'fs:job:classify';
 const LINEUP_LOCK_LOCK = 'fs:job:lineup-lock';
 const SCORING_LOCK = 'fs:job:scoring';
+const WAIVER_LOCK = 'fs:job:waivers';
 
 // Fixed UTC-5 (ET standard) offset, matching holidays.ts / lock.ts. The scoring
 // crons fire at ~21:35 UTC, well clear of the midnight boundary.
@@ -179,8 +181,22 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   });
 
+  // FS-07 waiver run: Friday 21:45 UTC, ~10 min after the weekly settle has
+  // rebuilt standings (the reverse-standings priority depends on them). Opens
+  // the between-weeks window — every active league whose week has just settled
+  // gets its queued add/drop claims resolved before Monday's lineup lock. A
+  // mid-week firing is a no-op: runWaivers skips any league still locked.
+  cron.schedule('0 45 21 * * 5', () => {
+    void withLock(redis, WAIVER_LOCK, async () => {
+      const result = await runWaivers(pool, {}, redis);
+      log('info', 'waiver run complete', result);
+    }).catch((err: unknown) => {
+      log('error', 'waiver run failed', { err: String(err) });
+    });
+  });
+
   log(
     'info',
-    'scheduler registered (backfill + session-update + alerts + classifier + lineup-lock + scoring)',
+    'scheduler registered (backfill + session-update + alerts + classifier + lineup-lock + scoring + waivers)',
   );
 }

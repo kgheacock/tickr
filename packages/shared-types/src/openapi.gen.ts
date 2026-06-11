@@ -930,6 +930,84 @@ export interface components {
             season: number;
             standings: components["schemas"]["Standing"][];
         };
+        /** @description A queued add/drop request, resolved by the waiver run */
+        WaiverClaim: {
+            id: string;
+            leagueId: string;
+            season: number;
+            userId: string;
+            addSymbol: string;
+            dropSymbol: string;
+            /** @description True when the add fills the Defense (short) slot */
+            isShort: boolean;
+            /** @enum {string} */
+            status: "pending" | "won" | "lost" | "invalid";
+            /** Format: date-time */
+            submittedAt: string;
+            /**
+             * Format: date-time
+             * @description When the waiver run resolved the claim; null while pending
+             */
+            processedAt: string | null;
+        };
+        /** @description One manager's slot in the rolling waiver priority order */
+        WaiverOrderEntry: {
+            userId: string;
+            /** @description Lower claims first; reverse standings, demoted on a win */
+            priority: number;
+        };
+        /** @description Queue an add/drop waiver claim */
+        SubmitWaiverRequest: {
+            addSymbol: string;
+            dropSymbol: string;
+            /**
+             * @description Add into the Defense (short) slot
+             * @default false
+             */
+            isShort: boolean;
+        };
+        /** @description A manager's claims and the league's current waiver order */
+        WaiversResponse: {
+            season: number;
+            claims: components["schemas"]["WaiverClaim"][];
+            order: components["schemas"]["WaiverOrderEntry"][];
+        };
+        /** @description One leg of a trade — symbol moves from fromUserId to the other side */
+        TradeItem: {
+            fromUserId: string;
+            symbol: string;
+            isShort: boolean;
+        };
+        /** @description A manager-to-manager trade proposal and its lifecycle */
+        Trade: {
+            id: string;
+            leagueId: string;
+            proposerUserId: string;
+            targetUserId: string;
+            /** @enum {string} */
+            status: "proposed" | "accepted" | "rejected" | "cancelled" | "expired";
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the trade was accepted/rejected/cancelled; null while proposed
+             */
+            resolvedAt: string | null;
+            items: components["schemas"]["TradeItem"][];
+        };
+        /** @description Offer give-symbols (the proposer's) for receive-symbols (the target's) */
+        ProposeTradeRequest: {
+            targetUserId: string;
+            /** @description Symbols the proposer offers */
+            give?: string[];
+            /** @description Symbols the proposer wants in return */
+            receive?: string[];
+        };
+        /** @description A manager's incoming (target) and outgoing (proposer) trades */
+        TradesResponse: {
+            incoming: components["schemas"]["Trade"][];
+            outgoing: components["schemas"]["Trade"][];
+        };
     };
     responses: {
         /** @description Unauthenticated */

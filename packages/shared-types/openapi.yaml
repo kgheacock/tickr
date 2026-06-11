@@ -1258,6 +1258,170 @@ components:
           items:
             $ref: '#/components/schemas/Standing'
 
+    # --- Waivers & trades (item 07) ---
+
+    WaiverClaim:
+      type: object
+      description: A queued add/drop request, resolved by the waiver run
+      required:
+        - id
+        - leagueId
+        - season
+        - userId
+        - addSymbol
+        - dropSymbol
+        - isShort
+        - status
+        - submittedAt
+        - processedAt
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        season:
+          type: integer
+        userId:
+          type: string
+        addSymbol:
+          type: string
+        dropSymbol:
+          type: string
+        isShort:
+          type: boolean
+          description: True when the add fills the Defense (short) slot
+        status:
+          type: string
+          enum: [pending, won, lost, invalid]
+        submittedAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the waiver run resolved the claim; null while pending
+
+    WaiverOrderEntry:
+      type: object
+      description: One manager's slot in the rolling waiver priority order
+      required: [userId, priority]
+      properties:
+        userId:
+          type: string
+        priority:
+          type: integer
+          description: Lower claims first; reverse standings, demoted on a win
+
+    SubmitWaiverRequest:
+      type: object
+      description: Queue an add/drop waiver claim
+      required: [addSymbol, dropSymbol]
+      properties:
+        addSymbol:
+          type: string
+        dropSymbol:
+          type: string
+        isShort:
+          type: boolean
+          description: Add into the Defense (short) slot
+          default: false
+
+    WaiversResponse:
+      type: object
+      description: A manager's claims and the league's current waiver order
+      required: [season, claims, order]
+      properties:
+        season:
+          type: integer
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/WaiverClaim'
+        order:
+          type: array
+          items:
+            $ref: '#/components/schemas/WaiverOrderEntry'
+
+    TradeItem:
+      type: object
+      description: One leg of a trade — symbol moves from fromUserId to the other side
+      required: [fromUserId, symbol, isShort]
+      properties:
+        fromUserId:
+          type: string
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+
+    Trade:
+      type: object
+      description: A manager-to-manager trade proposal and its lifecycle
+      required:
+        - id
+        - leagueId
+        - proposerUserId
+        - targetUserId
+        - status
+        - createdAt
+        - resolvedAt
+        - items
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        proposerUserId:
+          type: string
+        targetUserId:
+          type: string
+        status:
+          type: string
+          enum: [proposed, accepted, rejected, cancelled, expired]
+        createdAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the trade was accepted/rejected/cancelled; null while proposed
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradeItem'
+
+    ProposeTradeRequest:
+      type: object
+      description: Offer give-symbols (the proposer's) for receive-symbols (the target's)
+      required: [targetUserId]
+      properties:
+        targetUserId:
+          type: string
+        give:
+          type: array
+          description: Symbols the proposer offers
+          items:
+            type: string
+        receive:
+          type: array
+          description: Symbols the proposer wants in return
+          items:
+            type: string
+
+    TradesResponse:
+      type: object
+      description: A manager's incoming (target) and outgoing (proposer) trades
+      required: [incoming, outgoing]
+      properties:
+        incoming:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+        outgoing:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+
 paths:
   # --- Auth & session ---
 

@@ -311,9 +311,13 @@ function isUniqueViolation(err: unknown): { constraint: string } | null {
   return null;
 }
 
-/** Validate a symbol is tradeable and can stand in for some roster slot. */
-async function validatePickable(
-  client: PoolClient,
+/**
+ * Validate a symbol is tradeable and can stand in for some roster slot. Shared
+ * with waivers (FS-07): a waiver add must clear the same eligibility bar as a
+ * draft pick.
+ */
+export async function validatePickable(
+  client: Pool | PoolClient,
   leagueId: string,
   cfg: RosterConfig,
   symbol: string,

@@ -10,6 +10,7 @@
  *   …/lineup                   weekly starting lineup (item 04)
  *   …/scores                   weekly scoring & shorting (item 05)
  *   …/schedule|matchups|standings  head-to-head schedule & standings (item 06)
+ *   …/waivers|trades               mid-season add/drop & trades (item 07)
  */
 import type { FastifyInstance } from 'fastify';
 import { registerCreateLeagueRoute } from './create.js';
@@ -23,6 +24,8 @@ import { registerDraftRoutes } from './draft.js';
 import { registerLineupRoutes } from './lineup.js';
 import { registerScoreRoutes } from './scores.js';
 import { registerMatchupRoutes } from './matchups.js';
+import { registerWaiverRoutes } from './waivers.js';
+import { registerTradeRoutes } from './trades.js';
 
 export async function registerLeaguesRoutes(
   fastify: FastifyInstance,
@@ -38,4 +41,6 @@ export async function registerLeaguesRoutes(
   registerLineupRoutes(fastify);
   registerScoreRoutes(fastify);
   registerMatchupRoutes(fastify);
+  registerWaiverRoutes(fastify);
+  registerTradeRoutes(fastify);
 }

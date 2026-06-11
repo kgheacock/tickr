@@ -170,6 +170,65 @@ export async function publishScoreUpdated(
   );
 }
 
+// --- Waivers & trades (item 07) ---
+
+/**
+ * A league's waiver run resolved its queued claims. A plain domain event on its
+ * own Redis channel (not a WS gateway message), mirroring score.updated — the
+ * dashboard (FS-09) and recaps (FS-11) will surface waiver activity off it; no
+ * consumer yet.
+ */
+export const WAIVER_PROCESSED_CHANNEL = 'fs:waiver:processed';
+
+export interface WaiverProcessedEvent {
+  type: 'waiver.processed';
+  leagueId: string;
+  season: number;
+  /** Claims awarded this run (the rest were marked lost/invalid). */
+  awarded: number;
+}
+
+export async function publishWaiverProcessed(
+  redis: Redis,
+  event: Omit<WaiverProcessedEvent, 'type'>,
+): Promise<void> {
+  await redis.publish(
+    WAIVER_PROCESSED_CHANNEL,
+    JSON.stringify({
+      type: 'waiver.processed',
+      ...event,
+    } satisfies WaiverProcessedEvent),
+  );
+}
+
+/**
+ * A trade was accepted and ownership swapped. A plain domain event on its own
+ * Redis channel (not a WS gateway message); FS-09/11 will follow it for trade
+ * notifications and recaps. No consumer yet.
+ */
+export const TRADE_ACCEPTED_CHANNEL = 'fs:trade:accepted';
+
+export interface TradeAcceptedEvent {
+  type: 'trade.accepted';
+  leagueId: string;
+  tradeId: string;
+  proposerUserId: string;
+  targetUserId: string;
+}
+
+export async function publishTradeAccepted(
+  redis: Redis,
+  event: Omit<TradeAcceptedEvent, 'type'>,
+): Promise<void> {
+  await redis.publish(
+    TRADE_ACCEPTED_CHANNEL,
+    JSON.stringify({
+      type: 'trade.accepted',
+      ...event,
+    } satisfies TradeAcceptedEvent),
+  );
+}
+
 /**
  * Live per-manager scores for a league week — provisional (in-week) or final
  * (Friday-settled). A WS gateway message on the per-(league, week) matchup

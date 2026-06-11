@@ -57,3 +57,13 @@ export type ScheduleResponse = Schemas['ScheduleResponse'];
 export type MatchupsResponse = Schemas['MatchupsResponse'];
 export type Standing = Schemas['Standing'];
 export type StandingsResponse = Schemas['StandingsResponse'];
+
+// --- Waivers & trades (item 07) ---
+export type WaiverClaim = Schemas['WaiverClaim'];
+export type WaiverOrderEntry = Schemas['WaiverOrderEntry'];
+export type SubmitWaiverRequest = Schemas['SubmitWaiverRequest'];
+export type WaiversResponse = Schemas['WaiversResponse'];
+export type TradeItem = Schemas['TradeItem'];
+export type Trade = Schemas['Trade'];
+export type ProposeTradeRequest = Schemas['ProposeTradeRequest'];
+export type TradesResponse = Schemas['TradesResponse'];
