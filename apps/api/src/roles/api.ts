@@ -11,6 +11,7 @@ import { registerMeRoute } from '../routes/me.js';
 import { registerAdminUniverseRoutes } from '../routes/admin/universe.js';
 import { registerUniverseRoute } from '../routes/universe.js';
 import { registerBrandingRoutes } from '../routes/branding.js';
+import { registerMetadataRoute } from '../routes/metadata.js';
 import { registerPricesRoute } from '../routes/prices.js';
 import { registerEvaluateRoute } from '../routes/evaluate.js';
 import { registerEtfsRoutes } from '../routes/etfs.js';
@@ -90,6 +91,7 @@ export async function runApi(): Promise<void> {
       await registerAdminUniverseRoutes(api);
       await registerUniverseRoute(api);
       await registerBrandingRoutes(api);
+      await registerMetadataRoute(api);
       await registerPricesRoute(api);
       await registerEvaluateRoute(api);
       await registerEtfsRoutes(api);
