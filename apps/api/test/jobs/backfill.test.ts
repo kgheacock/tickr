@@ -526,7 +526,7 @@ describe('prune-dead (script-only)', () => {
     );
   }
 
-  it('hard-removes a zero-bar, backfilled=false symbol', async () => {
+  it('retires (soft-removes) a zero-bar, backfilled=false symbol', async () => {
     vi.stubEnv('BACKFILL_PRUNE_MAX_FRACTION', '1.0');
     await client.query(
       `INSERT INTO universe_symbol (symbol, backfilled) VALUES ('DEAD', false)`,
@@ -536,10 +536,13 @@ describe('prune-dead (script-only)', () => {
     const pruned = await pruneDeadSymbols([]);
 
     expect(pruned).toBe(1);
-    const { rows } = await client.query(
-      `SELECT 1 FROM universe_symbol WHERE symbol = 'DEAD'`,
+    // The row is kept (never dropped) but marked terminal via removed_at, so it
+    // falls out of every active-membership query.
+    const { rows } = await client.query<{ removed_at: Date | null }>(
+      `SELECT removed_at FROM universe_symbol WHERE symbol = 'DEAD'`,
     );
-    expect(rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.removed_at).toBeInstanceOf(Date);
   });
 
   it('excludes symbols that failed transiently this run', async () => {
@@ -644,31 +647,44 @@ describe('bootstrap composition: re-arm → backfill → prune (×2)', () => {
 
     // ── Run 1 ──────────────────────────────────────────────────────────────
     const pruned1 = await runSequence();
-    expect(pruned1).toBe(1); // DEAD removed
+    expect(pruned1).toBe(1); // DEAD retired
 
-    const after1 = await client.query<{
+    // DEAD is retired (terminal), not deleted — only HEALTHY/SHORT stay active.
+    const active1 = await client.query<{
       symbol: string;
       data_status: string | null;
-    }>(`SELECT symbol, data_status FROM universe_symbol ORDER BY symbol`);
-    expect(after1.rows).toEqual([
+    }>(
+      `SELECT symbol, data_status FROM universe_symbol
+        WHERE removed_at IS NULL ORDER BY symbol`,
+    );
+    expect(active1.rows).toEqual([
       { symbol: 'HEALTHY', data_status: 'ok' },
       { symbol: 'SHORT', data_status: 'incomplete' },
-    ]); // DEAD gone, SHORT flagged, HEALTHY ok — no stale symbol remains
+    ]);
+    // The DEAD row persists with removed_at set (never dropped from the DB).
+    const dead1 = await client.query<{ removed_at: Date | null }>(
+      `SELECT removed_at FROM universe_symbol WHERE symbol = 'DEAD'`,
+    );
+    expect(dead1.rows).toHaveLength(1);
+    expect(dead1.rows[0]!.removed_at).toBeInstanceOf(Date);
 
-    // ── Run 2 (DEAD re-added, as seedUniverse would from the CSV) ───────────
+    // ── Run 2 (DEAD reactivated, as seedUniverse would on re-entry) ─────────
     await client.query(
-      `INSERT INTO universe_symbol (symbol, backfilled) VALUES ('DEAD', true)`,
+      `UPDATE universe_symbol SET removed_at = NULL WHERE symbol = 'DEAD'`,
     );
     const pruned2 = await runSequence();
-    expect(pruned2).toBe(1); // re-added DEAD is re-pruned → end state still clean
+    expect(pruned2).toBe(1); // reactivated DEAD is re-retired → end state clean
 
     // HEALTHY/SHORT are a true fixed point: re-arm skips 'incomplete' and the
-    // fresh 'ok' tail, so neither is re-fetched or changed.
-    const after2 = await client.query<{
+    // fresh 'ok' tail, so neither is re-fetched or changed; DEAD is retired again.
+    const active2 = await client.query<{
       symbol: string;
       data_status: string | null;
-    }>(`SELECT symbol, data_status FROM universe_symbol ORDER BY symbol`);
-    expect(after2.rows).toEqual([
+    }>(
+      `SELECT symbol, data_status FROM universe_symbol
+        WHERE removed_at IS NULL ORDER BY symbol`,
+    );
+    expect(active2.rows).toEqual([
       { symbol: 'HEALTHY', data_status: 'ok' },
       { symbol: 'SHORT', data_status: 'incomplete' },
     ]);

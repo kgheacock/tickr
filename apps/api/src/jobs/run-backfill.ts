@@ -8,7 +8,9 @@ import { pruneDeadSymbols } from './prune-dead.js';
 
 // One-shot, idempotent bootstrap of price data:
 //   1. migrations  — node-pg-migrate, applies only what's pending
-//   2. seed universe — INSERT ... ON CONFLICT DO NOTHING from data/sp500.csv
+//   2. seed universe — reconcile against the live S&P 500 list (Wikipedia):
+//                    add new members, reactivate returners, retire departed
+//                    (removed_at); falls back to data/sp500.csv if the fetch fails
 //   3. widen history — re-arm symbols whose stored coverage falls short of the
 //                    requested window (missing early history, stale tail, or no
 //                    bars at all); skips terminal data_status = 'incomplete'

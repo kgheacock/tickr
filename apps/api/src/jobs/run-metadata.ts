@@ -6,8 +6,9 @@ import { runMetadataRefresh } from './refresh-metadata.js';
 
 // One-shot, idempotent refresh of ticker metadata + branding (logos/icons):
 //   1. migrations    — node-pg-migrate, applies only what's pending
-//   2. seed universe — INSERT ... ON CONFLICT DO NOTHING from data/sp500.csv,
-//                      so a fresh DB has symbols to fetch metadata for
+//   2. seed universe — reconcile against the live S&P 500 list (Wikipedia), so a
+//                      fresh DB has symbols to fetch metadata for; falls back to
+//                      data/sp500.csv if the fetch fails
 //   3. refresh       — fetch reference details and download logo/icon images for
 //                      symbols whose metadata/branding is missing or aged out
 //                      (METADATA_TTL_DAYS); each artifact upserts as it lands, so

@@ -13,12 +13,12 @@ export const MULTIPLIER = parseInt(
 export const TIMESPAN = process.env['BACKFILL_TIMESPAN'] ?? 'minute';
 
 /**
- * Translate our canonical ticker to the form the Massive/Polygon aggregates API
- * expects. We store share-class suffixes with a hyphen (the S&P/CSV convention,
- * e.g. `BRK-B`, `MOG-A`) but Polygon uses a period (`BRK.B`, `MOG.A`). Building
- * the URL literally returns 0 results, so the symbol gets marked backfilled with
- * no bars (data audit Finding 4). We translate only at the request boundary so
- * the hyphen stays canonical everywhere else (DB rows, FKs, API responses).
+ * Translate a ticker to the form the Massive/Polygon aggregates API expects:
+ * share classes as a period (`BRK.B`, `MOG.A`). The universe now stores the
+ * dotted form directly (sourced from Wikipedia), so this is normally a no-op —
+ * but it remains as a defensive, idempotent guard against any legacy hyphenated
+ * input (`BRK-B`), which would otherwise return 0 results and mark the symbol
+ * backfilled with no bars (data audit Finding 4).
  */
 export function toMassiveTicker(symbol: string): string {
   return symbol.replace('-', '.');

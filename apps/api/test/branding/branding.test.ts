@@ -228,4 +228,24 @@ describe('branding routes', () => {
       await app.close();
     }
   });
+
+  it('resolves a dotted share-class symbol in the path (e.g. BRK.B)', async () => {
+    // The universe now stores dotted symbols; the dot must survive Fastify route
+    // matching for the one symbol-in-path endpoint.
+    await seedSymbol('BRK.B');
+    await seedBranding('BRK.B', {
+      logo: { bytes: SVG, type: 'image/svg+xml' },
+    });
+    const app = await buildApp();
+    try {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/symbols/BRK.B/logo',
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.rawPayload.equals(SVG)).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
 });
