@@ -53,5 +53,6 @@ cannot hotlink them — the bytes are downloaded and served from our own API.
 - [x] OpenAPI + `.env.example` updated; generated types regenerated.
 - [x] Client, job, and route tests pass; full `pnpm --filter @tickr/api test` green.
 - [ ] **Follow-up:** `apps/web` renders the logos (`<img>` in the UI).
-- [ ] **Follow-up:** metadata JSON endpoint (name / sector / market cap) so a
-      company name can sit beside the logo.
+- [x] **Follow-up:** metadata JSON endpoint (name / sector / market cap) so a
+      company name can sit beside the logo — [item 27](27-symbol-metadata-endpoint.md),
+      [PR #67](https://github.com/kgheacock/tickr/pull/67).

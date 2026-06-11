@@ -165,6 +165,62 @@ components:
           items:
             $ref: '#/components/schemas/UniverseItem'
 
+    # --- Symbol metadata ---
+
+    SymbolMetadata:
+      type: object
+      description: >
+        Company reference fields for a single symbol, sourced from Massive
+        (GET /v3/reference/tickers/{ticker}) by the metadata refresh job and
+        stored in symbol_metadata. Logo/icon images are served separately under
+        /symbols/{symbol}/logo and /icon.
+      required:
+        - symbol
+        - name
+        - primaryExchange
+        - type
+        - marketCap
+        - sicCode
+        - sicDescription
+        - homepageUrl
+        - listDate
+        - totalEmployees
+        - description
+        - fetchedAt
+      properties:
+        symbol:
+          type: string
+        name:
+          type: ['string', 'null']
+          description: Company name
+        primaryExchange:
+          type: ['string', 'null']
+          description: MIC, e.g. XNAS / XNYS
+        type:
+          type: ['string', 'null']
+          description: Security type, e.g. CS / ETF
+        marketCap:
+          type: ['number', 'null']
+          description: Market capitalization in whole currency units (not cents)
+        sicCode:
+          type: ['string', 'null']
+        sicDescription:
+          type: ['string', 'null']
+          description: SIC industry description — closest field to a sector
+        homepageUrl:
+          type: ['string', 'null']
+        listDate:
+          type: ['string', 'null']
+          format: date
+        totalEmployees:
+          type: ['integer', 'null']
+        description:
+          type: ['string', 'null']
+        fetchedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the metadata was last fetched from upstream
+
     # --- Prices ---
 
     PriceBar:
@@ -1258,6 +1314,170 @@ components:
           items:
             $ref: '#/components/schemas/Standing'
 
+    # --- Waivers & trades (item 07) ---
+
+    WaiverClaim:
+      type: object
+      description: A queued add/drop request, resolved by the waiver run
+      required:
+        - id
+        - leagueId
+        - season
+        - userId
+        - addSymbol
+        - dropSymbol
+        - isShort
+        - status
+        - submittedAt
+        - processedAt
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        season:
+          type: integer
+        userId:
+          type: string
+        addSymbol:
+          type: string
+        dropSymbol:
+          type: string
+        isShort:
+          type: boolean
+          description: True when the add fills the Defense (short) slot
+        status:
+          type: string
+          enum: [pending, won, lost, invalid]
+        submittedAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the waiver run resolved the claim; null while pending
+
+    WaiverOrderEntry:
+      type: object
+      description: One manager's slot in the rolling waiver priority order
+      required: [userId, priority]
+      properties:
+        userId:
+          type: string
+        priority:
+          type: integer
+          description: Lower claims first; reverse standings, demoted on a win
+
+    SubmitWaiverRequest:
+      type: object
+      description: Queue an add/drop waiver claim
+      required: [addSymbol, dropSymbol]
+      properties:
+        addSymbol:
+          type: string
+        dropSymbol:
+          type: string
+        isShort:
+          type: boolean
+          description: Add into the Defense (short) slot
+          default: false
+
+    WaiversResponse:
+      type: object
+      description: A manager's claims and the league's current waiver order
+      required: [season, claims, order]
+      properties:
+        season:
+          type: integer
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/WaiverClaim'
+        order:
+          type: array
+          items:
+            $ref: '#/components/schemas/WaiverOrderEntry'
+
+    TradeItem:
+      type: object
+      description: One leg of a trade — symbol moves from fromUserId to the other side
+      required: [fromUserId, symbol, isShort]
+      properties:
+        fromUserId:
+          type: string
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+
+    Trade:
+      type: object
+      description: A manager-to-manager trade proposal and its lifecycle
+      required:
+        - id
+        - leagueId
+        - proposerUserId
+        - targetUserId
+        - status
+        - createdAt
+        - resolvedAt
+        - items
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        proposerUserId:
+          type: string
+        targetUserId:
+          type: string
+        status:
+          type: string
+          enum: [proposed, accepted, rejected, cancelled, expired]
+        createdAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the trade was accepted/rejected/cancelled; null while proposed
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradeItem'
+
+    ProposeTradeRequest:
+      type: object
+      description: Offer give-symbols (the proposer's) for receive-symbols (the target's)
+      required: [targetUserId]
+      properties:
+        targetUserId:
+          type: string
+        give:
+          type: array
+          description: Symbols the proposer offers
+          items:
+            type: string
+        receive:
+          type: array
+          description: Symbols the proposer wants in return
+          items:
+            type: string
+
+    TradesResponse:
+      type: object
+      description: A manager's incoming (target) and outgoing (proposer) trades
+      required: [incoming, outgoing]
+      properties:
+        incoming:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+        outgoing:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+
 paths:
   # --- Auth & session ---
 
@@ -1369,6 +1589,32 @@ paths:
                 $ref: '#/components/schemas/UniverseResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /symbols/{symbol}/metadata:
+    get:
+      summary: Company reference metadata for a symbol (from symbol_metadata)
+      operationId: getSymbolMetadata
+      tags: [platform]
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Universe symbol, e.g. AAPL or BRK.B (case-insensitive)
+      responses:
+        '200':
+          description: Symbol metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SymbolMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

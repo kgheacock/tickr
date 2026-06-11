@@ -64,9 +64,11 @@ roster pick — "out for the season").
       verified — dotted `BRK.B` resolves through Fastify (branding test).
 - [x] `.env.example` documents the departure-cap knob + first-run override; full
       `pnpm --filter @tickr/api test` green (225 passed / 1 skipped).
-- [ ] **Follow-up:** schedule the reconcile in the `worker` role (cron) so the
-      universe self-refreshes without a manual `pnpm backfill`/`metadata` run.
-      Currently it runs only at those bootstrap entrypoints.
-- [ ] **Deploy:** run the first prod reconcile once with
-      `UNIVERSE_MAX_DEPARTURE_FRACTION=0.2` to clear the ~13% backlog vs the stale
-      CSV (otherwise the 10% cap fails safe and skips retirements).
+- [x] **Follow-up:** schedule the reconcile in the `worker` role (cron) so the
+      universe self-refreshes without a manual `pnpm backfill`/`metadata` run —
+      done in [item 26](26-schedule-data-jobs-cron.md)
+      ([PR #66](https://github.com/kgheacock/tickr/pull/66)).
+- [x] **Deploy:** ran the first prod reconcile (2026-06-11) with
+      `UNIVERSE_MAX_DEPARTURE_FRACTION=0.2` — cleared the backlog (inserted 75,
+      retired 63 against the live Wikipedia list); steady-state stays under the
+      default 0.1 cap.

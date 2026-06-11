@@ -40,6 +40,14 @@ export type {
   MatchupsResponse,
   Standing,
   StandingsResponse,
+  WaiverClaim,
+  WaiverOrderEntry,
+  SubmitWaiverRequest,
+  WaiversResponse,
+  TradeItem,
+  Trade,
+  ProposeTradeRequest,
+  TradesResponse,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';
@@ -56,6 +64,7 @@ export type ApiError = components['schemas']['ApiError'];
 export type MeResponse = components['schemas']['MeResponse'];
 export type UniverseItem = components['schemas']['UniverseItem'];
 export type UniverseResponse = components['schemas']['UniverseResponse'];
+export type SymbolMetadata = components['schemas']['SymbolMetadata'];
 export type PriceBar = components['schemas']['PriceBar'];
 export type PricesResponse = components['schemas']['PricesResponse'];
 export type EvaluatedOrder = components['schemas']['EvaluatedOrder'];

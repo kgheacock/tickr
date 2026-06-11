@@ -106,6 +106,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/symbols/{symbol}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Company reference metadata for a symbol (from symbol_metadata) */
+        get: operations["getSymbolMetadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/symbols/{symbol}/logo": {
         parameters: {
             query?: never;
@@ -357,6 +374,31 @@ export interface components {
         };
         UniverseResponse: {
             items: components["schemas"]["UniverseItem"][];
+        };
+        /** @description Company reference fields for a single symbol, sourced from Massive (GET /v3/reference/tickers/{ticker}) by the metadata refresh job and stored in symbol_metadata. Logo/icon images are served separately under /symbols/{symbol}/logo and /icon. */
+        SymbolMetadata: {
+            symbol: string;
+            /** @description Company name */
+            name: string | null;
+            /** @description MIC, e.g. XNAS / XNYS */
+            primaryExchange: string | null;
+            /** @description Security type, e.g. CS / ETF */
+            type: string | null;
+            /** @description Market capitalization in whole currency units (not cents) */
+            marketCap: number | null;
+            sicCode: string | null;
+            /** @description SIC industry description — closest field to a sector */
+            sicDescription: string | null;
+            homepageUrl: string | null;
+            /** Format: date */
+            listDate: string | null;
+            totalEmployees: number | null;
+            description: string | null;
+            /**
+             * Format: date-time
+             * @description When the metadata was last fetched from upstream
+             */
+            fetchedAt: string | null;
         };
         PriceBar: {
             /**
@@ -930,6 +972,84 @@ export interface components {
             season: number;
             standings: components["schemas"]["Standing"][];
         };
+        /** @description A queued add/drop request, resolved by the waiver run */
+        WaiverClaim: {
+            id: string;
+            leagueId: string;
+            season: number;
+            userId: string;
+            addSymbol: string;
+            dropSymbol: string;
+            /** @description True when the add fills the Defense (short) slot */
+            isShort: boolean;
+            /** @enum {string} */
+            status: "pending" | "won" | "lost" | "invalid";
+            /** Format: date-time */
+            submittedAt: string;
+            /**
+             * Format: date-time
+             * @description When the waiver run resolved the claim; null while pending
+             */
+            processedAt: string | null;
+        };
+        /** @description One manager's slot in the rolling waiver priority order */
+        WaiverOrderEntry: {
+            userId: string;
+            /** @description Lower claims first; reverse standings, demoted on a win */
+            priority: number;
+        };
+        /** @description Queue an add/drop waiver claim */
+        SubmitWaiverRequest: {
+            addSymbol: string;
+            dropSymbol: string;
+            /**
+             * @description Add into the Defense (short) slot
+             * @default false
+             */
+            isShort: boolean;
+        };
+        /** @description A manager's claims and the league's current waiver order */
+        WaiversResponse: {
+            season: number;
+            claims: components["schemas"]["WaiverClaim"][];
+            order: components["schemas"]["WaiverOrderEntry"][];
+        };
+        /** @description One leg of a trade — symbol moves from fromUserId to the other side */
+        TradeItem: {
+            fromUserId: string;
+            symbol: string;
+            isShort: boolean;
+        };
+        /** @description A manager-to-manager trade proposal and its lifecycle */
+        Trade: {
+            id: string;
+            leagueId: string;
+            proposerUserId: string;
+            targetUserId: string;
+            /** @enum {string} */
+            status: "proposed" | "accepted" | "rejected" | "cancelled" | "expired";
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the trade was accepted/rejected/cancelled; null while proposed
+             */
+            resolvedAt: string | null;
+            items: components["schemas"]["TradeItem"][];
+        };
+        /** @description Offer give-symbols (the proposer's) for receive-symbols (the target's) */
+        ProposeTradeRequest: {
+            targetUserId: string;
+            /** @description Symbols the proposer offers */
+            give?: string[];
+            /** @description Symbols the proposer wants in return */
+            receive?: string[];
+        };
+        /** @description A manager's incoming (target) and outgoing (proposer) trades */
+        TradesResponse: {
+            incoming: components["schemas"]["Trade"][];
+            outgoing: components["schemas"]["Trade"][];
+        };
     };
     responses: {
         /** @description Unauthenticated */
@@ -1119,6 +1239,32 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getSymbolMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Universe symbol, e.g. AAPL or BRK.B (case-insensitive) */
+                symbol: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Symbol metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SymbolMetadata"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
         };
     };
