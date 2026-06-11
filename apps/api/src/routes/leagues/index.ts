@@ -6,6 +6,7 @@
  *   PATCH  /leagues/:id        commissioner settings (forming only)
  *   POST   /leagues/:id/invites mint an invite (commissioner)
  *   POST   /leagues/:id/join   join via token / open policy
+ *   …/draft                    live snake draft (item 03)
  */
 import type { FastifyInstance } from 'fastify';
 import { registerCreateLeagueRoute } from './create.js';
@@ -15,6 +16,7 @@ import { registerInviteRoute } from './invites.js';
 import { registerJoinLeagueRoute } from './join.js';
 import { registerSettingsRoute } from './settings.js';
 import { registerPlayersRoutes } from './players.js';
+import { registerDraftRoutes } from './draft.js';
 
 export async function registerLeaguesRoutes(
   fastify: FastifyInstance,
@@ -26,4 +28,5 @@ export async function registerLeaguesRoutes(
   registerInviteRoute(fastify);
   registerJoinLeagueRoute(fastify);
   registerPlayersRoutes(fastify);
+  registerDraftRoutes(fastify);
 }

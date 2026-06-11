@@ -32,3 +32,10 @@ export type PlayerOwnership = Schemas['PlayerOwnership'];
 export type PlayerInventoryItem = Schemas['PlayerInventoryItem'];
 export type PlayerListResponse = Schemas['PlayerListResponse'];
 export type PlayerDetail = Schemas['PlayerDetail'];
+
+// --- Live draft (item 03) ---
+export type DraftStatus = Schemas['DraftStatus'];
+export type DraftPick = Schemas['DraftPick'];
+export type DraftSlot = Schemas['DraftSlot'];
+export type DraftState = Schemas['DraftState'];
+export type MakePickRequest = Schemas['MakePickRequest'];

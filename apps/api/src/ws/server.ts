@@ -137,6 +137,20 @@ export function attachWsGateway(
     return upper;
   }
 
+  async function isLeagueMember(
+    leagueId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const { rows } = await pool.query<{ ok: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM fs_league_member
+          WHERE league_id = $1 AND user_id = $2
+       ) AS ok`,
+      [leagueId, userId],
+    );
+    return rows[0]?.ok ?? false;
+  }
+
   async function handleSubscribe(
     conn: Connection,
     topic: WsTopic,
@@ -151,6 +165,16 @@ export function attachWsGateway(
         return;
       }
       conn.priceSymbols = new Set(valid);
+    }
+    if (topic.kind === 'draft') {
+      // The draft board is league-private — only members may follow it.
+      if (!(await isLeagueMember(topic.leagueId, conn.userId))) {
+        sendError(conn.socket, {
+          code: 'FORBIDDEN',
+          message: 'League membership required to follow this draft',
+        });
+        return;
+      }
     }
     conn.topics.add(topicKey(topic));
   }

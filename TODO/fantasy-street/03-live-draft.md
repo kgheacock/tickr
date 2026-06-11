@@ -1,6 +1,6 @@
 # FS-03 · Live draft
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 01, 02
+**Status:** `done` ([#59](https://github.com/kgheacock/tickr/pull/59)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 01, 02
 
 ## User stories
 - As a manager, I want to join a live draft where we take turns picking stocks,
@@ -93,11 +93,22 @@ of the epic. Auto-draft covers offline/expired picks so the draft never stalls.
   `apps/api/src/routes/leagues/index.ts`.
 
 ## Definition of done
-- [ ] A full league starts a draft; turn order follows snake; each user sees the
+- [x] A full league starts a draft; turn order follows snake; each user sees the
       board and clock update live over WS.
-- [ ] A pick writes both `fs_draft_pick` and `fs_roster_entry`; a second manager
+- [x] A pick writes both `fs_draft_pick` and `fs_roster_entry`; a second manager
       cannot draft the same symbol (`409`), long or short.
-- [ ] When the clock expires, the on-the-clock manager is auto-picked a legal,
+- [x] When the clock expires, the on-the-clock manager is auto-picked a legal,
       need-appropriate stock; no roster ends with an empty mandatory slot.
-- [ ] On the final pick, the draft completes, the league flips to `active`, and
+- [x] On the final pick, the draft completes, the league flips to `active`, and
       `draft.complete` is published for FS-06.
+
+> Shipped in [#59](https://github.com/kgheacock/tickr/pull/59). The snake order,
+> on-the-clock enforcement, `409` single-owner race, auto-pick slot coverage,
+> the expiry-race guard, and completion → `active` are covered by
+> `test/fantasy/draft.test.ts` + `autodraft.test.ts`, with the WS topic
+> round-trip in `test/ws/draftTopic.test.ts`. The "live over WS" delivery —
+> the `draftClock` timer, publisher events, and subscribe-time authz — is wired
+> and typechecked but verified by inspection rather than automated test (the
+> agreed thin-shell boundary). The spec's optional draft-start publish on
+> *schedule* was skipped (no subscribers before start; `draft.onClock` on start
+> covers the live signal).
