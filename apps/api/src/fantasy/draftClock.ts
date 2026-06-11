@@ -16,6 +16,7 @@
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
 import { getDraftState, autoPickOnClock, type PickResult } from './draft.js';
+import { generateSchedule } from './schedule.js';
 import { tryAcquireLock } from '../jobs/locks.js';
 import {
   publishDraftPick,
@@ -115,6 +116,11 @@ export function createDraftClock(pool: Pool, redis: Redis): DraftClock {
         null,
       );
       await publishDraftComplete(redis, leagueId, result.state.id);
+      // FS-06: the draft just flipped the league to `active` (draft.ts), so
+      // generate its head-to-head schedule now — in-process and idempotent, not
+      // off a Redis echo. broadcastPick runs post-commit, so the managers and
+      // season length are durably readable here.
+      await generateSchedule(pool, leagueId);
       cancel(leagueId);
       return;
     }

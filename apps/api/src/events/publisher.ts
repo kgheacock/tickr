@@ -92,7 +92,11 @@ export async function publishDraftOnClock(
   });
 }
 
-/** Final pick landed; league flips to active. FS-06 listens for this. */
+/**
+ * Final pick landed; league flips to active. A WS message for live boards —
+ * FS-06 schedule generation is driven in-process from draftClock (not off this
+ * echo), so a dropped message can't leave a league unscheduled.
+ */
 export async function publishDraftComplete(
   redis: Redis,
   leagueId: string,
@@ -140,8 +144,9 @@ export async function publishLineupLocked(
 
 /**
  * A league's week was settled at the Friday close. A plain domain event on its
- * own Redis channel (not a WS gateway message) — FS-06 listens to settle the
- * matchup, FS-11 to build recaps. No WS consumer yet.
+ * own Redis channel (not a WS gateway message) — FS-06 settles matchups
+ * in-process in the scoring job (not off this echo), and FS-11 will build recaps
+ * from it. No consumer yet.
  */
 export const SCORE_UPDATED_CHANNEL = 'fs:score:updated';
 

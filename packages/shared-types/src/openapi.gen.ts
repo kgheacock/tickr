@@ -883,6 +883,53 @@ export interface components {
             week: number;
             scores: components["schemas"]["WeeklyScore"][];
         };
+        /** @description One head-to-head for a (league, season, week) */
+        Matchup: {
+            id: string;
+            leagueId: string;
+            season: number;
+            week: number;
+            homeUserId: string;
+            /** @description Opponent; null is a bye (home manager sits, no-contest) */
+            awayUserId?: string | null;
+            /** @description Home total — settled, or live when provisional, else null */
+            homePoints?: number | null;
+            /** @description Away total; null for a bye or before scoring */
+            awayPoints?: number | null;
+            /** @description Higher-scoring side; null for a tie, bye, or unsettled */
+            winnerUserId?: string | null;
+            /** @enum {string} */
+            status: "scheduled" | "final";
+        };
+        /** @description A league's full-season round-robin */
+        ScheduleResponse: {
+            season: number;
+            matchups: components["schemas"]["Matchup"][];
+        };
+        /** @description One week's head-to-heads; provisional overlays live points */
+        MatchupsResponse: {
+            season: number;
+            week: number;
+            /** @description True when points are live (the week has not settled) */
+            provisional: boolean;
+            matchups: components["schemas"]["Matchup"][];
+        };
+        /** @description One manager's standings row with the tiebreaker fields exposed */
+        Standing: {
+            userId: string;
+            wins: number;
+            losses: number;
+            ties: number;
+            pointsFor: number;
+            pointsAgainst: number;
+            /** @description 1-based finishing position after the tiebreaker sort */
+            rank: number;
+        };
+        /** @description A league's standings, ranked by the documented tiebreakers */
+        StandingsResponse: {
+            season: number;
+            standings: components["schemas"]["Standing"][];
+        };
     };
     responses: {
         /** @description Unauthenticated */

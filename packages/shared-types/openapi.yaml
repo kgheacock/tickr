@@ -1156,6 +1156,108 @@ components:
           items:
             $ref: '#/components/schemas/WeeklyScore'
 
+    # --- Matchups, schedule & standings (item 06) ---
+
+    Matchup:
+      type: object
+      description: One head-to-head for a (league, season, week)
+      required: [id, leagueId, season, week, homeUserId, status]
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        season:
+          type: integer
+        week:
+          type: integer
+        homeUserId:
+          type: string
+        awayUserId:
+          type: ['string', 'null']
+          description: Opponent; null is a bye (home manager sits, no-contest)
+        homePoints:
+          type: ['number', 'null']
+          description: Home total — settled, or live when provisional, else null
+        awayPoints:
+          type: ['number', 'null']
+          description: Away total; null for a bye or before scoring
+        winnerUserId:
+          type: ['string', 'null']
+          description: Higher-scoring side; null for a tie, bye, or unsettled
+        status:
+          type: string
+          enum: [scheduled, final]
+
+    ScheduleResponse:
+      type: object
+      description: A league's full-season round-robin
+      required: [season, matchups]
+      properties:
+        season:
+          type: integer
+        matchups:
+          type: array
+          items:
+            $ref: '#/components/schemas/Matchup'
+
+    MatchupsResponse:
+      type: object
+      description: One week's head-to-heads; provisional overlays live points
+      required: [season, week, provisional, matchups]
+      properties:
+        season:
+          type: integer
+        week:
+          type: integer
+        provisional:
+          type: boolean
+          description: True when points are live (the week has not settled)
+        matchups:
+          type: array
+          items:
+            $ref: '#/components/schemas/Matchup'
+
+    Standing:
+      type: object
+      description: One manager's standings row with the tiebreaker fields exposed
+      required:
+        - userId
+        - wins
+        - losses
+        - ties
+        - pointsFor
+        - pointsAgainst
+        - rank
+      properties:
+        userId:
+          type: string
+        wins:
+          type: integer
+        losses:
+          type: integer
+        ties:
+          type: integer
+        pointsFor:
+          type: number
+        pointsAgainst:
+          type: number
+        rank:
+          type: integer
+          description: 1-based finishing position after the tiebreaker sort
+
+    StandingsResponse:
+      type: object
+      description: A league's standings, ranked by the documented tiebreakers
+      required: [season, standings]
+      properties:
+        season:
+          type: integer
+        standings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Standing'
+
 paths:
   # --- Auth & session ---
 
