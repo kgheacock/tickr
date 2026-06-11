@@ -1,6 +1,6 @@
 # FS-07 · Waivers & trades
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 04, 06
+**Status:** `done` ([#68](https://github.com/kgheacock/tickr/pull/68)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 04, 06
 
 ## User stories
 - As a manager, I want to pick up undrafted stocks during the season, so that I
@@ -41,7 +41,7 @@ to keep the league competitive.
   one txn.
 
 ## Steps
-1. **Schema** — `1700000000012_fs_transactions.sql`:
+1. **Schema** — `1700000000013_fs_transactions.sql`:
    - `fs_waiver_claim` — `id`, `league_id`, `user_id`, `add_symbol`,
      `drop_symbol`, `is_short BOOLEAN`, `status TEXT CHECK (status IN
      ('pending','won','lost','invalid'))`, `submitted_at`, `processed_at`.
@@ -76,7 +76,7 @@ to keep the league competitive.
    atomic and invariant-preserving; accepting a trade whose leg moved is rejected.
 
 ## Files
-- Create: `apps/api/migrations/1700000000012_fs_transactions.sql`,
+- Create: `apps/api/migrations/1700000000013_fs_transactions.sql`,
   `apps/api/src/fantasy/waivers.ts`, `fantasy/trades.ts`,
   `apps/api/src/routes/leagues/waivers.ts`, `routes/leagues/trades.ts`,
   `apps/api/test/fantasy/waivers.test.ts`, `test/fantasy/trades.test.ts`.
@@ -85,12 +85,12 @@ to keep the league competitive.
   `packages/shared-types/src/fantasy.ts`.
 
 ## Definition of done
-- [ ] A contested waiver awards the add to the highest-priority (worst-ranked)
+- [x] A contested waiver awards the add to the highest-priority (worst-ranked)
       claimant, invalidates the losers, and demotes the winner in the order.
-- [ ] An add must be paired with a drop; roster size is invariant.
-- [ ] A proposed trade can be accepted, rejected, or cancelled; accepting swaps
+- [x] An add must be paired with a drop; roster size is invariant.
+- [x] A proposed trade can be accepted, rejected, or cancelled; accepting swaps
       ownership atomically and the single-owner invariant holds throughout.
-- [ ] Picking up or trading for an already-owned ticker is impossible
+- [x] Picking up or trading for an already-owned ticker is impossible
       (DB-enforced).
-- [ ] Transactions resolve in the unlocked between-weeks window and never alter a
+- [x] Transactions resolve in the unlocked between-weeks window and never alter a
       locked lineup.
