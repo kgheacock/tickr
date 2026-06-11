@@ -1,6 +1,6 @@
 # FS-04 · Rosters & weekly lineups
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03
+**Status:** `done` ([#61](https://github.com/kgheacock/tickr/pull/61)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03
 
 ## User stories
 - As a manager, I want to set my starting lineup each week from my roster, so
@@ -80,11 +80,25 @@ that FS-05 scores.
   `packages/shared-types/src/fantasy.ts`.
 
 ## Definition of done
-- [ ] A manager sets a valid lineup; ineligible placements, double-starts, and
+- [x] A manager sets a valid lineup; ineligible placements, double-starts, and
       a long in the Defense slot are all rejected.
-- [ ] At Monday market open the lock job freezes every league's lineups and
+- [x] At Monday market open the lock job freezes every league's lineups and
       auto-fills incomplete ones; a post-lock edit is rejected.
-- [ ] An untouched manager is auto-filled to a complete, legal lineup (no empty
+- [x] An untouched manager is auto-filled to a complete, legal lineup (no empty
       mandatory slot) and flagged `auto_filled`.
-- [ ] A holiday Monday does not lock; lock occurs on the correct open.
-- [ ] The locked, started set is queryable by FS-05 for scoring.
+- [x] A holiday Monday does not lock; lock occurs on the correct open.
+- [x] The locked, started set is queryable by FS-05 for scoring.
+
+## Implementation notes
+- Migration `1700000000009_fs_lineups.sql`; domain in `fantasy/lineup.ts`,
+  `fantasy/autofill.ts`, `fantasy/lock.ts`; routes in
+  `routes/leagues/lineup.ts`; lock cron in `jobs/scheduler.ts`;
+  `lineup.locked` event in `events/publisher.ts`.
+- **Week numbering** is caller-supplied (defaults to 1); the schedule→week
+  mapping is FS-06's. Scheduler uses a `currentWeek()` stub (week 1) with a
+  `TODO(FS-06)`.
+- **Bench bound** is enforced as a max cap, not a required fill — consistent
+  with the partial-set + auto-fill model (auto-fill never touches bench).
+- Lock cadence is a Mon–Fri cron gated on `isFirstTradingDayOfWeek` (not a
+  Monday-only skip), so a holiday Monday defers the lock to the next open —
+  satisfying "lock occurs on the correct open".

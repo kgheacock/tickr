@@ -773,6 +773,46 @@ export interface components {
              */
             isShort: boolean;
         };
+        /** @description One filled slot in a weekly lineup */
+        LineupSlot: {
+            /** @enum {string} */
+            slot: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard" | "bench";
+            /** @description Disambiguates repeated slots (bench, duplicate slots) */
+            slotIndex: number;
+            symbol: string;
+            /** @description True for a Defense short; false for every long slot */
+            isShort: boolean;
+        };
+        /** @description A manager's weekly starting lineup and its lock state */
+        Lineup: {
+            leagueId: string;
+            userId: string;
+            season: number;
+            week: number;
+            /** @description True once the scoring week's market open froze the lineup */
+            locked: boolean;
+            /** Format: date-time */
+            lockedAt: string | null;
+            /** @description True when the lock job auto-filled one or more slots */
+            autoFilled: boolean;
+            slots: components["schemas"]["LineupSlot"][];
+        };
+        SetLineupSlot: {
+            /** @enum {string} */
+            slot: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard" | "bench";
+            /**
+             * @description Position within a repeated slot; defaults to 0
+             * @default 0
+             */
+            slotIndex: number;
+            symbol: string;
+        };
+        SetLineupRequest: {
+            week: number;
+            /** @default 1 */
+            season: number;
+            slots: components["schemas"]["SetLineupSlot"][];
+        };
     };
     responses: {
         /** @description Unauthenticated */

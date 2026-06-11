@@ -28,6 +28,10 @@ export type {
   DraftSlot,
   DraftState,
   MakePickRequest,
+  LineupSlot,
+  Lineup,
+  SetLineupSlot,
+  SetLineupRequest,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';

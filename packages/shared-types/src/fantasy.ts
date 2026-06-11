@@ -39,3 +39,9 @@ export type DraftPick = Schemas['DraftPick'];
 export type DraftSlot = Schemas['DraftSlot'];
 export type DraftState = Schemas['DraftState'];
 export type MakePickRequest = Schemas['MakePickRequest'];
+
+// --- Rosters & weekly lineups (item 04) ---
+export type LineupSlot = Schemas['LineupSlot'];
+export type Lineup = Schemas['Lineup'];
+export type SetLineupSlot = Schemas['SetLineupSlot'];
+export type SetLineupRequest = Schemas['SetLineupRequest'];

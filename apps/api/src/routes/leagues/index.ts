@@ -7,6 +7,7 @@
  *   POST   /leagues/:id/invites mint an invite (commissioner)
  *   POST   /leagues/:id/join   join via token / open policy
  *   …/draft                    live snake draft (item 03)
+ *   …/lineup                   weekly starting lineup (item 04)
  */
 import type { FastifyInstance } from 'fastify';
 import { registerCreateLeagueRoute } from './create.js';
@@ -17,6 +18,7 @@ import { registerJoinLeagueRoute } from './join.js';
 import { registerSettingsRoute } from './settings.js';
 import { registerPlayersRoutes } from './players.js';
 import { registerDraftRoutes } from './draft.js';
+import { registerLineupRoutes } from './lineup.js';
 
 export async function registerLeaguesRoutes(
   fastify: FastifyInstance,
@@ -29,4 +31,5 @@ export async function registerLeaguesRoutes(
   registerJoinLeagueRoute(fastify);
   registerPlayersRoutes(fastify);
   registerDraftRoutes(fastify);
+  registerLineupRoutes(fastify);
 }
