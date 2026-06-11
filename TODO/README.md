@@ -47,6 +47,7 @@ of each file as you go.
 | 23 | [Admin logs: deploy commit + backfill status](23-admin-logs-meta-and-status.md) | 10, 21 | [done](https://github.com/kgheacock/tickr/pull/57) |
 | 24 | [Landing: logo board → markets ribbon](24-landing-flap-board-logos.md) | 11, 22 | [in review](https://github.com/kgheacock/tickr/pull/62) |
 | 25 | [Universe source: CSV → live Wikipedia constituents](25-universe-from-wikipedia.md) | 03, 13 | [in review](https://github.com/kgheacock/tickr/pull/64) |
+| 26 | [Schedule data jobs in the worker cron](26-schedule-data-jobs-cron.md) | 22, 25 | [in review](https://github.com/kgheacock/tickr/pull/66) |
 
 > **Pivot (items 16–18):** the project is being re-scoped from a trading
 > *game* to a market-data + returns *platform*. Item 16 keeps the data corpus
