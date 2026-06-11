@@ -1,6 +1,27 @@
 import { useAuth } from '../auth/AuthProvider';
 import { useLogout } from '../auth/useLogout';
+import { FlapBoard } from '../components/FlapBoard';
 import styles from './LandingPage.module.css';
+
+// A spread of recognizable S&P 500 names for the masthead ticker band. Symbols
+// without a stored logo fall back to their ticker glyph inside FlapBoard.
+const MARKET_TICKERS = [
+  'AAPL',
+  'MSFT',
+  'NVDA',
+  'AMZN',
+  'GOOGL',
+  'META',
+  'TSLA',
+  'JPM',
+  'V',
+  'JNJ',
+  'WMT',
+  'KO',
+  'DIS',
+  'NFLX',
+  'NKE',
+];
 
 // Google-account-gated request-access form (Google Forms with sign-in gate).
 // The sign-in gate is the bot mitigation; the captured Google email is the
@@ -40,6 +61,9 @@ export function LandingPage() {
               Draft your team. Set your lineup. Earn your glory.
             </h2>
             <p className={styles.deck}>
+              {/* The flap flipper floats as the lead drop cap, beside the
+                  paragraph's opening word. */}
+              <FlapBoard tickers={MARKET_TICKERS} />
               Fantasy football where the players are stocks. Draft the S&amp;P
               500 with your league — one owner per ticker — field a weekly
               lineup, and go head-to-head into the playoffs.

@@ -1,0 +1,85 @@
+/* A single split-flap tile that flips through logos, sized to sit as a drop cap.
+   Tile look (cream gradient + center seam) echoes docs/index.html's split-flap;
+   each new face drops in on a top hinge like a physical flap. */
+
+.flap {
+  position: relative;
+  float: left;
+  width: 2.9em;
+  height: 2.9em;
+  margin: 0.1em 0.32em 0.04em 0;
+  perspective: 260px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #ffffff, #ededea);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+/* The signature split-flap seam across the tile, above the faces. */
+.flap::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 50%;
+  height: 1px;
+  background: rgba(15, 23, 42, 0.16);
+  transform: translateY(-0.5px);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* The flap face, hinged at the top so it swings down into place. */
+.leaf {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.36em;
+  transform-origin: center top;
+  backface-visibility: hidden;
+  animation: flap-drop 520ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.logo {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.glyph {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 0.58em;
+  letter-spacing: 0.01em;
+  color: #22242a;
+  line-height: 1;
+}
+
+/* Respect reduced motion: still cycle, but drop in without the swing. */
+@media (prefers-reduced-motion: reduce) {
+  .leaf {
+    animation: none;
+  }
+}
+
+@keyframes flap-drop {
+  0% {
+    transform: rotateX(-92deg);
+    opacity: 0.2;
+  }
+  60% {
+    transform: rotateX(6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: rotateX(0deg);
+  }
+}

@@ -112,14 +112,8 @@
   max-width: 40ch;
 }
 
-/* Editorial drop cap on the lead paragraph. */
-.deck::first-letter {
-  initial-letter: 3;
-  -webkit-initial-letter: 3;
-  font-weight: 600;
-  margin-right: 0.06em;
-  color: var(--color-text);
-}
+/* The lead paragraph's drop cap is the split-flap logo flipper (see FlapBoard),
+   floated in beside the opening word via the .flap class. */
 
 /* ── Sign-in column ───────────────────────────────────────── */
 
