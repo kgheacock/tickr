@@ -15,6 +15,7 @@
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
 import { computeLeagueWeek, settleLeagueWeek } from '../fantasy/score.js';
+import { settleMatchups } from '../fantasy/settle.js';
 import {
   publishScoreUpdated,
   publishMatchupUpdated,
@@ -80,6 +81,13 @@ export async function runWeeklyScoring(
 
     result.leagues += 1;
     result.scores += scores.length;
+
+    // FS-06: settle this week's head-to-head matchups off the just-persisted
+    // scores and rebuild standings. In-process (not off the score.updated echo)
+    // so a settle is never dropped, and durable — outside the redis guard.
+    if (!provisional) {
+      await settleMatchups(pool, leagueId, opts.week, season);
+    }
 
     if (redis) {
       if (!provisional) {

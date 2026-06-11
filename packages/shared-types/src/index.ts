@@ -35,6 +35,11 @@ export type {
   ScoreBreakdownItem,
   WeeklyScore,
   LeagueScoresResponse,
+  Matchup,
+  ScheduleResponse,
+  MatchupsResponse,
+  Standing,
+  StandingsResponse,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';
