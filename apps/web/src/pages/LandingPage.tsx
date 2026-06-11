@@ -1,6 +1,27 @@
 import { useAuth } from '../auth/AuthProvider';
 import { useLogout } from '../auth/useLogout';
+import { FlapBoard } from '../components/FlapBoard';
 import styles from './LandingPage.module.css';
+
+// A spread of recognizable S&P 500 names for the masthead ticker band. Symbols
+// without a stored logo fall back to their ticker glyph inside FlapBoard.
+const MARKET_TICKERS = [
+  'AAPL',
+  'MSFT',
+  'NVDA',
+  'AMZN',
+  'GOOGL',
+  'META',
+  'TSLA',
+  'JPM',
+  'V',
+  'JNJ',
+  'WMT',
+  'KO',
+  'DIS',
+  'NFLX',
+  'NKE',
+];
 
 // Google-account-gated request-access form (Google Forms with sign-in gate).
 // The sign-in gate is the bot mitigation; the captured Google email is the
@@ -32,6 +53,8 @@ export function LandingPage() {
           Head-to-Head Stock Leagues · Draft the S&amp;P 500 · Est. MMXXVI
         </p>
         <div className={styles.ruleThin} />
+
+        <FlapBoard tickers={MARKET_TICKERS} />
 
         <main className={styles.hero}>
           <article className={styles.lede}>
