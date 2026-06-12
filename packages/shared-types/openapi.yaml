@@ -610,6 +610,7 @@ components:
         - marketData429sLast24h
         - jobQueueDepth
         - backfillRemaining
+        - fantasy
       properties:
         lastEodUpdateAt:
           type: ['string', 'null']
@@ -630,6 +631,8 @@ components:
         backfillRemaining:
           type: integer
           description: Count of universe_symbol rows with backfilled = false
+        fantasy:
+          $ref: '#/components/schemas/FantasyHealth'
 
     # --- Fantasy Street: leagues & membership (item 01) ---
 
@@ -1665,6 +1668,110 @@ components:
           $ref: '#/components/schemas/RecapLeader'
         leagueLow:
           $ref: '#/components/schemas/RecapLeader'
+
+    # --- Fantasy Street: commissioner & admin tools (item 12) ---
+
+    AuditEntry:
+      type: object
+      description: >-
+        One append-only record of a privileged league action (commissioner or
+        platform admin). `action` is a stable verb; `detail` carries
+        action-specific context (changed fields, target week, dispute reason).
+      required: [id, leagueId, actorUserId, action, detail, createdAt]
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        actorUserId:
+          type: string
+          description: The commissioner/admin who took the action
+        action:
+          type: string
+          description: >-
+            Stable verb: settings.update, member.remove, member.rename,
+            member.transfer, score.rescore, season.advance, lineup.override
+        detail:
+          type: object
+          additionalProperties: true
+          description: Action-specific context (changed fields, week, reason, …)
+        createdAt:
+          type: string
+          format: date-time
+
+    AuditResponse:
+      type: object
+      description: A league's audit trail, newest first
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+
+    StuckWeek:
+      type: object
+      description: >-
+        A locked-but-unscored week that a later settled week has surpassed — a
+        genuine settle gap an operator should resolve (re-score / force-advance).
+      required: [leagueId, season, week]
+      properties:
+        leagueId:
+          type: string
+        season:
+          type: integer
+        week:
+          type: integer
+
+    LeagueScoringRun:
+      type: object
+      description: The most recent settled scoring run for a league
+      required: [leagueId, lastRunAt]
+      properties:
+        leagueId:
+          type: string
+        lastRunAt:
+          type: string
+          format: date-time
+
+    FantasyHealth:
+      type: object
+      description: >-
+        Per-fleet Fantasy Street health for the admin ops view (item 12):
+        league counts by status, drafts in progress, stuck weeks, and the last
+        scoring run per league.
+      required:
+        - leaguesByStatus
+        - draftsInProgress
+        - stuckWeeks
+        - lastScoringRunByLeague
+      properties:
+        leaguesByStatus:
+          type: object
+          description: League count keyed by lifecycle status
+          required: [forming, drafting, active, playoffs, archived]
+          properties:
+            forming:
+              type: integer
+            drafting:
+              type: integer
+            active:
+              type: integer
+            playoffs:
+              type: integer
+            archived:
+              type: integer
+        draftsInProgress:
+          type: integer
+          description: Drafts currently in_progress across the fleet
+        stuckWeeks:
+          type: array
+          items:
+            $ref: '#/components/schemas/StuckWeek'
+        lastScoringRunByLeague:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueScoringRun'
 
 paths:
   # --- Auth & session ---

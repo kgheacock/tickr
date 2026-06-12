@@ -8,6 +8,7 @@ import {
   massive429Count,
   jobQueueDepth,
 } from '../../metrics/redis.js';
+import { fantasyHealth } from '../../fantasy/admin.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -44,12 +45,17 @@ export async function registerAdminOpsRoute(
         `SELECT count(*)::int AS count FROM universe_symbol WHERE backfilled = false`,
       );
 
+      // FS-12: per-fleet Fantasy Street health (leagues by status, drafts in
+      // progress, last scoring run per league, stuck weeks).
+      const fantasy = await fantasyHealth(pool);
+
       return {
         lastEodUpdateAt,
         eodUpdateLagSec,
         marketData429sLast24h: { massive },
         jobQueueDepth: queueDepth,
         backfillRemaining: rows[0]?.count ?? 0,
+        fantasy,
       };
     },
   );

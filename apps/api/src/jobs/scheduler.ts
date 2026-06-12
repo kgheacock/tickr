@@ -9,6 +9,7 @@ import {
   isRegularSession,
   isNyseHoliday,
   nyseRegularCloseAnchor,
+  currentFriday,
 } from '../market/holidays.js';
 import { runAlertCheck } from '../alerts/checker.js';
 import { runClassifier } from '../fantasy/classify.js';
@@ -37,9 +38,8 @@ const SCORING_LOCK = 'fs:job:scoring';
 const WAIVER_LOCK = 'fs:job:waivers';
 const LINEUP_REMINDER_LOCK = 'fs:job:lineup-reminder';
 
-// Fixed UTC-5 (ET standard) offset, matching holidays.ts / lock.ts. The scoring
-// crons fire at ~21:35 UTC, well clear of the midnight boundary.
-const ET_OFFSET_MS = 5 * 60 * 60 * 1000;
+// The scoring crons fire at ~21:35 UTC, well clear of the midnight boundary, so
+// the ET calendar date is stable when picking the week's Friday (currentFriday).
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // MVP scope (intentional for this merge): the automated lineup-lock, weekly-settle
@@ -50,14 +50,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // TODO(FS-06): derive the scoring week from the season schedule (start date + week length).
 function currentWeek(): number {
   return 1;
-}
-
-/** The Friday of `now`'s week (ET) — today on Friday, the coming Friday Mon–Thu. */
-function currentFriday(now: Date): Date {
-  const et = new Date(now.getTime() - ET_OFFSET_MS);
-  const dow = et.getUTCDay(); // 0 = Sun … 5 = Fri … 6 = Sat
-  const daysUntilFriday = (5 - dow + 7) % 7;
-  return new Date(now.getTime() + daysUntilFriday * DAY_MS);
 }
 
 const baseLog = jobLogger('scheduler');

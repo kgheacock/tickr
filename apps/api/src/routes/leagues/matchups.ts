@@ -21,20 +21,8 @@ import { pool } from '../../db/pool.js';
 import { requireLeagueMember } from '../../fantasy/guards.js';
 import { computeLeagueWeek } from '../../fantasy/score.js';
 import { decideWinner } from '../../fantasy/settle.js';
+import { currentFriday } from '../../market/holidays.js';
 import { sendFantasyError } from './_shared.js';
-
-// Fixed UTC-5 (ET standard) offset — matches scheduler.ts / lock.ts. The
-// schedule→calendar-week mapping is still single-week (currentWeek()===1); this
-// resolves the provisional overlay's baseline Friday until that lands.
-const ET_OFFSET_MS = 5 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** The Friday of `now`'s week (ET) — today on Friday, the coming Friday Mon–Thu. */
-function currentFriday(now: Date): Date {
-  const et = new Date(now.getTime() - ET_OFFSET_MS);
-  const daysUntilFriday = (5 - et.getUTCDay() + 7) % 7;
-  return new Date(now.getTime() + daysUntilFriday * DAY_MS);
-}
 
 interface MatchupRow {
   id: string;

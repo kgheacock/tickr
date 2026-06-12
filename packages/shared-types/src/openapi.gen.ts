@@ -641,6 +641,7 @@ export interface components {
             jobQueueDepth: number;
             /** @description Count of universe_symbol rows with backfilled = false */
             backfillRemaining: number;
+            fantasy: components["schemas"]["FantasyHealth"];
         };
         /** @description Slot layout for a league's weekly lineup plus bench depth */
         RosterConfig: {
@@ -1132,6 +1133,52 @@ export interface components {
             biggestBlowup: components["schemas"]["RecapSlot"] | null;
             leagueHigh: components["schemas"]["RecapLeader"];
             leagueLow: components["schemas"]["RecapLeader"];
+        };
+        /** @description One append-only record of a privileged league action (commissioner or platform admin). `action` is a stable verb; `detail` carries action-specific context (changed fields, target week, dispute reason). */
+        AuditEntry: {
+            id: string;
+            leagueId: string;
+            /** @description The commissioner/admin who took the action */
+            actorUserId: string;
+            /** @description Stable verb: settings.update, member.remove, member.rename, member.transfer, score.rescore, season.advance, lineup.override */
+            action: string;
+            /** @description Action-specific context (changed fields, week, reason, …) */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description A league's audit trail, newest first */
+        AuditResponse: {
+            entries: components["schemas"]["AuditEntry"][];
+        };
+        /** @description A locked-but-unscored week that a later settled week has surpassed — a genuine settle gap an operator should resolve (re-score / force-advance). */
+        StuckWeek: {
+            leagueId: string;
+            season: number;
+            week: number;
+        };
+        /** @description The most recent settled scoring run for a league */
+        LeagueScoringRun: {
+            leagueId: string;
+            /** Format: date-time */
+            lastRunAt: string;
+        };
+        /** @description Per-fleet Fantasy Street health for the admin ops view (item 12): league counts by status, drafts in progress, stuck weeks, and the last scoring run per league. */
+        FantasyHealth: {
+            /** @description League count keyed by lifecycle status */
+            leaguesByStatus: {
+                forming: number;
+                drafting: number;
+                active: number;
+                playoffs: number;
+                archived: number;
+            };
+            /** @description Drafts currently in_progress across the fleet */
+            draftsInProgress: number;
+            stuckWeeks: components["schemas"]["StuckWeek"][];
+            lastScoringRunByLeague: components["schemas"]["LeagueScoringRun"][];
         };
     };
     responses: {

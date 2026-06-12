@@ -59,6 +59,11 @@ export type {
   RecapSlot,
   RecapLeader,
   RecapPayload,
+  AuditEntry,
+  AuditResponse,
+  FantasyHealth,
+  StuckWeek,
+  LeagueScoringRun,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';
