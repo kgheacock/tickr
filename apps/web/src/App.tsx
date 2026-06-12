@@ -1,6 +1,13 @@
 import { Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthProvider';
+import { RequireAuth } from './auth/RequireAuth';
 import { LandingPage } from './pages/LandingPage';
+import { LeaguesPage } from './features/fantasy/LeaguesPage';
+import { FantasyLayout } from './features/fantasy/FantasyLayout';
+import { Dashboard } from './features/fantasy/Dashboard';
+import { TeamView } from './features/fantasy/TeamView';
+import { MatchupView } from './features/fantasy/MatchupView';
+import { StandingsView } from './features/fantasy/StandingsView';
 import styles from './App.module.css';
 
 export function App() {
@@ -9,6 +16,27 @@ export function App() {
       <div className={styles.app}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route
+            path="/leagues"
+            element={
+              <RequireAuth>
+                <LeaguesPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/leagues/:id"
+            element={
+              <RequireAuth>
+                <FantasyLayout />
+              </RequireAuth>
+            }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="team" element={<TeamView />} />
+            <Route path="matchup" element={<MatchupView />} />
+            <Route path="standings" element={<StandingsView />} />
+          </Route>
         </Routes>
       </div>
     </AuthProvider>

@@ -217,6 +217,35 @@
   margin-bottom: var(--space-4);
 }
 
+.leaguesLink {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-paper);
+  transition:
+    background 0.15s,
+    transform 0.1s;
+}
+
+.leaguesLink:hover {
+  background: var(--color-accent-hover);
+  color: var(--color-paper);
+}
+
+.leaguesLink:active {
+  transform: translateY(1px);
+}
+
 .signout {
   display: block;
   width: 100%;

@@ -10,6 +10,16 @@ import type {
   SmaStrategyRequest,
   StrategyBacktestResponse,
   ApiError,
+  LeagueListResponse,
+  LeagueView,
+  PlayerListResponse,
+  Lineup,
+  SetLineupRequest,
+  LeagueScoresResponse,
+  MatchupsResponse,
+  ScheduleResponse,
+  StandingsResponse,
+  SeasonsResponse,
 } from '@tickr/shared-types';
 
 export class ApiClientError extends Error {
@@ -118,6 +128,95 @@ class ApiClient {
       '/strategies/sma-crossover',
       req,
     );
+  }
+
+  // --- Fantasy Street (item 09 dashboard reads the 01–08 endpoints) ---
+
+  /** Leagues the caller belongs to (`mine`) or can join (`open`). */
+  listLeagues(filter: 'mine' | 'open' = 'mine'): Promise<LeagueListResponse> {
+    return this.request<LeagueListResponse>('GET', '/leagues', undefined, {
+      [filter]: 'true',
+    });
+  }
+
+  getLeague(id: string): Promise<LeagueView> {
+    return this.request<LeagueView>('GET', `/leagues/${id}`);
+  }
+
+  /** The caller's roster (owned players) for a league — the lineup pick pool. */
+  getRoster(id: string): Promise<PlayerListResponse> {
+    return this.request<PlayerListResponse>(
+      'GET',
+      `/leagues/${id}/players`,
+      undefined,
+      { mine: 'true', limit: '200' },
+    );
+  }
+
+  getLineup(id: string, week: number, season: number): Promise<Lineup> {
+    return this.request<Lineup>('GET', `/leagues/${id}/lineup`, undefined, {
+      week: String(week),
+      season: String(season),
+    });
+  }
+
+  setLineup(id: string, req: SetLineupRequest): Promise<Lineup> {
+    return this.request<Lineup>('PUT', `/leagues/${id}/lineup`, req);
+  }
+
+  autofillLineup(id: string, week: number, season: number): Promise<Lineup> {
+    return this.request<Lineup>('POST', `/leagues/${id}/lineup/autofill`, {
+      week,
+      season,
+    });
+  }
+
+  getScores(
+    id: string,
+    week: number,
+    season: number,
+  ): Promise<LeagueScoresResponse> {
+    return this.request<LeagueScoresResponse>(
+      'GET',
+      `/leagues/${id}/scores`,
+      undefined,
+      { week: String(week), season: String(season) },
+    );
+  }
+
+  getMatchups(
+    id: string,
+    week: number,
+    season: number,
+  ): Promise<MatchupsResponse> {
+    return this.request<MatchupsResponse>(
+      'GET',
+      `/leagues/${id}/matchups`,
+      undefined,
+      { week: String(week), season: String(season) },
+    );
+  }
+
+  getSchedule(id: string, season: number): Promise<ScheduleResponse> {
+    return this.request<ScheduleResponse>(
+      'GET',
+      `/leagues/${id}/schedule`,
+      undefined,
+      { season: String(season) },
+    );
+  }
+
+  getStandings(id: string, season: number): Promise<StandingsResponse> {
+    return this.request<StandingsResponse>(
+      'GET',
+      `/leagues/${id}/standings`,
+      undefined,
+      { season: String(season) },
+    );
+  }
+
+  getSeasons(id: string): Promise<SeasonsResponse> {
+    return this.request<SeasonsResponse>('GET', `/leagues/${id}/seasons`);
   }
 
   logout(): Promise<void> {
