@@ -96,7 +96,13 @@ export async function computeManagerScore(
   const breakdown: ScoreBreakdownItem[] = [];
   let total = 0;
   for (const s of started) {
-    const r = await weeklyReturn(db, s.symbol, opts.weekEnd, asOf, opts.baselineAt);
+    const r = await weeklyReturn(
+      db,
+      s.symbol,
+      opts.weekEnd,
+      asOf,
+      opts.baselineAt,
+    );
     const points = slotPoints(r.returnPct, s.is_short);
     total += points;
     breakdown.push({
