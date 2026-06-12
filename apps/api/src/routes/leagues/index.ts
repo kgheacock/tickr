@@ -11,6 +11,7 @@
  *   …/scores                   weekly scoring & shorting (item 05)
  *   …/schedule|matchups|standings  head-to-head schedule & standings (item 06)
  *   …/waivers|trades               mid-season add/drop & trades (item 07)
+ *   …/seasons                      season lifecycle, playoffs & history (item 08)
  */
 import type { FastifyInstance } from 'fastify';
 import { registerCreateLeagueRoute } from './create.js';
@@ -26,6 +27,7 @@ import { registerScoreRoutes } from './scores.js';
 import { registerMatchupRoutes } from './matchups.js';
 import { registerWaiverRoutes } from './waivers.js';
 import { registerTradeRoutes } from './trades.js';
+import { registerSeasonRoutes } from './seasons.js';
 
 export async function registerLeaguesRoutes(
   fastify: FastifyInstance,
@@ -43,4 +45,5 @@ export async function registerLeaguesRoutes(
   registerMatchupRoutes(fastify);
   registerWaiverRoutes(fastify);
   registerTradeRoutes(fastify);
+  registerSeasonRoutes(fastify);
 }

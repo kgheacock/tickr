@@ -186,6 +186,14 @@ async function seedLeague(): Promise<{ leagueId: string; users: string[] }> {
       [leagueId, u, i === 0 ? 'commissioner' : 'manager', `T${i}`],
     );
   }
+  // FS-08: the season-1 row the matchup/score NOT NULL season_id FK resolves to.
+  await pool.query(
+    `INSERT INTO fs_season
+       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       FROM fs_league WHERE id = $1`,
+    [leagueId],
+  );
   return { leagueId, users };
 }
 
@@ -196,8 +204,10 @@ async function setScore(
   points: number,
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO fs_weekly_score (league_id, user_id, season, week, total_points)
-     VALUES ($1, $2, 1, $3, $4)
+    `INSERT INTO fs_weekly_score
+       (league_id, user_id, season, week, total_points, season_id)
+     VALUES ($1, $2, 1, $3, $4,
+             (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = 1))
      ON CONFLICT (league_id, user_id, season, week)
      DO UPDATE SET total_points = EXCLUDED.total_points`,
     [leagueId, userId, week, points],
@@ -265,7 +275,7 @@ describe('settleMatchups (DB)', () => {
       if (m.away_user_id) await setScore(leagueId, m.away_user_id, 1, 50);
     }
     const settled = await settleMatchups(pool, leagueId, 1);
-    expect(settled).toBe(2);
+    expect(settled.settled).toBe(2);
 
     const after = await weekMatchups(leagueId, 1);
     after.forEach((m) => {

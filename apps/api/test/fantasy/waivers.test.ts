@@ -88,6 +88,14 @@ async function seedLeague(): Promise<{
             ($1, $3, 'manager', 'TB', now() + interval '1 second')`,
     [leagueId, a, b],
   );
+  // FS-08: the season-1 row the lineup/score NOT NULL season_id FK resolves to.
+  await pool.query(
+    `INSERT INTO fs_season
+       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       FROM fs_league WHERE id = $1`,
+    [leagueId],
+  );
   return { leagueId, a, b };
 }
 
@@ -304,8 +312,9 @@ describe('runWaivers', () => {
 
     // Lock a week with no weekly_score → the between-weeks window is closed.
     await pool.query(
-      `INSERT INTO fs_lineup (league_id, user_id, season, week, locked_at)
-       VALUES ($1, $2, 1, 1, now())`,
+      `INSERT INTO fs_lineup (league_id, user_id, season, week, locked_at, season_id)
+       VALUES ($1, $2, 1, 1, now(),
+               (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = 1))`,
       [leagueId, a],
     );
     let result = await runWaivers(pool);
@@ -316,8 +325,10 @@ describe('runWaivers', () => {
 
     // The week settles (weekly_score written) → window opens, claim resolves.
     await pool.query(
-      `INSERT INTO fs_weekly_score (league_id, user_id, season, week, total_points)
-       VALUES ($1, $2, 1, 1, 0)`,
+      `INSERT INTO fs_weekly_score
+         (league_id, user_id, season, week, total_points, season_id)
+       VALUES ($1, $2, 1, 1, 0,
+               (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = 1))`,
       [leagueId, a],
     );
     result = await runWaivers(pool);

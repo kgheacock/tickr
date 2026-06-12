@@ -229,6 +229,36 @@ export async function publishTradeAccepted(
   );
 }
 
+// --- Season & playoffs (item 08) ---
+
+/**
+ * A league's season ended and a champion was crowned (the final playoff matchup
+ * settled). A plain domain event on its own Redis channel (not a WS gateway
+ * message), mirroring score.updated — the dashboard (FS-09) and recaps (FS-11)
+ * will surface the champion off it; no consumer yet.
+ */
+export const SEASON_CHAMPION_CHANNEL = 'fs:season:champion';
+
+export interface SeasonChampionEvent {
+  type: 'season.champion';
+  leagueId: string;
+  season: number;
+  championUserId: string;
+}
+
+export async function publishSeasonChampion(
+  redis: Redis,
+  event: Omit<SeasonChampionEvent, 'type'>,
+): Promise<void> {
+  await redis.publish(
+    SEASON_CHAMPION_CHANNEL,
+    JSON.stringify({
+      type: 'season.champion',
+      ...event,
+    } satisfies SeasonChampionEvent),
+  );
+}
+
 /**
  * Live per-manager scores for a league week — provisional (in-week) or final
  * (Friday-settled). A WS gateway message on the per-(league, week) matchup

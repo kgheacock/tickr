@@ -1,6 +1,6 @@
 # FS-08 · Season & playoffs
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 06
+**Status:** `done` ([#74](https://github.com/kgheacock/tickr/pull/74)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 06
 
 ## User stories
 - As a manager, I want a short regular season followed by playoffs, so that the
@@ -81,12 +81,24 @@ implicit `season=1` (carried by FS-04/05/06) into a first-class lifecycle.
   `packages/shared-types/src/fantasy.ts`.
 
 ## Definition of done
-- [ ] A league plays its `regular_weeks`, then auto-enters playoffs with a
+- [x] A league plays its `regular_weeks`, then auto-enters playoffs with a
       standings-seeded bracket.
-- [ ] The bracket advances by single elimination to a single champion, who is
+- [x] The bracket advances by single elimination to a single champion, who is
       recorded on `fs_season` and announced via `season.champion`.
-- [ ] Past seasons (with champions and final standings) are queryable and
+- [x] Past seasons (with champions and final standings) are queryable and
       read-only.
-- [ ] Starting a new season increments `season_number`, resets rosters for a
+- [x] Starting a new season increments `season_number`, resets rosters for a
       re-draft, and preserves membership + history.
-- [ ] Existing pre-FS-08 rows are backfilled to season 1 with no data loss.
+- [x] Existing pre-FS-08 rows are backfilled to season 1 with no data loss.
+
+---
+
+**Implementation notes (PR [#74](https://github.com/kgheacock/tickr/pull/74)):**
+migration renumbered `…013` → `1700000000019_fs_season.sql` after the FS
+migrations were renumbered upstream (006–012 → 012–018). The bracket lives in
+`fantasy/playoffs.ts` (pure `computeBracket` + idempotent `materializeBracket`);
+the regular→playoffs transition and champion-crowning run inside `settleMatchups`
+(`fantasy/settle.ts`). Scoring + lineup-lock jobs were extended to also process
+`playoffs` leagues so playoff weeks actually score. `season_id` (NOT NULL FK) was
+wired per spec across `fs_lineup`/`fs_weekly_score`/`fs_matchup`, with the season-1
+backfill verified by a two-phase migration test.

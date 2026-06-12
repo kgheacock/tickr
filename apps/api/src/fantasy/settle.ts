@@ -13,6 +13,8 @@
  */
 import type { Pool, PoolClient } from 'pg';
 import { computeStandings, type StandingMatchup } from './standings.js';
+import { loadSeason } from './season.js';
+import { materializeBracket } from './playoffs.js';
 
 /** Higher total wins; equal totals tie (null). Pure — the testable core. */
 export function decideWinner(
@@ -71,7 +73,7 @@ async function rebuildStandings(
             away_points::float8 AS away_points,
             winner_user_id, status
        FROM fs_matchup
-      WHERE league_id = $1 AND season = $2`,
+      WHERE league_id = $1 AND season = $2 AND is_playoff = false`,
     [leagueId, season],
   );
 
@@ -116,17 +118,62 @@ async function rebuildStandings(
 }
 
 /**
+ * FS-08 season transition, run inside the settle transaction after standings
+ * are rebuilt. When the last regular week settles, the season flips to
+ * `playoffs` (league too) and the bracket is seeded; on each playoff week it
+ * advances, crowning a champion when the final settles. Idempotent — re-running
+ * a week is a no-op once past the relevant edge. Returns what changed so the
+ * caller can publish `season.champion`.
+ */
+async function runSeasonTransition(
+  db: PoolClient,
+  leagueId: string,
+  season: number,
+  week: number,
+): Promise<{ enteredPlayoffs: boolean; championUserId: string | null }> {
+  const seasonRow = await loadSeason(db, leagueId, season);
+  if (!seasonRow) return { enteredPlayoffs: false, championUserId: null };
+
+  let enteredPlayoffs = false;
+  if (seasonRow.status === 'regular' && week >= seasonRow.regular_weeks) {
+    await db.query(`UPDATE fs_season SET status = 'playoffs' WHERE id = $1`, [
+      seasonRow.id,
+    ]);
+    await db.query(`UPDATE fs_league SET status = 'playoffs' WHERE id = $1`, [
+      leagueId,
+    ]);
+    seasonRow.status = 'playoffs';
+    enteredPlayoffs = true;
+  }
+
+  if (seasonRow.status === 'playoffs') {
+    const championUserId = await materializeBracket(db, leagueId, seasonRow);
+    return { enteredPlayoffs, championUserId };
+  }
+  return { enteredPlayoffs, championUserId: null };
+}
+
+export interface SettleResult {
+  /** Matchups settled this week (regular + playoff). */
+  settled: number;
+  /** True when this settle flipped the season into the playoffs. */
+  enteredPlayoffs: boolean;
+  /** The champion crowned by this settle, else null. */
+  championUserId: string | null;
+}
+
+/**
  * Settle a league's just-scored week and rebuild its standings. Reads the
  * persisted fs_weekly_score totals (a missing manager scores 0), decides each
- * matchup, flips it `final`, and recomputes the standings cache — all in one
- * transaction. Returns the number of matchups settled.
+ * matchup, flips it `final`, recomputes the standings cache (regular-season
+ * games only), then runs the FS-08 season transition — all in one transaction.
  */
 export async function settleMatchups(
   pool: Pool,
   leagueId: string,
   week: number,
   season = 1,
-): Promise<number> {
+): Promise<SettleResult> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -169,8 +216,14 @@ export async function settleMatchups(
     }
 
     await rebuildStandings(client, leagueId, season);
+    const transition = await runSeasonTransition(
+      client,
+      leagueId,
+      season,
+      week,
+    );
     await client.query('COMMIT');
-    return matchups.length;
+    return { settled: matchups.length, ...transition };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

@@ -87,7 +87,19 @@ async function activeLeague(): Promise<{ leagueId: string; userId: string }> {
      VALUES ($1, $2, 'commissioner', 'T')`,
     [leagueId, userId],
   );
+  await seedSeason(leagueId);
   return { leagueId, userId };
+}
+
+/** FS-08: the season-1 row the lineup/score NOT NULL season_id FK resolves to. */
+async function seedSeason(leagueId: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO fs_season
+       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       FROM fs_league WHERE id = $1`,
+    [leagueId],
+  );
 }
 
 /** Seed a symbol and its two Friday closes (cents), yielding a known return. */
@@ -135,8 +147,10 @@ async function seedLineup(
   slots: SlotSpec[],
 ): Promise<void> {
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO fs_lineup (league_id, user_id, season, week, locked_at)
-     VALUES ($1, $2, 1, 1, now()) RETURNING id`,
+    `INSERT INTO fs_lineup (league_id, user_id, season, week, locked_at, season_id)
+     VALUES ($1, $2, 1, 1, now(),
+             (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = 1))
+     RETURNING id`,
     [leagueId, userId],
   );
   const lineupId = rows[0]!.id;
@@ -394,6 +408,7 @@ describe('runWeeklyScoring job', () => {
        VALUES ($1, $2, 'commissioner', 'T')`,
       [formingLeague, formingUser],
     );
+    await seedSeason(formingLeague);
     await rosterEntry(formingLeague, formingUser, 'ANCH'); // (different league: allowed)
     await seedLineup(formingLeague, formingUser, [
       { slot: 'anchor', symbol: 'ANCH' },

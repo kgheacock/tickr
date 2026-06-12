@@ -9,6 +9,7 @@
  * see test/fantasy/schedule.test.ts.
  */
 import type { Pool, PoolClient } from 'pg';
+import { resolveSeasonId } from './season.js';
 
 export interface Pairing {
   home: string;
@@ -119,11 +120,14 @@ export async function generateSchedule(
       return 0;
     }
 
-    const [managers, weeks] = await Promise.all([
+    const [managers, weeks, seasonId] = await Promise.all([
       leagueManagers(client, leagueId),
       seasonLength(client, leagueId),
+      resolveSeasonId(client, leagueId, season),
     ]);
-    if (managers.length < 2 || !weeks) {
+    // No season row means draft.complete didn't open the season first — the
+    // matchup FK to fs_season would fail, so bail rather than half-schedule.
+    if (managers.length < 2 || !weeks || !seasonId) {
       await client.query('ROLLBACK');
       return 0;
     }
@@ -135,10 +139,10 @@ export async function generateSchedule(
       for (const p of schedule[w]!) {
         await client.query(
           `INSERT INTO fs_matchup
-             (league_id, season, week, home_user_id, away_user_id, status)
-           VALUES ($1, $2, $3, $4, $5, 'scheduled')
+             (league_id, season, season_id, week, home_user_id, away_user_id, status)
+           VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')
            ON CONFLICT (league_id, season, week, home_user_id) DO NOTHING`,
-          [leagueId, season, week, p.home, p.away],
+          [leagueId, season, seasonId, week, p.home, p.away],
         );
         inserted += 1;
       }

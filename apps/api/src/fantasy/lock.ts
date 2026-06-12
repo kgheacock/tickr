@@ -106,7 +106,7 @@ export async function lockLineups(
     `SELECT m.league_id, m.user_id
        FROM fs_league_member m
        JOIN fs_league l ON l.id = m.league_id
-      WHERE l.status = 'active'
+      WHERE l.status IN ('active', 'playoffs')
       ORDER BY m.league_id, m.user_id`,
   );
 

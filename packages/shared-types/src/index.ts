@@ -48,6 +48,10 @@ export type {
   Trade,
   ProposeTradeRequest,
   TradesResponse,
+  Season,
+  SeasonStatus,
+  SeasonsResponse,
+  SeasonDetail,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';
