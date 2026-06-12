@@ -181,7 +181,8 @@ describe('findTransitionPredecessor', () => {
     '2024-01-11',
     '2024-01-12',
   ];
-  // Internal gap: the middle three days are missing on the active symbol.
+  // Internal gap: the middle three days are missing on the active symbol, so
+  // '2024-01-12' is a post-gap day a still-trading predecessor would cover.
   const gap: CoverageGap = {
     gapStart: '2024-01-09',
     gapEnd: '2024-01-11',
@@ -189,12 +190,19 @@ describe('findTransitionPredecessor', () => {
     position: 'internal',
   };
 
-  it('returns the retired symbol that covers the gap window', () => {
+  it('returns the retired predecessor that covers the gap and goes dark after it', () => {
     const symbolDates = new Map([
       ['BK', new Set(['2024-01-09', '2024-01-10', '2024-01-11'])],
     ]);
     expect(
-      findTransitionPredecessor(gap, ['BK'], symbolDates, expectedDays, 0.9),
+      findTransitionPredecessor(
+        gap,
+        ['BK'],
+        symbolDates,
+        expectedDays,
+        0.9,
+        0.1,
+      ),
     ).toBe('BK');
   });
 
@@ -203,7 +211,14 @@ describe('findTransitionPredecessor', () => {
       ['BK', new Set(['2024-01-09'])], // only 1 of 3 gap days
     ]);
     expect(
-      findTransitionPredecessor(gap, ['BK'], symbolDates, expectedDays, 0.9),
+      findTransitionPredecessor(
+        gap,
+        ['BK'],
+        symbolDates,
+        expectedDays,
+        0.9,
+        0.1,
+      ),
     ).toBeNull();
   });
 
@@ -212,25 +227,121 @@ describe('findTransitionPredecessor', () => {
       ['OTHR', new Set(['2024-01-09', '2024-01-10', '2024-01-11'])],
     ]);
     expect(
-      findTransitionPredecessor(gap, [], symbolDates, expectedDays, 0.9),
+      findTransitionPredecessor(gap, [], symbolDates, expectedDays, 0.9, 0.1),
+    ).toBeNull();
+  });
+
+  // Adjacency guard: a deindexed-but-still-trading symbol (AAL) covers the gap
+  // window yet keeps printing bars past it. It must NOT be treated as a
+  // predecessor, or genuine data loss on a live symbol could be silently
+  // downgraded.
+  it('rejects a candidate that covers the gap but keeps trading past it', () => {
+    const symbolDates = new Map([
+      [
+        'AAL',
+        // Covers all three gap days AND the post-gap day 2024-01-12.
+        new Set(['2024-01-09', '2024-01-10', '2024-01-11', '2024-01-12']),
+      ],
+    ]);
+    expect(
+      findTransitionPredecessor(
+        gap,
+        ['AAL'],
+        symbolDates,
+        expectedDays,
+        0.9,
+        0.1,
+      ),
+    ).toBeNull();
+  });
+
+  // The real predecessor (BK, went dark) is chosen over a coincidental cover
+  // (AAL, still trading) — and the still-trading one alone never qualifies.
+  it('picks the dark predecessor and ignores a still-trading coincidental cover', () => {
+    const symbolDates = new Map([
+      [
+        'AAL',
+        new Set(['2024-01-09', '2024-01-10', '2024-01-11', '2024-01-12']),
+      ],
+      ['BK', new Set(['2024-01-09', '2024-01-10', '2024-01-11'])],
+    ]);
+    expect(
+      findTransitionPredecessor(
+        gap,
+        ['AAL', 'BK'],
+        symbolDates,
+        expectedDays,
+        0.9,
+        0.1,
+      ),
+    ).toBe('BK');
+  });
+
+  // Fail closed on ambiguity: two distinct dark predecessors both covering the
+  // gap is not a confident attribution, so the gap stays an error.
+  it('returns null when more than one candidate qualifies (ambiguous)', () => {
+    const covering = new Set(['2024-01-09', '2024-01-10', '2024-01-11']);
+    const symbolDates = new Map([
+      ['BK', new Set(covering)],
+      ['XYZ', new Set(covering)],
+    ]);
+    expect(
+      findTransitionPredecessor(
+        gap,
+        ['BK', 'XYZ'],
+        symbolDates,
+        expectedDays,
+        0.9,
+        0.1,
+      ),
+    ).toBeNull();
+  });
+
+  it('returns null for a trailing gap (no post-gap days to confirm a handoff)', () => {
+    const trailingGap: CoverageGap = {
+      gapStart: '2024-01-10',
+      gapEnd: '2024-01-12', // == last expected day → trailing
+      missingTradingDays: 3,
+      position: 'trailing',
+    };
+    const symbolDates = new Map([
+      ['BK', new Set(['2024-01-10', '2024-01-11', '2024-01-12'])],
+    ]);
+    expect(
+      findTransitionPredecessor(
+        trailingGap,
+        ['BK'],
+        symbolDates,
+        expectedDays,
+        0.9,
+        0.1,
+      ),
     ).toBeNull();
   });
 
   it('tolerates a single missing gap day at the 0.9 threshold', () => {
-    // 9 of 10 gap days covered = 0.9, exactly the threshold.
-    const tenDays = Array.from(
-      { length: 10 },
+    // 9 of 10 gap days covered = 0.9, exactly the threshold. A trailing post-gap
+    // day keeps the window internal so adjacency can be evaluated.
+    const elevenDays = Array.from(
+      { length: 11 },
       (_, i) => `2024-02-${String(i + 1).padStart(2, '0')}`,
     );
     const wideGap: CoverageGap = {
-      gapStart: tenDays[0]!,
-      gapEnd: tenDays[9]!,
+      gapStart: elevenDays[0]!,
+      gapEnd: elevenDays[9]!,
       missingTradingDays: 10,
       position: 'internal',
     };
-    const symbolDates = new Map([['BK', new Set(tenDays.slice(0, 9))]]);
+    const symbolDates = new Map([['BK', new Set(elevenDays.slice(0, 9))]]);
     expect(
-      findTransitionPredecessor(wideGap, ['BK'], symbolDates, tenDays, 0.9),
+      findTransitionPredecessor(
+        wideGap,
+        ['BK'],
+        symbolDates,
+        elevenDays,
+        0.9,
+        0.1,
+      ),
     ).toBe('BK');
   });
 });

@@ -380,6 +380,65 @@ describe('COVERAGE_GAP — ticker transition', () => {
     expect(issue?.severity).toBe('error');
     expect(report.summary.symbolsWithErrors).toBe(1);
   });
+
+  // Adjacency guard (TODO/28 step 1): `removed_at` means "deindexed from the
+  // S&P 500," NOT "delisted" — a retired symbol like AAL can still be trading
+  // with a full current history and so coincidentally cover any recent gap.
+  // It must NOT be accepted as a predecessor: it never goes dark at the handoff.
+  it('keeps the error when a retired-but-still-trading symbol covers the gap', async () => {
+    await seedSymbol('BNY');
+    await insertBar('BNY', tradingDay(0)); // Mon
+    await insertBar('BNY', tradingDay(4)); // Fri — Tue–Thu missing = internal gap
+    // AAL: retired (deindexed) but still trading — covers the gap AND keeps
+    // printing through Friday (past the gap), so it is not a true predecessor.
+    await seedSymbol('AAL', true, null, new Date(T0 + 4 * DAY_MS));
+    for (const dayOff of [1, 2, 3, 4]) {
+      await insertBar('AAL', tradingDay(dayOff));
+    }
+
+    const report = await runAudit(
+      pool,
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
+    );
+    const issue = report.symbols['BNY']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect(issue?.severity).toBe('error');
+    expect(report.summary.symbolsWithErrors).toBe(1);
+  });
+
+  // DoD step 1 #2: with BOTH the real predecessor (BK, went dark at the handoff)
+  // and a still-trading deindexed coincidental cover (AAL) present, the gap
+  // downgrades via BK — and is attributed to BK, not AAL (alphabetically first).
+  it('attributes the downgrade to the dark predecessor (BK), not a still-trading cover (AAL)', async () => {
+    await seedSymbol('BNY');
+    await insertBar('BNY', tradingDay(0)); // Mon
+    await insertBar('BNY', tradingDay(4)); // Fri — Tue–Thu missing = internal gap
+    // BK: real predecessor — covers Tue–Thu and stops (no Friday bar).
+    await seedSymbol('BK', true, null, new Date(T0 + 4 * DAY_MS));
+    for (const dayOff of [1, 2, 3]) {
+      await insertBar('BK', tradingDay(dayOff));
+    }
+    // AAL: deindexed but still trading — also covers Tue–Thu, but trades Friday.
+    await seedSymbol('AAL', true, null, new Date(T0 + 4 * DAY_MS));
+    for (const dayOff of [1, 2, 3, 4]) {
+      await insertBar('AAL', tradingDay(dayOff));
+    }
+
+    const report = await runAudit(
+      pool,
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
+    );
+    const issue = report.symbols['BNY']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect(issue?.severity).toBe('warning');
+    expect(
+      (issue?.detail as { transitionPredecessor?: string })
+        .transitionPredecessor,
+    ).toBe('BK');
+    expect(report.summary.symbolsWithErrors).toBe(0);
+  });
 });
 
 // ─── EXCLUDED (data_status = 'incomplete') ────────────────────────────────────

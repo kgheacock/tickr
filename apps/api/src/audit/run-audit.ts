@@ -128,24 +128,47 @@ export type CoverageGap = {
   position: GapPosition;
 };
 
-// When an active symbol has an internal/trailing coverage gap, the missing
-// window can be a ticker transition rather than data loss. On a rename
-// (e.g. BK → BNY) the price source serves the pre-transition bars only under
-// the now-retired predecessor symbol; the successor genuinely cannot fetch them
-// under its own ticker, so re-backfilling will never fill the hole. We detect
-// this by checking whether a retired symbol (universe_symbol.removed_at set) has
-// bars covering (nearly) the whole gap window, and if so downgrade the error to
-// a warning — mirroring the leading-gap (late-listing) rule. Requiring a retired
-// sibling to cover this fraction of the gap's trading days keeps a genuine
-// internal hole on a live symbol an error: ordinary data loss has no retired
-// predecessor holding exactly those days.
+// When an active symbol has an internal coverage gap, the missing window can be
+// a ticker transition rather than data loss. On a rename (e.g. BK → BNY) the
+// price source serves the pre-transition bars only under the now-retired
+// predecessor symbol; the successor genuinely cannot fetch them under its own
+// ticker, so re-backfilling will never fill the hole. We detect this by checking
+// whether a retired symbol (universe_symbol.removed_at set) has bars covering
+// (nearly) the whole gap window, and if so downgrade the error to a warning —
+// mirroring the leading-gap (late-listing) rule.
 export const TRANSITION_COVERAGE_FRACTION = 0.9;
 
+// Coverage alone is far too loose to identify a predecessor. `removed_at` means
+// "dropped from the S&P 500 index," NOT "delisted" — most such symbols still
+// trade with full, current histories (measured on prod: 47 of 63 deindexed
+// symbols cover ≥90% of any recent window). So a still-trading deindexed name
+// like AAL coincidentally "covers" almost any gap and would silently defeat the
+// audit's main data-loss guard.
+//
+// The distinguishing signal is adjacency: a *genuine* predecessor goes dark at
+// the handoff — BK stops printing bars where BNY lights up — whereas a merely
+// deindexed sibling keeps printing straight through and past the gap. We
+// therefore require a candidate to cover at most this fraction of the expected
+// trading days *after* the gap ends. BK (newest bar ≈ gapEnd) covers ~0% of the
+// post-gap window and passes; AAL (trading to today) covers ~100% and is
+// rejected. A small non-zero fraction tolerates a brief, imprecise handoff
+// overlap without admitting a still-trading symbol — and, being a fraction of
+// the post-gap window rather than an absolute day count, it separates the two
+// cases independent of the audit window's length.
+export const TRANSITION_CONTINUATION_FRACTION = 0.1;
+
 /**
- * Returns the retired symbol whose bars cover >= coverageFraction of the gap's
- * trading days, or null. A non-null result identifies a ticker transition: the
- * missing bars exist only under a now-retired predecessor symbol, so the gap is
- * not recoverable data loss on the active successor.
+ * Returns the retired predecessor symbol of a ticker transition, or null.
+ *
+ * A candidate qualifies when it (a) covers >= coverageFraction of the gap's
+ * trading days AND (b) "goes dark" at the handoff — covers <= continuationFraction
+ * of the expected trading days *after* the gap (rejecting still-trading,
+ * merely-deindexed symbols whose histories continue past the gap). Fails closed:
+ * if no candidate or more than one candidate qualifies, or there are no post-gap
+ * days to confirm the predecessor went dark (e.g. a trailing gap), returns null
+ * so the gap stays an error. A non-null result identifies a rename: the missing
+ * bars exist only under the now-retired predecessor, so the gap is not
+ * recoverable data loss on the active successor.
  */
 export function findTransitionPredecessor(
   gap: CoverageGap,
@@ -153,18 +176,32 @@ export function findTransitionPredecessor(
   symbolDates: Map<string, Set<string>>,
   expectedDays: readonly string[],
   coverageFraction: number,
+  continuationFraction: number,
 ): string | null {
   const gapDays = expectedDays.filter(
     (d) => d >= gap.gapStart && d <= gap.gapEnd,
   );
   if (gapDays.length === 0) return null;
+  // Days after the gap: a true predecessor should be absent here (it went dark).
+  // With none, we cannot confirm adjacency, so fail closed.
+  const postGapDays = expectedDays.filter((d) => d > gap.gapEnd);
+  if (postGapDays.length === 0) return null;
+
+  const matches: string[] = [];
   for (const candidate of retiredSymbols) {
     const dates = symbolDates.get(candidate);
     if (!dates) continue;
     const covered = gapDays.reduce((n, d) => (dates.has(d) ? n + 1 : n), 0);
-    if (covered / gapDays.length >= coverageFraction) return candidate;
+    if (covered / gapDays.length < coverageFraction) continue;
+    const continued = postGapDays.reduce(
+      (n, d) => (dates.has(d) ? n + 1 : n),
+      0,
+    );
+    if (continued / postGapDays.length > continuationFraction) continue;
+    matches.push(candidate);
   }
-  return null;
+  // A unique predecessor or nothing — an ambiguous multi-match fails closed.
+  return matches.length === 1 ? matches[0]! : null;
 }
 
 /** Finds runs of missing trading days >= gapThreshold in length. */
@@ -406,14 +443,21 @@ export async function runAudit(
       }
       // ...unless a retired predecessor covers the gap window: a ticker
       // transition (rename), where the missing bars live only under the old
-      // symbol and can't be fetched under this one. Not data loss → warn.
-      const predecessor = findTransitionPredecessor(
-        gap,
-        retiredSymbols,
-        symbolDates,
-        expectedDays,
-        TRANSITION_COVERAGE_FRACTION,
-      );
+      // symbol and can't be fetched under this one. Not data loss → warn. Only
+      // an internal gap can be a rename — a trailing gap on a live successor is
+      // ingestion stall (the successor is the current ticker and would still be
+      // printing today), so it always stays an error.
+      const predecessor =
+        gap.position === 'internal'
+          ? findTransitionPredecessor(
+              gap,
+              retiredSymbols,
+              symbolDates,
+              expectedDays,
+              TRANSITION_COVERAGE_FRACTION,
+              TRANSITION_CONTINUATION_FRACTION,
+            )
+          : null;
       if (predecessor !== null) {
         addWarning(audits, symbol, {
           code: CODE.COVERAGE_GAP,
