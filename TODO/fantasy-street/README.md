@@ -30,7 +30,7 @@ user stories — same slicing rationale as v1.
 | 08 | [Season & playoffs](08-season-and-playoffs.md) | 06 | done ([#74](https://github.com/kgheacock/tickr/pull/74)) |
 | 09 | [Dashboard & live following](09-dashboard.md) | 04, 05, 06 | done ([#76](https://github.com/kgheacock/tickr/pull/76)) |
 | 10 | [Auto-managers (bots)](10-auto-managers.md) | 03, 04 | done ([#77](https://github.com/kgheacock/tickr/pull/77)) |
-| 11 | [Reminders & recaps](11-reminders-and-recaps.md) | 04, 05, 06 | pending |
+| 11 | [Reminders & recaps](11-reminders-and-recaps.md) | 04, 05, 06 | done ([#79](https://github.com/kgheacock/tickr/pull/79)) |
 | 12 | [Commissioner & admin tools](12-commissioner-and-admin.md) | 01 | pending |
 | 13 | [QA release review (PR #70 → main)](13-qa-release-review.md) | 01–07 | in-progress ([#70](https://github.com/kgheacock/tickr/pull/70)) |
 
