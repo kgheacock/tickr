@@ -1,0 +1,110 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "version": "1.0.0",
+    "title": "Finnhub API",
+    "description": "Subset of the Finnhub REST API used by tickr. One-time migration of the upstream Swagger 2.0 dump (the ~577 KB schema/finnhub.io/swagger.json) to OpenAPI 3.0, trimmed to the endpoints tickr actually consumes. Only GET /quote is retained: on the free plan it is the sole usable stock-price endpoint (GET /stock/candle returns HTTP 403 NOT_AUTHORIZED on free, so no intraday candles are available). Docs: https://finnhub.io/docs/api."
+  },
+  "servers": [
+    {
+      "url": "https://finnhub.io/api/v1"
+    }
+  ],
+  "security": [
+    {
+      "api_key": []
+    }
+  ],
+  "paths": {
+    "/quote": {
+      "get": {
+        "operationId": "quote",
+        "summary": "Quote",
+        "description": "Real-time quote data for US stocks. tickr uses this to capture each session's official close early: after the 16:00-ET close, `c` (current price) settles to the official regular-session close and does NOT drift with after-hours (empirically verified — value frozen across repeated post-close polls), which is the property the early weekly-close capture (TODO/30) relies on. Day OHLC (`o`/`h`/`l`), previous close (`pc`), and a quote timestamp (`t`) are also returned. Constant polling is discouraged by Finnhub; tickr polls once per symbol per post-close run under a token bucket.",
+        "tags": [
+          "Default"
+        ],
+        "parameters": [
+          {
+            "name": "symbol",
+            "in": "query",
+            "description": "Symbol. tickr passes its stored symbol as-is; Finnhub accepts both dotted and dashed class shares (e.g. BRK.B and BRK-B resolve identically).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "api_key": {
+        "type": "apiKey",
+        "name": "token",
+        "in": "query",
+        "description": "Pass your Finnhub API key as the `token` query parameter: ?token=<FINNHUB_API_KEY>. Read from env; never logged."
+      }
+    },
+    "schemas": {
+      "Quote": {
+        "type": "object",
+        "properties": {
+          "o": {
+            "description": "Open price of the day",
+            "type": "number",
+            "format": "float"
+          },
+          "h": {
+            "description": "High price of the day",
+            "type": "number",
+            "format": "float"
+          },
+          "l": {
+            "description": "Low price of the day",
+            "type": "number",
+            "format": "float"
+          },
+          "c": {
+            "description": "Current price. After the regular-session close, this holds the official close.",
+            "type": "number",
+            "format": "float"
+          },
+          "pc": {
+            "description": "Previous close price",
+            "type": "number",
+            "format": "float"
+          },
+          "d": {
+            "description": "Change",
+            "type": "number",
+            "format": "float"
+          },
+          "dp": {
+            "description": "Percent change",
+            "type": "number",
+            "format": "float"
+          },
+          "t": {
+            "description": "Quote timestamp (UNIX seconds) of the last update. Present in the live response though absent from the upstream Swagger schema; retained here because the capture job uses it to confirm the quote belongs to the just-closed session.",
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      }
+    }
+  }
+}
