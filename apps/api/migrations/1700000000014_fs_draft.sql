@@ -1,7 +1,8 @@
 -- Fantasy Street item 03: the live snake draft.
 --
 -- Two tables here; the third (fs_roster_entry, the ownership table) was created
--- in 1700000000007 because FS-02 must read it — FS-03 only *writes* to it. See
+-- in 1700000000013_fs_classification because FS-02 must read it — FS-03 only
+-- *writes* to it. See
 -- TODO/fantasy-street/03-live-draft.md.
 --
 --   fs_draft       — one row per league: the draft's lifecycle + pick clock.

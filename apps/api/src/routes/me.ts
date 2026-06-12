@@ -26,7 +26,26 @@ export async function registerMeRoute(fastify: FastifyInstance): Promise<void> {
     ]);
 
     const user = userRow.rows[0]!;
-    const leagues = await getUserLeagues(userId, pool);
+
+    // `/me` is a core platform endpoint (login bootstrap), so it must not hard
+    // depend on Fantasy Street being present. If the FS schema is absent —
+    // rolled back independently, or not yet migrated — degrade to no leagues
+    // rather than 500 the whole response. 42P01 = undefined_table; any other
+    // error is a real fault and still propagates.
+    let leagues: Awaited<ReturnType<typeof getUserLeagues>> = [];
+    try {
+      leagues = await getUserLeagues(userId, pool);
+    } catch (err) {
+      if ((err as { code?: string }).code === '42P01') {
+        req.log.warn(
+          { err: String(err) },
+          'fantasy tables unavailable — returning /me without leagues',
+        );
+      } else {
+        throw err;
+      }
+    }
+
     return {
       user: {
         id: user.id,

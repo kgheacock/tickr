@@ -1,6 +1,6 @@
 # FS-13 · QA release review — PR #70 (Fantasy Street → `main`)
 
-**Status:** `in-progress` (review open) · **Epic:** [Fantasy Street](README.md)
+**Status:** `done` (findings resolved 2026-06-11) · **Epic:** [Fantasy Street](README.md)
 **Role:** QA release lead · **Reviewed:** 2026-06-11
 **PR:** [#70 — Fantasy street](https://github.com/kgheacock/tickr/pull/70)
 (`fantasy-street` → `main`, +11,199 / −65, 77 files)
@@ -12,11 +12,15 @@ release decision can be made from one place.
 
 ## Verdict
 
-**❌ BLOCK — do not merge/deploy as-is.** One release-blocking defect (F1) aborts
-the production migration before any FS table is created. CI is green and a fresh
-DB migrates cleanly, so the defect is invisible to the existing pipeline — it
-only manifests on the prod *upgrade* path. F1 must be fixed; F2/F3 are
-merge-at-discretion with follow-ups.
+**❌ BLOCK → ✅ RESOLVED (2026-06-11).** The original verdict was block-on-merge
+because one release-blocking defect (F1) aborted the production migration before
+any FS table was created. CI is green and a fresh DB migrates cleanly, so the
+defect was invisible to the existing pipeline — it only manifested on the prod
+*upgrade* path. **F1 is now fixed and re-verified** on a scratch DB seeded to
+prod's applied state (see below); **F2** is degraded gracefully; **F3** is
+confirmed single-week MVP scope with a tracked follow-up. The branch was also
+brought up to date with `main` (intraday-live-tail merge, conflicts resolved in
+the worker scheduler).
 
 ## Findings
 
@@ -83,12 +87,25 @@ Goal: FS must not prevent non-FS platform features from shipping in parallel.
   number on every branch that will reach `main`, never backfill a gap.**
 - ⚠️ **F2 (`/me` coupling)** — the only platform endpoint now hard-depending on FS.
 
-## Next actions
+## Resolution (2026-06-11)
 
-- [ ] **F1** — author renumbers FS migration chain after `011`; re-run a
-      main-state migration test before re-requesting review. *(blocks merge)*
-- [ ] **F2** — make `/me` tolerant of FS absence (or feature-gate the `leagues`
-      field).
-- [ ] **F3** — confirm single-week MVP scope; open a follow-up for FS-06 week
-      derivation.
-- [ ] Re-review and flip this item to `done` once F1 is resolved and verified.
+- [x] **F1** — FS migration chain renumbered after `011`
+      (`012_fs_leagues … 018_fs_transactions`); duplicate `007` filename removed;
+      the stale "created in `…007`" comment in `014_fs_draft` repointed to
+      `013_fs_classification`. **Re-verified** by replaying the prod upgrade on a
+      scratch DB: applied prod's set (`000–005`, `007_symbol-metadata`, `011`),
+      then ran the full renumbered set with `--check-order` — clean apply through
+      `018_fs_transactions`, no `checkOrder` violation. A negative control
+      (injecting a `006`) still throws the original
+      `… is preceding already run migration 1700000000007_symbol-metadata`,
+      confirming the test detects interleaving.
+- [x] **F2** — `/me` now catches Postgres `42P01` (undefined_table) from
+      `getUserLeagues` and degrades to `leagues: []` with a warn log; any other
+      error still propagates. Platform login bootstrap no longer hard-depends on
+      FS schema.
+- [x] **F3** — single-week cron scope confirmed as intentional MVP and made
+      explicit in `scheduler.ts` (`currentWeek()` comment); multi-week
+      auto-advance tracked as a follow-up in
+      [06-matchups-and-standings](06-matchups-and-standings.md).
+- [x] Branch synced with `main`; scheduler merge conflict (intraday-live-tail vs
+      FS crons) resolved and `scheduler.test.ts` updated to the merged 9-cron set.
