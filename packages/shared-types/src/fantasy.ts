@@ -76,3 +76,11 @@ export type SeasonDetail = Schemas['SeasonDetail'];
 
 // --- Auto-managers / bots (item 10) ---
 export type AddBotsRequest = Schemas['AddBotsRequest'];
+
+// --- Reminders & recaps (item 11) ---
+export type Notification = Schemas['Notification'];
+export type NotificationKind = Notification['kind'];
+export type NotificationsResponse = Schemas['NotificationsResponse'];
+export type RecapSlot = Schemas['RecapSlot'];
+export type RecapLeader = Schemas['RecapLeader'];
+export type RecapPayload = Schemas['RecapPayload'];

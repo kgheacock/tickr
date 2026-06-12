@@ -5,12 +5,13 @@ import type {
   PricesResponse,
   DraftPick,
 } from '@tickr/shared-types';
-import type { WeeklyScore } from '@tickr/shared-types';
+import type { WeeklyScore, Notification } from '@tickr/shared-types';
 import {
   UNIVERSE_CHANNEL,
   PRICES_CHANNEL,
   draftChannel,
   matchupChannel,
+  notifyChannel,
 } from '../ws/topics.js';
 
 /**
@@ -280,4 +281,52 @@ export async function publishMatchupUpdated(
     provisional,
     scores,
   });
+}
+
+// --- Reminders & recaps (item 11) ---
+
+/**
+ * Push a freshly-written notification to its owner's live feed (FS-09). A WS
+ * gateway message on the per-user `ws:notify:{userId}` channel — the gateway
+ * keys the subscription off the authenticated connection, so this only ever
+ * reaches that one manager. Best-effort: the durable row is already committed,
+ * so a dropped push just means the feed updates on the next fetch.
+ */
+export async function publishNotification(
+  redis: Redis,
+  userId: string,
+  notification: Notification,
+): Promise<void> {
+  await publishMessage(redis, notifyChannel(userId), {
+    type: 'notification',
+    notification,
+  });
+}
+
+/**
+ * A league's weekly recaps were generated after the Friday settle. A plain
+ * domain event on its own Redis channel (not a WS gateway message), mirroring
+ * score.updated — the individual recap rows are pushed per-user via
+ * publishNotification; this is the league-level signal. No consumer yet.
+ */
+export const RECAP_READY_CHANNEL = 'fs:recap:ready';
+
+export interface RecapReadyEvent {
+  type: 'recap.ready';
+  leagueId: string;
+  season: number;
+  week: number;
+}
+
+export async function publishRecapReady(
+  redis: Redis,
+  event: Omit<RecapReadyEvent, 'type'>,
+): Promise<void> {
+  await redis.publish(
+    RECAP_READY_CHANNEL,
+    JSON.stringify({
+      type: 'recap.ready',
+      ...event,
+    } satisfies RecapReadyEvent),
+  );
 }

@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom';
 import { managerLabel } from './api';
 import { useLeagueContext } from './FantasyLayout';
 import { fmtPoints } from './points';
+import { NotificationsFeed } from './NotificationsFeed';
 import styles from './Dashboard.module.css';
 
 export function Dashboard() {
@@ -102,6 +103,8 @@ export function Dashboard() {
           {lineup?.locked ? 'View team →' : 'Set lineup →'}
         </Link>
       </section>
+
+      <NotificationsFeed leagueId={league.id} members={members} />
     </div>
   );
 }

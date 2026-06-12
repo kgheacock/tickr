@@ -13,6 +13,7 @@
  *   …/schedule|matchups|standings  head-to-head schedule & standings (item 06)
  *   …/waivers|trades               mid-season add/drop & trades (item 07)
  *   …/seasons                      season lifecycle, playoffs & history (item 08)
+ *   …/notifications                reminders & recaps feed (item 11)
  */
 import type { FastifyInstance } from 'fastify';
 import { registerCreateLeagueRoute } from './create.js';
@@ -30,6 +31,7 @@ import { registerMatchupRoutes } from './matchups.js';
 import { registerWaiverRoutes } from './waivers.js';
 import { registerTradeRoutes } from './trades.js';
 import { registerSeasonRoutes } from './seasons.js';
+import { registerNotificationRoutes } from './notifications.js';
 
 export async function registerLeaguesRoutes(
   fastify: FastifyInstance,
@@ -49,4 +51,5 @@ export async function registerLeaguesRoutes(
   registerWaiverRoutes(fastify);
   registerTradeRoutes(fastify);
   registerSeasonRoutes(fastify);
+  registerNotificationRoutes(fastify);
 }

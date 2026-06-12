@@ -1557,6 +1557,115 @@ components:
           minimum: 1
           description: Number of auto-managers to add, up to the open-slot count
 
+    # --- Fantasy Street: reminders & recaps (item 11) ---
+
+    Notification:
+      type: object
+      description: >-
+        One persisted, in-app notification for a manager. `kind` selects the
+        payload shape: lineup_reminder/draft_reminder carry simple context,
+        recap carries a RecapPayload. Surfaced on the FS-09 dashboard feed and
+        pushed live over WS.
+      required: [id, leagueId, kind, payload, createdAt, readAt]
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        kind:
+          type: string
+          enum: [lineup_reminder, draft_reminder, recap]
+        payload:
+          type: object
+          additionalProperties: true
+          description: Kind-specific body; recap rows hold a RecapPayload
+        createdAt:
+          type: string
+          format: date-time
+        readAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the manager marked it read, else null
+
+    NotificationsResponse:
+      type: object
+      description: A manager's notifications for a league, newest first
+      required: [notifications]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+
+    RecapSlot:
+      type: object
+      description: One started slot picked out for the recap (mover or blowup)
+      required: [slot, symbol, points]
+      properties:
+        slot:
+          type: string
+        symbol:
+          type: string
+        points:
+          type: number
+
+    RecapLeader:
+      type: object
+      description: A league high/low entry for the recap
+      required: [userId, totalPoints]
+      properties:
+        userId:
+          type: string
+        totalPoints:
+          type: number
+
+    RecapPayload:
+      type: object
+      description: >-
+        The post-settle weekly recap for one manager, composed from the FS-05
+        per-slot breakdown and the FS-06 settled matchup. `result` is the
+        head-to-head outcome (bye when the manager had no opponent).
+      required:
+        - season
+        - week
+        - result
+        - myScore
+        - oppScore
+        - oppUserId
+        - biggestMover
+        - biggestBlowup
+        - leagueHigh
+        - leagueLow
+      properties:
+        season:
+          type: integer
+        week:
+          type: integer
+        result:
+          type: string
+          enum: [win, loss, tie, bye]
+        myScore:
+          type: number
+        oppScore:
+          type: ['number', 'null']
+          description: Opponent's total; null on a bye
+        oppUserId:
+          type: ['string', 'null']
+        biggestMover:
+          oneOf:
+            - $ref: '#/components/schemas/RecapSlot'
+            - type: 'null'
+          description: Highest-scoring started slot, or null if none scored
+        biggestBlowup:
+          oneOf:
+            - $ref: '#/components/schemas/RecapSlot'
+            - type: 'null'
+          description: Most-negative started slot, or null if none scored
+        leagueHigh:
+          $ref: '#/components/schemas/RecapLeader'
+        leagueLow:
+          $ref: '#/components/schemas/RecapLeader'
+
 paths:
   # --- Auth & session ---
 

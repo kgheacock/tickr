@@ -16,6 +16,7 @@ import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
 import { computeLeagueWeek, settleLeagueWeek } from '../fantasy/score.js';
 import { settleMatchups } from '../fantasy/settle.js';
+import { generateLeagueRecaps } from '../fantasy/recap.js';
 import {
   publishScoreUpdated,
   publishMatchupUpdated,
@@ -194,6 +195,20 @@ export async function runWeeklyScoring(
     if (!provisional) {
       const settle = await settleMatchups(pool, leagueId, opts.week, season);
       champion = settle.championUserId;
+      // FS-11: compose each manager's weekly recap from the just-settled
+      // scores + matchups. After settleMatchups so results are final;
+      // idempotent (upsert) so a re-score regenerates them cleanly. Best-effort
+      // and isolated: recaps are the lowest-criticality consumer, so a failure
+      // here must never abort the settle or block this/other leagues' publishes
+      // (the scores are already persisted) — log and carry on.
+      try {
+        await generateLeagueRecaps(pool, leagueId, season, opts.week, redis);
+      } catch (err) {
+        captureLog.warn(
+          { leagueId, week: opts.week, err: String(err) },
+          'recap generation failed — settle stands, recaps deferred',
+        );
+      }
     }
 
     if (redis) {

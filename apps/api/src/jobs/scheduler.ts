@@ -15,6 +15,7 @@ import { runClassifier } from '../fantasy/classify.js';
 import { lockLineups, isFirstTradingDayOfWeek } from '../fantasy/lock.js';
 import { runWeeklyScoring } from './scoring.js';
 import { runWaivers } from '../fantasy/waivers.js';
+import { runLineupReminders } from '../fantasy/reminders.js';
 import { pool } from '../db/pool.js';
 import { jobLogger } from '../log/logger.js';
 
@@ -34,6 +35,7 @@ const CLASSIFY_LOCK = 'fs:job:classify';
 const LINEUP_LOCK_LOCK = 'fs:job:lineup-lock';
 const SCORING_LOCK = 'fs:job:scoring';
 const WAIVER_LOCK = 'fs:job:waivers';
+const LINEUP_REMINDER_LOCK = 'fs:job:lineup-reminder';
 
 // Fixed UTC-5 (ET standard) offset, matching holidays.ts / lock.ts. The scoring
 // crons fire at ~21:35 UTC, well clear of the midnight boundary.
@@ -198,6 +200,29 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   });
 
+  // FS-11 lineup reminders: Sunday evening + each weekday morning before the
+  // 14:30 UTC lock. Nudges managers whose scoring-week lineup is still
+  // incomplete; deduped per (manager, week) at the DB so it fires once, and
+  // incompleteManagers skips already-locked lineups — so once a manager sets
+  // (or the week locks) the morning ticks go quiet. The weekday firings make it
+  // holiday-aware for free: a holiday Monday defers the lock, and the Tue/Wed
+  // morning nudge keeps reminding until the real open locks. Targets
+  // currentWeek() (MVP = 1), matching the lock/scoring crons.
+  const fireLineupReminders = (trigger: string): void => {
+    void withLock(redis, LINEUP_REMINDER_LOCK, async () => {
+      const result = await runLineupReminders(
+        pool,
+        { week: currentWeek() },
+        redis,
+      );
+      log('info', 'lineup reminders complete', { ...result, trigger });
+    }).catch((err: unknown) => {
+      log('error', 'lineup reminders failed', { err: String(err), trigger });
+    });
+  };
+  cron.schedule('0 0 18 * * 0', () => fireLineupReminders('sunday'));
+  cron.schedule('0 0 13 * * 1-5', () => fireLineupReminders('weekday-am'));
+
   // FS-05 weekly settle: Friday 21:35 UTC, after the close. runWeeklyScoring first
   // captures the just-closed bars for exactly the rostered symbols (main folded
   // the dedicated post-close append into the session-gated intraday tail, which
@@ -275,6 +300,6 @@ export function registerScheduledJobs(redis: Redis): void {
 
   log(
     'info',
-    'scheduler registered (off-hours backfill, intraday live tail, M/W/Sat universe refresh + metadata, alerts + classifier + lineup-lock + scoring + waivers)',
+    'scheduler registered (off-hours backfill, intraday live tail, M/W/Sat universe refresh + metadata, alerts + classifier + lineup-lock + scoring + waivers + lineup-reminders)',
   );
 }

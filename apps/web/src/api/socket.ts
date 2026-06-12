@@ -16,6 +16,8 @@ function topicKey(topic: WsTopic): string {
       return `matchup:${topic.leagueId}:${topic.week}`;
     case 'prices':
       return `prices:${[...topic.symbols].sort().join(',')}`;
+    case 'notifications':
+      return 'notifications';
   }
 }
 

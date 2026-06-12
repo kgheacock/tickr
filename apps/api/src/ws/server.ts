@@ -8,6 +8,7 @@ import { authenticateUpgrade, readSessionToken } from './auth.js';
 import { getSession } from '../auth/session.js';
 import {
   topicKey,
+  notifyTopicKey,
   channelToTopicKey,
   MAX_PRICE_SYMBOLS,
   type TopicKey,
@@ -186,11 +187,21 @@ export function attachWsGateway(
         return;
       }
     }
+    if (topic.kind === 'notifications') {
+      // The feed is implicitly the connection's own — keyed off the
+      // authenticated user, never a client-supplied id, so no manager can
+      // follow another's notifications.
+      conn.topics.add(notifyTopicKey(conn.userId));
+      return;
+    }
     conn.topics.add(topicKey(topic));
   }
 
   function handleUnsubscribe(conn: Connection, topic: WsTopic): void {
-    const key = topicKey(topic);
+    const key =
+      topic.kind === 'notifications'
+        ? notifyTopicKey(conn.userId)
+        : topicKey(topic);
     conn.topics.delete(key);
     if (topic.kind === 'prices') conn.priceSymbols.clear();
   }

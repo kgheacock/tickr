@@ -98,9 +98,11 @@ describe('registerScheduledJobs', () => {
     expect(exprs).toContain('0 35 21 * * 5'); // weekly settle: Friday close
     expect(exprs).toContain('0 35 21 * * 1-4'); // provisional scoring: Mon–Thu
     expect(exprs).toContain('0 45 21 * * 5'); // waiver run: Friday post-settle
+    expect(exprs).toContain('0 0 18 * * 0'); // lineup reminders: Sunday evening
+    expect(exprs).toContain('0 0 13 * * 1-5'); // lineup reminders: weekday morning
     // backfill, intraday, universe, alerts (post-close EOD cron dropped on main)
-    // + 5 Fantasy Street crons. Startup backfill is a direct call, not scheduled.
-    expect(mocks.schedule).toHaveBeenCalledTimes(9);
+    // + 7 Fantasy Street crons. Startup backfill is a direct call, not scheduled.
+    expect(mocks.schedule).toHaveBeenCalledTimes(11);
   });
 
   describe('backfill (off-hours only)', () => {
