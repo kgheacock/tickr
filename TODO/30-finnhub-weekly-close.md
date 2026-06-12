@@ -1,6 +1,6 @@
 # 30 — Finnhub early weekly-close capture
 
-> **Status:** pending • **Depends on:** 05, 13, 26 • **Consumer:** [FS-05 scoring](fantasy-street/05-scoring-and-shorting.md)
+> **Status:** pending • **Plan PR:** [#80](https://github.com/kgheacock/tickr/pull/80) • **Depends on:** 05, 13, 26 • **Consumer:** [FS-05 scoring](fantasy-street/05-scoring-and-shorting.md)
 
 ## Goal
 
