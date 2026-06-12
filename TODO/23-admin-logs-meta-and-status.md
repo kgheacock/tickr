@@ -6,6 +6,9 @@
 > commit** (linked to GitHub) and a **minimal backfill status bar** in the page
 > header, so an admin watching the logs can see *which build* is running and
 > whether the universe backfill is idle without leaving the page.
+>
+> _Update: the **backfill status bar** here was replaced by a worst-price-bar-lag
+> chip in [item 29](29-admin-logs-worst-lag.md); the commit chip is unchanged._
 
 ## Goal
 
