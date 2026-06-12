@@ -1545,6 +1545,18 @@ components:
           items:
             $ref: '#/components/schemas/Matchup'
 
+    # --- Fantasy Street: auto-managers / bots (item 10) ---
+
+    AddBotsRequest:
+      type: object
+      description: Fill `count` empty league slots with auto-managers (bots)
+      required: [count]
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          description: Number of auto-managers to add, up to the open-slot count
+
 paths:
   # --- Auth & session ---
 

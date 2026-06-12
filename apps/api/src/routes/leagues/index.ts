@@ -6,6 +6,7 @@
  *   PATCH  /leagues/:id        commissioner settings (forming only)
  *   POST   /leagues/:id/invites mint an invite (commissioner)
  *   POST   /leagues/:id/join   join via token / open policy
+ *   …/bots                     auto-managers / bots (item 10)
  *   …/draft                    live snake draft (item 03)
  *   …/lineup                   weekly starting lineup (item 04)
  *   …/scores                   weekly scoring & shorting (item 05)
@@ -21,6 +22,7 @@ import { registerInviteRoute } from './invites.js';
 import { registerJoinLeagueRoute } from './join.js';
 import { registerSettingsRoute } from './settings.js';
 import { registerPlayersRoutes } from './players.js';
+import { registerBotRoutes } from './bots.js';
 import { registerDraftRoutes } from './draft.js';
 import { registerLineupRoutes } from './lineup.js';
 import { registerScoreRoutes } from './scores.js';
@@ -39,6 +41,7 @@ export async function registerLeaguesRoutes(
   registerInviteRoute(fastify);
   registerJoinLeagueRoute(fastify);
   registerPlayersRoutes(fastify);
+  registerBotRoutes(fastify);
   registerDraftRoutes(fastify);
   registerLineupRoutes(fastify);
   registerScoreRoutes(fastify);
