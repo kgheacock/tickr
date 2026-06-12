@@ -109,3 +109,22 @@ Goal: FS must not prevent non-FS platform features from shipping in parallel.
       [06-matchups-and-standings](06-matchups-and-standings.md).
 - [x] Branch synced with `main`; scheduler merge conflict (intraday-live-tail vs
       FS crons) resolved and `scheduler.test.ts` updated to the merged 9-cron set.
+
+### Merge seam — FS scoring now sources the close from the intraday tail (F4, accepted)
+
+Main's intraday-live-tail refactor **removed** the dedicated 21:30 UTC
+session-update cron that the FS branch's weekly-settle (Fri 21:35) and
+provisional-scoring (Mon–Thu 21:35) were timed to read 5 min after. With it gone,
+the close bars come from the intraday live tail instead — but that tail is gated
+to the regular session (ends 16:00 ET) and a full ~500-symbol sweep can take
+~100 min, so Friday's 16:00 close bar is **not guaranteed** to be in the DB by
+the 21:35 settle. This does **not** corrupt scoring: settle/provisional read the
+close *at-or-before* the anchor (`returns.ts closeAtOrBefore`, `ts <= weekEnd`
+`ORDER BY ts DESC LIMIT 1`), so they resolve to the last available close (e.g.
+the ~15:55 ET bar) and the next session's trailing-window sweep self-heals any
+gap. Accepted for MVP; the scheduler comments were corrected to state this rather
+than assert a fresh post-close append.
+
+**Follow-up:** to settle off the *actual* close, add a near/post-close sweep for
+the FS settle path (or have the settle await the tail), tracked alongside the
+FS-06 week-derivation follow-up.
