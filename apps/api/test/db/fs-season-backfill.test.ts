@@ -3,10 +3,12 @@
  *
  * The season_id NOT NULL FK is added via the §5 nullable→backfill→NOT NULL
  * pattern against rows that predate FS-08. This test runs the migrations in two
- * phases — everything before 014, then 014 — with legacy rows seeded in between,
- * proving the backfill creates a season-1 row per league (status mirrored from
- * the league), points every legacy row's season_id at it, and that SET NOT NULL
- * succeeds against real data. 014 sorts last, so the split is clean.
+ * phases — everything before the fs_season migration, then the rest — with
+ * legacy rows seeded in between, proving the backfill creates a season-1 row per
+ * league (status mirrored from the league), points every legacy row's season_id
+ * at it, and that SET NOT NULL succeeds against real data. The fs_season
+ * migration is located by name (not "last file"), so later FS migrations (e.g.
+ * fs_bots) that sort after it don't shift the split.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
@@ -22,9 +24,14 @@ pg.types.setTypeParser(20, Number);
 const migrationsDir = fileURLToPath(
   new URL('../../migrations', import.meta.url),
 );
-const migrationCount = readdirSync(migrationsDir).filter((f) =>
-  f.endsWith('.sql'),
-).length;
+// Everything before the fs_season migration is "the schema as it stood before
+// FS-08"; locate it by name so migrations added after it don't move the split.
+const allMigrations = readdirSync(migrationsDir)
+  .filter((f) => f.endsWith('.sql'))
+  .sort();
+const beforeSeasonCount = allMigrations.findIndex((f) =>
+  f.includes('_fs_season'),
+);
 
 let container: StartedPostgreSqlContainer;
 let pool: pg.Pool;
@@ -87,12 +94,13 @@ async function seedLegacyLeague(status: string): Promise<string> {
 
 describe('migration 014 season-1 backfill', () => {
   it('creates a season row per league and rekeys every legacy row to it', async () => {
-    // Phase 1: every migration except 014 (it sorts last).
+    // Phase 1: every migration before fs_season (so legacy rows can be seeded
+    // without season_id).
     await runner({
       databaseUrl,
       dir: migrationsDir,
       direction: 'up',
-      count: migrationCount - 1,
+      count: beforeSeasonCount,
       migrationsTable: 'pgmigrations',
       verbose: false,
     });

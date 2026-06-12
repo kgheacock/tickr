@@ -73,3 +73,6 @@ export type Season = Schemas['Season'];
 export type SeasonStatus = Season['status'];
 export type SeasonsResponse = Schemas['SeasonsResponse'];
 export type SeasonDetail = Schemas['SeasonDetail'];
+
+// --- Auto-managers / bots (item 10) ---
+export type AddBotsRequest = Schemas['AddBotsRequest'];

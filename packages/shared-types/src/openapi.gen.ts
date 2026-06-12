@@ -1078,6 +1078,11 @@ export interface components {
             standings: components["schemas"]["Standing"][];
             playoffMatchups: components["schemas"]["Matchup"][];
         };
+        /** @description Fill `count` empty league slots with auto-managers (bots) */
+        AddBotsRequest: {
+            /** @description Number of auto-managers to add, up to the open-slot count */
+            count: number;
+        };
     };
     responses: {
         /** @description Unauthenticated */

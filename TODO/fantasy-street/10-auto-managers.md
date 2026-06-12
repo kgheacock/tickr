@@ -1,6 +1,6 @@
 # FS-10 · Auto-managers (bots)
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03, 04
+**Status:** `done` ([#77](https://github.com/kgheacock/tickr/pull/77)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03, 04
 
 ## User stories
 - As a commissioner, I want to fill empty spots with auto-managers, so that we
@@ -71,12 +71,26 @@ flagged as bots; they reuse the FS-03 auto-draft and FS-04 auto-fill paths.
   `packages/shared-types/src/fantasy.ts`.
 
 ## Definition of done
-- [ ] A commissioner fills empty spots with auto-managers up to league size; a
-      4-human league of 8 can play.
-- [ ] In the draft, bots pick instantly via FS-03 auto-draft (need-aware, legal,
-      invariant-respecting) without holding up the clock.
-- [ ] Each week bots field a complete, legal lineup via the FS-04 lock auto-fill;
-      no empty mandatory slots.
-- [ ] Bots are drafted, scored, matched, and ranked exactly like human managers.
-- [ ] No `bot` role or `algo` table is reintroduced; bots are seeded on the
-      system-user pattern.
+- [x] A commissioner fills empty spots with auto-managers up to league size; a
+      4-human league of 8 can play. (`addBots`, `POST /leagues/:id/bots`)
+- [x] In the draft, bots pick instantly via FS-03 auto-draft (need-aware, legal,
+      invariant-respecting) without holding up the clock. (`draftClock.arm` →
+      `pickWindowMs(isBot)` = 0; reuses `chooseAutoPick`/`autoPickOnClock`)
+- [x] Each week bots field a complete, legal lineup via the FS-04 lock auto-fill;
+      no empty mandatory slots. (no change — `lock.ts`/`autofill.ts` are
+      member-keyed with no human assumption)
+- [x] Bots are drafted, scored, matched, and ranked exactly like human managers.
+      (`schedule`/`standings`/`score`/`matchups` enumerate via `fs_league_member`,
+      no identity coupling)
+- [x] No `bot` role or `algo` table is reintroduced; bots are seeded on the
+      system-user pattern. (`fs_bot_member` + reserved `app_user`)
+
+## Outcome (PR [#77](https://github.com/kgheacock/tickr/pull/77))
+
+Shipped as designed. Deviations: the instant-pick gate lives in `draftClock.arm`
+(via the unit-tested pure `pickWindowMs`) rather than `draft.ts` — the spec's
+file list is a guide, and the "don't wait the timer for a bot" decision belongs
+in the clock shell. The clock *chaining* (arm → schedule(0) → onExpiry →
+broadcastPick → re-arm) is verified by reasoning, not a test (`draftClock.ts` has
+no Redis/timer harness). Migration numbered **021** (020 taken on the main side).
+Tests: `apps/api/test/fantasy/bots.test.ts` (8); full fantasy suite 137 passing.
