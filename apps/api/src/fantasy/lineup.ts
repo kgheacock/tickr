@@ -35,7 +35,7 @@ const VALID_SLOTS = new Set([
 export interface SetLineupInput {
   season?: number;
   week: number;
-  slots: { slot: string; slotIndex?: number; symbol: string }[];
+  slots: { slot: string; slotIndex?: number | undefined; symbol: string }[];
 }
 
 export interface LineupRow {

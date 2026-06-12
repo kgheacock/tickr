@@ -14,6 +14,7 @@
  *   …/waivers|trades               mid-season add/drop & trades (item 07)
  *   …/seasons                      season lifecycle, playoffs & history (item 08)
  *   …/notifications                reminders & recaps feed (item 11)
+ *   …/settings|members|admin       commissioner & admin tools (item 12)
  */
 import type { FastifyInstance } from 'fastify';
 import { registerCreateLeagueRoute } from './create.js';
@@ -32,6 +33,7 @@ import { registerWaiverRoutes } from './waivers.js';
 import { registerTradeRoutes } from './trades.js';
 import { registerSeasonRoutes } from './seasons.js';
 import { registerNotificationRoutes } from './notifications.js';
+import { registerAdminToolRoutes } from './admin.js';
 
 export async function registerLeaguesRoutes(
   fastify: FastifyInstance,
@@ -52,4 +54,5 @@ export async function registerLeaguesRoutes(
   registerTradeRoutes(fastify);
   registerSeasonRoutes(fastify);
   registerNotificationRoutes(fastify);
+  registerAdminToolRoutes(fastify);
 }

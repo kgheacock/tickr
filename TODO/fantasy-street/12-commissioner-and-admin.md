@@ -1,6 +1,6 @@
 # FS-12 · Commissioner & admin tools
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 01
+**Status:** `done` ([#81](https://github.com/kgheacock/tickr/pull/81)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 01
 
 ## User stories
 - As a commissioner, I want to manage settings, resolve scoring disputes, and
@@ -69,12 +69,30 @@ one.
   `apps/web/src/features/fantasy/` (commissioner panel).
 
 ## Definition of done
-- [ ] A commissioner edits the mid-season-safe settings; structural settings are
+- [x] A commissioner edits the mid-season-safe settings; structural settings are
       rejected once the draft has started.
-- [ ] A commissioner removes/replaces a member and can transfer the commissioner
+- [x] A commissioner removes/replaces a member and can transfer the commissioner
       role.
-- [ ] A dispute re-score for a week re-runs FS-05 → re-settles FS-06 matchups →
+- [x] A dispute re-score for a week re-runs FS-05 → re-settles FS-06 matchups →
       re-ranks standings, reproducibly; a non-commissioner is rejected.
-- [ ] Force-advance unblocks a stuck week / forces the playoff transition.
-- [ ] Every commissioner/admin action is recorded in the audit trail; the admin
+- [x] Force-advance unblocks a stuck week / forces the playoff transition.
+- [x] Every commissioner/admin action is recorded in the audit trail; the admin
       ops view shows per-league FS health.
+
+## Completion notes (PR #81)
+- Endpoints land under `routes/leagues/admin.ts`; domain logic in
+  `fantasy/admin.ts` + the audit trail in `fantasy/audit.ts` (migration
+  `1700000000023_fs_audit.sql` → `fs_audit_log`). Ops health is added to
+  `routes/admin/ops.ts` via `fantasyHealth()`.
+- Re-score anchors default to mirror the scheduler's live-week inputs exactly
+  (`nyseRegularCloseAnchor(currentFriday(now))` + −7d baseline), so a live-week
+  re-score reproduces identical scores; explicit anchors are accepted for a
+  historical dispute. `currentFriday` was lifted into `market/holidays.ts`.
+- **Mid-season-safe subset = name + join policy.** The spec floated pick timer /
+  waiver mode / notification cadence, but `fs_league` has no such columns;
+  adding them would be FS-03/07/11 scope creep, so they're out. Structural
+  edits (size, roster, season length) stay forming-only.
+- **Web commissioner panel deferred** to a follow-up. The DoD is entirely
+  API/audit/ops and is fully met; the endpoints + `@tickr/shared-types` types
+  are in place for the panel. Tracked for a later FS UI pass.
+- Tests: `apps/api/test/fantasy/commissioner.test.ts` (21).

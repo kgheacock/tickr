@@ -84,3 +84,10 @@ export type NotificationsResponse = Schemas['NotificationsResponse'];
 export type RecapSlot = Schemas['RecapSlot'];
 export type RecapLeader = Schemas['RecapLeader'];
 export type RecapPayload = Schemas['RecapPayload'];
+
+// --- Commissioner & admin tools (item 12) ---
+export type AuditEntry = Schemas['AuditEntry'];
+export type AuditResponse = Schemas['AuditResponse'];
+export type FantasyHealth = Schemas['FantasyHealth'];
+export type StuckWeek = Schemas['StuckWeek'];
+export type LeagueScoringRun = Schemas['LeagueScoringRun'];
