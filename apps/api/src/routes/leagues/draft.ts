@@ -25,6 +25,7 @@ import {
   getDraftState,
 } from '../../fantasy/draft.js';
 import { createDraftClock, type DraftClock } from '../../fantasy/draftClock.js';
+import { notifyDraftScheduled } from '../../fantasy/reminders.js';
 import { sendFantasyError } from './_shared.js';
 
 let clock: DraftClock | undefined;
@@ -52,6 +53,15 @@ export function registerDraftRoutes(fastify: FastifyInstance): void {
       if (!(await requireCommissioner(req, reply, req.params.id))) return;
       try {
         const state = await scheduleDraft(pool, req.params.id);
+        // FS-11: nudge every human member that the draft is set up. Deduped per
+        // draft, so a retried request never double-notifies. Best-effort — the
+        // schedule already committed, so a push failure must not 500 the route.
+        await notifyDraftScheduled(
+          pool,
+          req.params.id,
+          state.id,
+          getRedis(),
+        ).catch(() => undefined);
         return reply.code(201).send(state);
       } catch (err) {
         return sendFantasyError(reply, err);

@@ -1,6 +1,6 @@
 # FS-11 · Reminders & recaps
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 04, 05, 06
+**Status:** `done` ([#79](https://github.com/kgheacock/tickr/pull/79)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 04, 05, 06
 
 ## User stories
 - As a manager, I want a reminder each week to set my team before the Monday
@@ -77,12 +77,12 @@ spine + a persisted notification feed; email is deferred.
   `apps/web/src/features/fantasy/` (notification feed + recap view).
 
 ## Definition of done
-- [ ] A manager with an incomplete lineup gets one `lineup_reminder` before the
+- [x] A manager with an incomplete lineup gets one `lineup_reminder` before the
       Monday lock (not repeated every tick); a complete lineup gets none.
-- [ ] Members are reminded before a scheduled draft starts.
-- [ ] After the Friday settle, each manager has a `recap` with their result,
+- [x] Members are reminded before a scheduled draft starts.
+- [x] After the Friday settle, each manager has a `recap` with their result,
       biggest mover, and blowup drawn from the FS-05 breakdown; a re-score
       regenerates it cleanly.
-- [ ] Notifications are visible in the FS-09 feed and pushed live over WS.
-- [ ] No manager-facing reminder is routed through the ops Discord webhook;
+- [x] Notifications are visible in the FS-09 feed and pushed live over WS.
+- [x] No manager-facing reminder is routed through the ops Discord webhook;
       email is documented as deferred.

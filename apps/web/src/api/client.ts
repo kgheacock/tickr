@@ -20,6 +20,8 @@ import type {
   ScheduleResponse,
   StandingsResponse,
   SeasonsResponse,
+  Notification,
+  NotificationsResponse,
 } from '@tickr/shared-types';
 
 export class ApiClientError extends Error {
@@ -217,6 +219,20 @@ class ApiClient {
 
   getSeasons(id: string): Promise<SeasonsResponse> {
     return this.request<SeasonsResponse>('GET', `/leagues/${id}/seasons`);
+  }
+
+  getNotifications(id: string): Promise<NotificationsResponse> {
+    return this.request<NotificationsResponse>(
+      'GET',
+      `/leagues/${id}/notifications`,
+    );
+  }
+
+  markNotificationRead(id: string, nid: string): Promise<Notification> {
+    return this.request<Notification>(
+      'POST',
+      `/leagues/${id}/notifications/${nid}/read`,
+    );
   }
 
   logout(): Promise<void> {

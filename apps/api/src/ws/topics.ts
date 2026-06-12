@@ -26,7 +26,17 @@ export function topicKey(topic: WsTopic): TopicKey {
       // One topic per league week of live scores (FS-05); week is in the key so
       // following one week never leaks another.
       return `matchup:${topic.leagueId}:${topic.week}`;
+    case 'notifications':
+      // Per-user (FS-11): the gateway keys this off the connection's
+      // authenticated user via notifyTopicKey, never off the topic alone (which
+      // carries no user) — so this branch is unreachable by contract.
+      throw new Error('notifications topic is keyed per-connection');
   }
+}
+
+/** The per-user notification topic key (FS-11) — derived from the auth'd user. */
+export function notifyTopicKey(userId: string): TopicKey {
+  return `notify:${userId}`;
 }
 
 /**
@@ -43,6 +53,11 @@ export function draftChannel(leagueId: string): string {
 
 export function matchupChannel(leagueId: string, week: number): string {
   return `ws:matchup:${leagueId}:${week}`;
+}
+
+/** Per-user notification channel (FS-11): `ws:notify:{userId}`. */
+export function notifyChannel(userId: string): string {
+  return `ws:notify:${userId}`;
 }
 
 /** Pattern covering every gateway channel, for `psubscribe`. */
@@ -62,6 +77,10 @@ export function channelToTopicKey(channel: string): TopicKey | null {
   // ws:matchup:{leagueId}:{week} → matchup:{leagueId}:{week}
   if (channel.startsWith('ws:matchup:')) {
     return `matchup:${channel.slice('ws:matchup:'.length)}`;
+  }
+  // ws:notify:{userId} → notify:{userId} (FS-11, per-user feed)
+  if (channel.startsWith('ws:notify:')) {
+    return `notify:${channel.slice('ws:notify:'.length)}`;
   }
   return null;
 }

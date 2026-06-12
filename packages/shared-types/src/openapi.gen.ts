@@ -1083,6 +1083,56 @@ export interface components {
             /** @description Number of auto-managers to add, up to the open-slot count */
             count: number;
         };
+        /** @description One persisted, in-app notification for a manager. `kind` selects the payload shape: lineup_reminder/draft_reminder carry simple context, recap carries a RecapPayload. Surfaced on the FS-09 dashboard feed and pushed live over WS. */
+        Notification: {
+            id: string;
+            leagueId: string;
+            /** @enum {string} */
+            kind: "lineup_reminder" | "draft_reminder" | "recap";
+            /** @description Kind-specific body; recap rows hold a RecapPayload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the manager marked it read, else null
+             */
+            readAt: string | null;
+        };
+        /** @description A manager's notifications for a league, newest first */
+        NotificationsResponse: {
+            notifications: components["schemas"]["Notification"][];
+        };
+        /** @description One started slot picked out for the recap (mover or blowup) */
+        RecapSlot: {
+            slot: string;
+            symbol: string;
+            points: number;
+        };
+        /** @description A league high/low entry for the recap */
+        RecapLeader: {
+            userId: string;
+            totalPoints: number;
+        };
+        /** @description The post-settle weekly recap for one manager, composed from the FS-05 per-slot breakdown and the FS-06 settled matchup. `result` is the head-to-head outcome (bye when the manager had no opponent). */
+        RecapPayload: {
+            season: number;
+            week: number;
+            /** @enum {string} */
+            result: "win" | "loss" | "tie" | "bye";
+            myScore: number;
+            /** @description Opponent's total; null on a bye */
+            oppScore: number | null;
+            oppUserId: string | null;
+            /** @description Highest-scoring started slot, or null if none scored */
+            biggestMover: components["schemas"]["RecapSlot"] | null;
+            /** @description Most-negative started slot, or null if none scored */
+            biggestBlowup: components["schemas"]["RecapSlot"] | null;
+            leagueHigh: components["schemas"]["RecapLeader"];
+            leagueLow: components["schemas"]["RecapLeader"];
+        };
     };
     responses: {
         /** @description Unauthenticated */

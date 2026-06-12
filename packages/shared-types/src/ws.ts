@@ -1,11 +1,15 @@
 import type { UniverseResponse, PricesResponse, ApiError } from './index.js';
-import type { DraftPick, WeeklyScore } from './fantasy.js';
+import type { DraftPick, WeeklyScore, Notification } from './fantasy.js';
 
 export type WsTopic =
   | { kind: 'universe' } // corpus membership / backfill state changes
   | { kind: 'prices'; symbols: string[] } // new bars for the named symbols
   | { kind: 'draft'; leagueId: string } // live draft board + clock for a league
-  | { kind: 'matchup'; leagueId: string; week: number }; // live weekly scores
+  | { kind: 'matchup'; leagueId: string; week: number } // live weekly scores
+  // The signed-in user's own notification feed (FS-11). No params — the gateway
+  // keys it to the connection's authenticated user, so one manager can never
+  // follow another's feed; an unsubscribe targets the same implicit topic.
+  | { kind: 'notifications' };
 
 export type WsClientMessage =
   | { type: 'subscribe'; topic: WsTopic }
@@ -46,4 +50,9 @@ export type WsServerMessage =
       provisional: boolean;
       scores: WeeklyScore[];
     }
+  // --- Reminders & recaps (item 11) ---
+  // A new in-app notification for the connected manager (lineup/draft reminder
+  // or weekly recap), pushed the moment it is written so the FS-09 feed updates
+  // live without a refetch.
+  | { type: 'notification'; notification: Notification }
   | { type: 'error'; error: ApiError['error'] };

@@ -52,6 +52,13 @@ export type {
   SeasonStatus,
   SeasonsResponse,
   SeasonDetail,
+  AddBotsRequest,
+  Notification,
+  NotificationKind,
+  NotificationsResponse,
+  RecapSlot,
+  RecapLeader,
+  RecapPayload,
 } from './fantasy.js';
 
 import type { components } from './openapi.gen.js';

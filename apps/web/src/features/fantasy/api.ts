@@ -27,6 +27,7 @@ export const fantasyKeys = {
     ['fantasy', 'schedule', id, season] as const,
   standings: (id: string, season: number) =>
     ['fantasy', 'standings', id, season] as const,
+  notifications: (id: string) => ['fantasy', 'notifications', id] as const,
 };
 
 /** A manager's team name, falling back to display name, then a short id. */
