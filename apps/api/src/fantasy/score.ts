@@ -47,6 +47,8 @@ export interface ScoreWeekOptions {
   weekEnd: Date;
   /** Cap the "this" close for provisional in-week scoring; default `weekEnd`. */
   asOf?: Date;
+  /** Explicit prior-week close anchor (settle path); default `weekEnd − 7d`. */
+  baselineAt?: Date;
   /** True for an in-week provisional total (not yet settled at Friday close). */
   provisional?: boolean;
 }
@@ -94,7 +96,7 @@ export async function computeManagerScore(
   const breakdown: ScoreBreakdownItem[] = [];
   let total = 0;
   for (const s of started) {
-    const r = await weeklyReturn(db, s.symbol, opts.weekEnd, asOf);
+    const r = await weeklyReturn(db, s.symbol, opts.weekEnd, asOf, opts.baselineAt);
     const points = slotPoints(r.returnPct, s.is_short);
     total += points;
     breakdown.push({

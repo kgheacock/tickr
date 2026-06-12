@@ -5,7 +5,11 @@ import { runIntradayUpdate } from './intraday-update.js';
 import { runMetadataRefresh } from './refresh-metadata.js';
 import { tryAcquireLock, releaseLock } from './locks.js';
 import { seedUniverse } from '../db/seed-universe.js';
-import { isRegularSession, isNyseHoliday } from '../market/holidays.js';
+import {
+  isRegularSession,
+  isNyseHoliday,
+  nyseRegularCloseAnchor,
+} from '../market/holidays.js';
 import { runAlertCheck } from '../alerts/checker.js';
 import { runClassifier } from '../fantasy/classify.js';
 import { lockLineups, isFirstTradingDayOfWeek } from '../fantasy/lock.js';
@@ -194,21 +198,29 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   });
 
-  // FS-05 weekly settle: Friday 21:35 UTC, after the close. Scoring is
-  // point-in-time (returns.ts: close at-or-before the anchor, `ts <= weekEnd`),
-  // so it settles off the *last available* close rather than requiring Friday's
-  // 16:00 bar specifically — important since main folded the dedicated post-close
-  // append into the intraday live tail, which is gated to the regular session and
-  // may not have swept every symbol's final bar by 21:35 (a ~100-min sweep can end
-  // before the 15-min-delayed close lands). The next session's trailing-window
-  // sweep self-heals any gap; a holiday-short week likewise resolves to the last
-  // close, so no holiday skip here. See FS-13 ledger (post-close sourcing note).
+  // FS-05 weekly settle: Friday 21:35 UTC, after the close. runWeeklyScoring first
+  // captures the just-closed bars for exactly the rostered symbols (main folded
+  // the dedicated post-close append into the session-gated intraday tail, which
+  // may not have swept them all by now), then scores every league off the
+  // regular-session close (16:00 ET) — `weekEnd`/`baselineAt` below — so all
+  // symbols and the prior-week baseline are valued at the *same* point in the
+  // trading day rather than uneven after-hours prints. A holiday-short week
+  // resolves to the last close at-or-before the anchor, so no holiday skip here.
   cron.schedule('0 35 21 * * 5', () => {
     const now = new Date();
+    const friday = currentFriday(now);
+    // Anchor both endpoints at the regular-session close (16:00 ET), not the
+    // settle wall-clock — `price_bar` carries extended-hours bars, so a settle-time
+    // anchor would value each symbol at an uneven after-hours print. Baseline is
+    // re-derived zone-aware (not weekEnd − 7d) so a DST week stays at 16:00 ET.
+    const weekEnd = nyseRegularCloseAnchor(friday);
+    const baselineAt = nyseRegularCloseAnchor(
+      new Date(friday.getTime() - 7 * DAY_MS),
+    );
     void withLock(redis, SCORING_LOCK, async () => {
       const result = await runWeeklyScoring(
         pool,
-        { week: currentWeek(), weekEnd: currentFriday(now) },
+        { week: currentWeek(), weekEnd, baselineAt },
         redis,
       );
       log('info', 'weekly settle complete', result);
@@ -218,10 +230,10 @@ export function registerScheduledJobs(redis: Redis): void {
   });
 
   // FS-05 provisional scores: Mon–Thu 21:35 UTC, after the close. Best-effort
-  // in-week totals off the last available close (same point-in-time read as the
-  // settle — whatever the intraday tail has appended so far that day, no fresh
-  // append is forced); pushed as matchup.updated and never persisted. Skipped on
-  // a holiday (no fresh bars to score).
+  // in-week totals off the last available close (asOf = now, whatever the intraday
+  // tail has appended so far — no close capture or regular-close re-anchor here,
+  // unlike the Friday settle); pushed as matchup.updated and never persisted.
+  // Skipped on a holiday (no fresh bars to score).
   cron.schedule('0 35 21 * * 1-4', () => {
     const now = new Date();
     if (isNyseHoliday(now)) {

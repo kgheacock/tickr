@@ -49,18 +49,21 @@ async function closeAtOrBefore(
 
 /**
  * The week's percent return for `symbol`. `weekEnd` is the scoring week's Friday;
- * the baseline is the prior Friday (weekEnd − 7d). `asOf` (default `weekEnd`)
- * caps the "this" close for provisional in-week scoring. Returns null `returnPct`
- * when either close is unavailable so the scorer can credit 0 for that slot.
+ * the baseline is the prior Friday — by default `weekEnd − 7d`, but the settle
+ * passes an explicit `baselineAt` so the prior-week close is anchored zone-aware
+ * (a fixed 7-day subtraction shifts an hour across a DST boundary and would value
+ * the two endpoints at different points in the trading day). `asOf` (default
+ * `weekEnd`) caps the "this" close for provisional in-week scoring. Returns null
+ * `returnPct` when either close is unavailable so the scorer can credit 0.
  */
 export async function weeklyReturn(
   db: Pool | PoolClient,
   symbol: string,
   weekEnd: Date,
   asOf: Date = weekEnd,
+  baselineAt: Date = new Date(weekEnd.getTime() - WEEK_MS),
 ): Promise<WeeklyReturn> {
-  const baseline = new Date(weekEnd.getTime() - WEEK_MS);
-  const lastClose = await closeAtOrBefore(db, symbol, baseline);
+  const lastClose = await closeAtOrBefore(db, symbol, baselineAt);
   const thisClose = await closeAtOrBefore(db, symbol, asOf);
   if (lastClose == null || thisClose == null || lastClose <= 0) {
     return { lastClose, thisClose, returnPct: null };

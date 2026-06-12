@@ -110,21 +110,31 @@ Goal: FS must not prevent non-FS platform features from shipping in parallel.
 - [x] Branch synced with `main`; scheduler merge conflict (intraday-live-tail vs
       FS crons) resolved and `scheduler.test.ts` updated to the merged 9-cron set.
 
-### Merge seam — FS scoring now sources the close from the intraday tail (F4, accepted)
+### F4 (🟡, FIXED) — FS settle: uniform regular-close anchor + pre-settle capture
 
 Main's intraday-live-tail refactor **removed** the dedicated 21:30 UTC
-session-update cron that the FS branch's weekly-settle (Fri 21:35) and
-provisional-scoring (Mon–Thu 21:35) were timed to read 5 min after. With it gone,
-the close bars come from the intraday live tail instead — but that tail is gated
-to the regular session (ends 16:00 ET) and a full ~500-symbol sweep can take
-~100 min, so Friday's 16:00 close bar is **not guaranteed** to be in the DB by
-the 21:35 settle. This does **not** corrupt scoring: settle/provisional read the
-close *at-or-before* the anchor (`returns.ts closeAtOrBefore`, `ts <= weekEnd`
-`ORDER BY ts DESC LIMIT 1`), so they resolve to the last available close (e.g.
-the ~15:55 ET bar) and the next session's trailing-window sweep self-heals any
-gap. Accepted for MVP; the scheduler comments were corrected to state this rather
-than assert a fresh post-close append.
+session-update cron the FS weekly-settle (Fri 21:35) was timed to read 5 min
+after. Two problems surfaced:
 
-**Follow-up:** to settle off the *actual* close, add a near/post-close sweep for
-the FS settle path (or have the settle await the tail), tracked alongside the
-FS-06 week-derivation follow-up.
+1. **Uneven after-hours anchor.** `price_bar` carries extended-hours bars
+   (04:00–~20:00 ET). The settle anchored on its wall-clock time (Fri 21:35 UTC =
+   17:35 EDT), so `closeAtOrBefore` (`ts <= anchor`) picked whatever each symbol's
+   last *after-hours* bar was — verified on the dev DB to range 16:00–17:30 ET
+   across symbols (A→16:00, AAL→17:30, ABBV→17:00…). Different symbols were scored
+   at **different points in the day**, and the prior-week baseline (`weekEnd − 7d`)
+   drifted an hour across DST.
+2. **Missing close.** The session-gated tail stops at 16:00 ET and a ~100-min
+   sweep may not have landed every rostered symbol's final bar by settle.
+
+**Fix (this PR):**
+- `nyseRegularCloseAnchor()` (DST-aware) anchors *both* endpoints at the
+  regular-session close (16:00 ET → 15:45 ET bar), uniformly for every symbol;
+  baseline is re-derived zone-aware so a DST week stays 16:00-ET-to-16:00-ET.
+  Verified on the dev DB: the new anchor selects the 15:45 ET bar for all symbols.
+- `runWeeklyScoring` captures the just-closed bars for exactly the **rostered**
+  symbols (bounded, dozens) before scoring, so the close is present for all.
+- Settle-only; the provisional path (best-effort, never persisted) is unchanged.
+- DST anchor unit-tested (`test/market/holidays.test.ts`).
+
+The user accepted up to ~2h of settle lag provided the *same period is compared
+across all* — the capture + regular-close anchor deliver exactly that.
