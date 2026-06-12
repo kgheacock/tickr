@@ -1,6 +1,11 @@
 # 28 — Harden the audit's ticker-transition awareness
 
-> **Status:** pending • **Depends on:** 19, 25
+> **Status:** in progress (Steps 1 & 2 landed) • **Depends on:** 19, 25
+>
+> **Progress:** Steps 1 (adjacency filter) and 2 (coverage high-water-mark,
+> table `symbol_coverage_watermark`, migration `…020`) implemented in
+> `apps/api/src/audit/run-audit.ts` — [PR #75](https://github.com/kgheacock/tickr/pull/75).
+> Step 3 (CIK lineage) is still pending and will ship as its own PR.
 
 ## Goal
 
@@ -116,20 +121,33 @@ not CIK — track that separately if/when it bites.
 
 ## Definition of done
 
-- [ ] **Step 1:** A still-trading deindexed symbol (`removed_at` set, current
+- [x] **Step 1:** A still-trading deindexed symbol (`removed_at` set, current
       bars) no longer satisfies `findTransitionPredecessor`; BK still does for
-      BNY. Unit test covers the AAL-style rejection.
+      BNY. Unit test covers the AAL-style rejection (plus ambiguous-match and
+      trailing-gap fail-closed cases).
 - [ ] **Step 1:** Re-running the audit on prod data keeps `symbolsWithErrors = 0`
       (BNY still downgrades via BK), with BNY's `transitionPredecessor` now `BK`,
-      not `AAL`.
-- [ ] **Step 2:** A symbol whose stored coverage drops below its recorded
-      high-water-mark produces a distinct regression **error**; a clean re-run
-      and the BNY transition do not.
-- [ ] **Step 2:** Watermark is scoped so intentional retention/downsampling does
-      not false-positive.
+      not `AAL`. _Verified via an integration fixture matching the documented
+      prod geometry (BK goes dark at `gapEnd`; AAL trades past it); the live
+      prod re-run is pending and is structurally covered by the deploy's
+      pre-migration audit gate, which fails closed (re-flags BNY) if the
+      assumed geometry is wrong._
+- [x] **Step 2:** A symbol whose stored coverage drops below its recorded
+      high-water-mark produces a distinct regression **error** (`COVERAGE_REGRESSION`);
+      a clean re-run and the BNY transition do not. Integration tests cover all
+      three, plus a monotonic-mark guard (a regression run does not rebase the
+      baseline down).
+- [x] **Step 2:** Watermark is scoped so intentional retention/downsampling does
+      not false-positive: compared as a covered/expected **ratio** (rolling-window
+      trading-day jitter never moves a fully-covered symbol off 1.0); counted over
+      the audit **window** (policy-aged bars pruned outside it aren't counted); and
+      on distinct trading **days** (intra-day downsampling leaves the day count
+      unchanged). Scoped to the playable corpus, so excluded symbols aren't marked.
 - [ ] **Step 3:** `universe_symbol.cik` is populated by the metadata refresh and
       survives a symbol's retirement; BK's CIK is backfilled.
 - [ ] **Step 3:** Transition downgrades require a shared CIK; a same-window
       coincidental cover with a *different* CIK stays an **error**.
-- [ ] The fail-open behaviour from PR #71 is gone: a missing/ambiguous
-      predecessor leaves the gap as an **error** (fail closed).
+- [x] The fail-open behaviour from PR #71 is gone: a missing/ambiguous
+      predecessor leaves the gap as an **error** (fail closed). _Step 1:
+      multi-match and trailing-gap (no post-gap days to confirm a handoff) both
+      return `null` → error._

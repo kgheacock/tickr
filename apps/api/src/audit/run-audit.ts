@@ -6,6 +6,7 @@ import { isNyseHoliday } from '../market/holidays.js';
 export const CODE = {
   NO_BARS: 'NO_BARS',
   COVERAGE_GAP: 'COVERAGE_GAP',
+  COVERAGE_REGRESSION: 'COVERAGE_REGRESSION',
   OHLC_VIOLATION: 'OHLC_VIOLATION',
   DUPLICATE_BAR: 'DUPLICATE_BAR',
   INTRADAY_GAP: 'INTRADAY_GAP',
@@ -52,6 +53,14 @@ export interface AuditConfig {
   sessionOpenEt: string;
   /** NYSE regular-session close as an ET wall-clock time (HH:MM). Defaults to 16:00. */
   sessionCloseEt: string;
+  /**
+   * Fractional drop in a symbol's covered/expected ratio, below its recorded
+   * high-water-mark, that is tolerated before flagging COVERAGE_REGRESSION.
+   * A fully-covered symbol sits at ratio 1.0 in every window, so this absorbs
+   * only floating-point noise — keep it small (e.g. 0.02). See the
+   * symbol_coverage_watermark migration.
+   */
+  watermarkTolerance: number;
 }
 
 export interface AuditReport {
@@ -128,24 +137,47 @@ export type CoverageGap = {
   position: GapPosition;
 };
 
-// When an active symbol has an internal/trailing coverage gap, the missing
-// window can be a ticker transition rather than data loss. On a rename
-// (e.g. BK → BNY) the price source serves the pre-transition bars only under
-// the now-retired predecessor symbol; the successor genuinely cannot fetch them
-// under its own ticker, so re-backfilling will never fill the hole. We detect
-// this by checking whether a retired symbol (universe_symbol.removed_at set) has
-// bars covering (nearly) the whole gap window, and if so downgrade the error to
-// a warning — mirroring the leading-gap (late-listing) rule. Requiring a retired
-// sibling to cover this fraction of the gap's trading days keeps a genuine
-// internal hole on a live symbol an error: ordinary data loss has no retired
-// predecessor holding exactly those days.
+// When an active symbol has an internal coverage gap, the missing window can be
+// a ticker transition rather than data loss. On a rename (e.g. BK → BNY) the
+// price source serves the pre-transition bars only under the now-retired
+// predecessor symbol; the successor genuinely cannot fetch them under its own
+// ticker, so re-backfilling will never fill the hole. We detect this by checking
+// whether a retired symbol (universe_symbol.removed_at set) has bars covering
+// (nearly) the whole gap window, and if so downgrade the error to a warning —
+// mirroring the leading-gap (late-listing) rule.
 export const TRANSITION_COVERAGE_FRACTION = 0.9;
 
+// Coverage alone is far too loose to identify a predecessor. `removed_at` means
+// "dropped from the S&P 500 index," NOT "delisted" — most such symbols still
+// trade with full, current histories (measured on prod: 47 of 63 deindexed
+// symbols cover ≥90% of any recent window). So a still-trading deindexed name
+// like AAL coincidentally "covers" almost any gap and would silently defeat the
+// audit's main data-loss guard.
+//
+// The distinguishing signal is adjacency: a *genuine* predecessor goes dark at
+// the handoff — BK stops printing bars where BNY lights up — whereas a merely
+// deindexed sibling keeps printing straight through and past the gap. We
+// therefore require a candidate to cover at most this fraction of the expected
+// trading days *after* the gap ends. BK (newest bar ≈ gapEnd) covers ~0% of the
+// post-gap window and passes; AAL (trading to today) covers ~100% and is
+// rejected. A small non-zero fraction tolerates a brief, imprecise handoff
+// overlap without admitting a still-trading symbol — and, being a fraction of
+// the post-gap window rather than an absolute day count, it separates the two
+// cases independent of the audit window's length.
+export const TRANSITION_CONTINUATION_FRACTION = 0.1;
+
 /**
- * Returns the retired symbol whose bars cover >= coverageFraction of the gap's
- * trading days, or null. A non-null result identifies a ticker transition: the
- * missing bars exist only under a now-retired predecessor symbol, so the gap is
- * not recoverable data loss on the active successor.
+ * Returns the retired predecessor symbol of a ticker transition, or null.
+ *
+ * A candidate qualifies when it (a) covers >= coverageFraction of the gap's
+ * trading days AND (b) "goes dark" at the handoff — covers <= continuationFraction
+ * of the expected trading days *after* the gap (rejecting still-trading,
+ * merely-deindexed symbols whose histories continue past the gap). Fails closed:
+ * if no candidate or more than one candidate qualifies, or there are no post-gap
+ * days to confirm the predecessor went dark (e.g. a trailing gap), returns null
+ * so the gap stays an error. A non-null result identifies a rename: the missing
+ * bars exist only under the now-retired predecessor, so the gap is not
+ * recoverable data loss on the active successor.
  */
 export function findTransitionPredecessor(
   gap: CoverageGap,
@@ -153,18 +185,47 @@ export function findTransitionPredecessor(
   symbolDates: Map<string, Set<string>>,
   expectedDays: readonly string[],
   coverageFraction: number,
+  continuationFraction: number,
 ): string | null {
   const gapDays = expectedDays.filter(
     (d) => d >= gap.gapStart && d <= gap.gapEnd,
   );
   if (gapDays.length === 0) return null;
+  // Days after the gap: a true predecessor should be absent here (it went dark).
+  // With none, we cannot confirm adjacency, so fail closed.
+  const postGapDays = expectedDays.filter((d) => d > gap.gapEnd);
+  if (postGapDays.length === 0) return null;
+
+  const matches: string[] = [];
   for (const candidate of retiredSymbols) {
     const dates = symbolDates.get(candidate);
     if (!dates) continue;
     const covered = gapDays.reduce((n, d) => (dates.has(d) ? n + 1 : n), 0);
-    if (covered / gapDays.length >= coverageFraction) return candidate;
+    if (covered / gapDays.length < coverageFraction) continue;
+    const continued = postGapDays.reduce(
+      (n, d) => (dates.has(d) ? n + 1 : n),
+      0,
+    );
+    if (continued / postGapDays.length > continuationFraction) continue;
+    matches.push(candidate);
   }
-  return null;
+  // A unique predecessor or nothing — an ambiguous multi-match fails closed.
+  return matches.length === 1 ? matches[0]! : null;
+}
+
+/**
+ * True when a symbol's current coverage ratio has dropped below its recorded
+ * high-water-mark by more than `tolerance`. Compared as a ratio (covered /
+ * expected) rather than an absolute day count so the rolling audit window's
+ * run-to-run trading-day jitter does not register as loss — a fully-covered
+ * symbol stays at 1.0 in every window.
+ */
+export function isCoverageRegression(
+  currentCoverage: number,
+  watermarkCoverage: number,
+  tolerance: number,
+): boolean {
+  return currentCoverage < watermarkCoverage - tolerance;
 }
 
 /** Finds runs of missing trading days >= gapThreshold in length. */
@@ -291,6 +352,7 @@ export async function runAudit(
     intradayGapMinutes,
     sessionOpenEt,
     sessionCloseEt,
+    watermarkTolerance,
   } = config;
 
   const expectsIntraday =
@@ -406,14 +468,21 @@ export async function runAudit(
       }
       // ...unless a retired predecessor covers the gap window: a ticker
       // transition (rename), where the missing bars live only under the old
-      // symbol and can't be fetched under this one. Not data loss → warn.
-      const predecessor = findTransitionPredecessor(
-        gap,
-        retiredSymbols,
-        symbolDates,
-        expectedDays,
-        TRANSITION_COVERAGE_FRACTION,
-      );
+      // symbol and can't be fetched under this one. Not data loss → warn. Only
+      // an internal gap can be a rename — a trailing gap on a live successor is
+      // ingestion stall (the successor is the current ticker and would still be
+      // printing today), so it always stays an error.
+      const predecessor =
+        gap.position === 'internal'
+          ? findTransitionPredecessor(
+              gap,
+              retiredSymbols,
+              symbolDates,
+              expectedDays,
+              TRANSITION_COVERAGE_FRACTION,
+              TRANSITION_CONTINUATION_FRACTION,
+            )
+          : null;
       if (predecessor !== null) {
         addWarning(audits, symbol, {
           code: CODE.COVERAGE_GAP,
@@ -422,6 +491,118 @@ export async function runAudit(
       } else {
         addError(audits, symbol, { code: CODE.COVERAGE_GAP, detail: gap });
       }
+    }
+  }
+
+  // ─── 1.5: Coverage high-water-mark (durable data-loss / regression guard) ────
+  //
+  // Per (symbol, granularity) we remember the best covered/expected ratio ever
+  // seen and flag any current ratio that has dropped below it (beyond tolerance)
+  // as an error — the "did THIS symbol lose data it once had" signal, which the
+  // gap and transition checks do not provide. The mark is read first (for the
+  // regression verdict), then raised monotonically (a regression run never
+  // lowers it). See migration 1700000000020_symbol-coverage-watermark.sql.
+  //
+  // The pre-deploy audit runs BEFORE migrations (scripts/deploy.sh), so on the
+  // first deploy that ships this the table does not exist yet — guard on its
+  // presence and simply skip (next deploy, post-migration, seeds the marks).
+  const granularity = `${multiplier} ${timespan}`;
+  const { rows: wmTableRows } = await pool.query<{ present: boolean }>(
+    `SELECT to_regclass('public.symbol_coverage_watermark') IS NOT NULL AS present`,
+  );
+
+  if (wmTableRows[0]?.present && expectedDays.length > 0) {
+    const expectedCount = expectedDays.length;
+
+    const { rows: wmRows } = await pool.query<{
+      symbol: string;
+      coverage_ratio: number;
+    }>(
+      `SELECT symbol, coverage_ratio
+         FROM symbol_coverage_watermark
+        WHERE granularity = $1`,
+      [granularity],
+    );
+    const watermark = new Map(wmRows.map((r) => [r.symbol, r.coverage_ratio]));
+
+    // Actual bar extent per symbol, for the diagnostic snapshot stored with the
+    // mark (the regression verdict itself uses only the covered-day ratio).
+    const { rows: extentRows } = await pool.query<{
+      symbol: string;
+      oldest_ts: Date;
+      newest_ts: Date;
+    }>(
+      `SELECT symbol, min(ts) AS oldest_ts, max(ts) AS newest_ts
+         FROM price_bar
+        WHERE ts >= $1::timestamptz
+        GROUP BY symbol`,
+      [startIso],
+    );
+    const extent = new Map(extentRows.map((r) => [r.symbol, r]));
+
+    for (const { symbol } of symbolRows) {
+      if (!playable.has(symbol)) continue;
+      const presentDates = symbolDates.get(symbol);
+      // Zero-bar symbols are already reported as NO_BARS; nothing to watermark.
+      if (!presentDates || presentDates.size === 0) continue;
+
+      const covered = expectedDays.reduce(
+        (n, d) => (presentDates.has(d) ? n + 1 : n),
+        0,
+      );
+      const ratio = covered / expectedCount;
+
+      const stored = watermark.get(symbol);
+      if (
+        stored !== undefined &&
+        isCoverageRegression(ratio, stored, watermarkTolerance)
+      ) {
+        addError(audits, symbol, {
+          code: CODE.COVERAGE_REGRESSION,
+          detail: {
+            granularity,
+            currentCoverage: Math.round(ratio * 10000) / 10000,
+            watermarkCoverage: Math.round(stored * 10000) / 10000,
+            tolerance: watermarkTolerance,
+            coveredTradingDays: covered,
+            expectedTradingDays: expectedCount,
+            note:
+              'Coverage dropped below this symbol’s recorded high-water-mark ' +
+              '— likely data loss (a true ticker rename does not regress, as ' +
+              'the successor never had the pre-transition bars). If this reduction ' +
+              'is intentional and permanent, reset the baseline by deleting this ' +
+              'symbol’s row from symbol_coverage_watermark.',
+          },
+        });
+      }
+
+      // Monotonic high-water-mark: the ON CONFLICT WHERE clause makes a write a
+      // no-op unless the new ratio is >= the stored one, so a regression run can
+      // never rebase the baseline downward.
+      const ext = extent.get(symbol);
+      await pool.query(
+        `INSERT INTO symbol_coverage_watermark
+           (symbol, granularity, coverage_ratio, trading_days, expected_days,
+            oldest_ts, newest_ts, observed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+         ON CONFLICT (symbol, granularity) DO UPDATE SET
+           coverage_ratio = EXCLUDED.coverage_ratio,
+           trading_days   = EXCLUDED.trading_days,
+           expected_days  = EXCLUDED.expected_days,
+           oldest_ts      = EXCLUDED.oldest_ts,
+           newest_ts      = EXCLUDED.newest_ts,
+           observed_at    = now()
+         WHERE EXCLUDED.coverage_ratio >= symbol_coverage_watermark.coverage_ratio`,
+        [
+          symbol,
+          granularity,
+          ratio,
+          covered,
+          expectedCount,
+          ext?.oldest_ts ?? null,
+          ext?.newest_ts ?? null,
+        ],
+      );
     }
   }
 
@@ -685,6 +866,7 @@ export async function runAudit(
   const errorCounts: Record<ErrorCode, number> = {
     NO_BARS: 0,
     COVERAGE_GAP: 0,
+    COVERAGE_REGRESSION: 0,
     OHLC_VIOLATION: 0,
     DUPLICATE_BAR: 0,
     INTRADAY_GAP: 0,

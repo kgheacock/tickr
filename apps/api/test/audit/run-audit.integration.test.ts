@@ -107,6 +107,9 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await client.query('DELETE FROM price_bar');
+  // Cleared explicitly (it would also cascade from universe_symbol) so each test
+  // starts with no coverage high-water-marks carried over from a prior test.
+  await client.query('DELETE FROM symbol_coverage_watermark');
   await client.query('DELETE FROM universe_symbol');
 });
 
@@ -121,6 +124,7 @@ function weekConfig(overrides: Partial<AuditConfig> = {}): AuditConfig {
     intradayGapMinutes: 30,
     sessionOpenEt: '09:30',
     sessionCloseEt: '16:00',
+    watermarkTolerance: 0.02,
     ...overrides,
   };
 }
@@ -379,6 +383,186 @@ describe('COVERAGE_GAP — ticker transition', () => {
     );
     expect(issue?.severity).toBe('error');
     expect(report.summary.symbolsWithErrors).toBe(1);
+  });
+
+  // Adjacency guard (TODO/28 step 1): `removed_at` means "deindexed from the
+  // S&P 500," NOT "delisted" — a retired symbol like AAL can still be trading
+  // with a full current history and so coincidentally cover any recent gap.
+  // It must NOT be accepted as a predecessor: it never goes dark at the handoff.
+  it('keeps the error when a retired-but-still-trading symbol covers the gap', async () => {
+    await seedSymbol('BNY');
+    await insertBar('BNY', tradingDay(0)); // Mon
+    await insertBar('BNY', tradingDay(4)); // Fri — Tue–Thu missing = internal gap
+    // AAL: retired (deindexed) but still trading — covers the gap AND keeps
+    // printing through Friday (past the gap), so it is not a true predecessor.
+    await seedSymbol('AAL', true, null, new Date(T0 + 4 * DAY_MS));
+    for (const dayOff of [1, 2, 3, 4]) {
+      await insertBar('AAL', tradingDay(dayOff));
+    }
+
+    const report = await runAudit(
+      pool,
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
+    );
+    const issue = report.symbols['BNY']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect(issue?.severity).toBe('error');
+    expect(report.summary.symbolsWithErrors).toBe(1);
+  });
+
+  // DoD step 1 #2: with BOTH the real predecessor (BK, went dark at the handoff)
+  // and a still-trading deindexed coincidental cover (AAL) present, the gap
+  // downgrades via BK — and is attributed to BK, not AAL (alphabetically first).
+  it('attributes the downgrade to the dark predecessor (BK), not a still-trading cover (AAL)', async () => {
+    await seedSymbol('BNY');
+    await insertBar('BNY', tradingDay(0)); // Mon
+    await insertBar('BNY', tradingDay(4)); // Fri — Tue–Thu missing = internal gap
+    // BK: real predecessor — covers Tue–Thu and stops (no Friday bar).
+    await seedSymbol('BK', true, null, new Date(T0 + 4 * DAY_MS));
+    for (const dayOff of [1, 2, 3]) {
+      await insertBar('BK', tradingDay(dayOff));
+    }
+    // AAL: deindexed but still trading — also covers Tue–Thu, but trades Friday.
+    await seedSymbol('AAL', true, null, new Date(T0 + 4 * DAY_MS));
+    for (const dayOff of [1, 2, 3, 4]) {
+      await insertBar('AAL', tradingDay(dayOff));
+    }
+
+    const report = await runAudit(
+      pool,
+      weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 }),
+    );
+    const issue = report.symbols['BNY']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect(issue?.severity).toBe('warning');
+    expect(
+      (issue?.detail as { transitionPredecessor?: string })
+        .transitionPredecessor,
+    ).toBe('BK');
+    expect(report.summary.symbolsWithErrors).toBe(0);
+  });
+});
+
+// ─── COVERAGE_REGRESSION (coverage high-water-mark) ───────────────────────────
+
+describe('COVERAGE_REGRESSION — coverage high-water-mark', () => {
+  const dailyConfig = (): AuditConfig =>
+    weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 });
+
+  // The durable data-loss guard: a symbol that once had full coverage and now
+  // has less must error, keyed on "this symbol lost data it once had."
+  it('errors when a symbol drops below its recorded high-water-mark', async () => {
+    await seedSymbol('AAPL');
+    for (let d = 0; d <= 4; d++) await insertBar('AAPL', tradingDay(d));
+
+    // First run records the high-water-mark (full coverage) — no regression yet.
+    const first = await runAudit(pool, dailyConfig());
+    expect(first.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(0);
+
+    // Lose four of the five days, then re-run: coverage 0.2 < mark 1.0.
+    await client.query(
+      `DELETE FROM price_bar WHERE symbol = 'AAPL' AND ts >= $1`,
+      [tradingDay(1).toISOString()],
+    );
+    const second = await runAudit(pool, dailyConfig());
+    expect(
+      second.symbols['AAPL']?.issues.some(
+        (i) => i.code === CODE.COVERAGE_REGRESSION && i.severity === 'error',
+      ),
+    ).toBe(true);
+    expect(second.summary.symbolsWithErrors).toBeGreaterThanOrEqual(1);
+  });
+
+  // A clean re-run on unchanged data must not regress (ratio 1.0 vs 1.0).
+  it('does not regress on a clean re-run', async () => {
+    await seedSymbol('MSFT');
+    for (let d = 0; d <= 4; d++) await insertBar('MSFT', tradingDay(d));
+
+    await runAudit(pool, dailyConfig());
+    const second = await runAudit(pool, dailyConfig());
+    expect(second.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(0);
+  });
+
+  // A monotonic high-water-mark must not be rebased downward by a regression
+  // run: after a drop-then-restore, the restored full coverage is clean again.
+  it('does not lower the mark on a regression run (restore is clean)', async () => {
+    await seedSymbol('NVDA');
+    for (let d = 0; d <= 4; d++) await insertBar('NVDA', tradingDay(d));
+    await runAudit(pool, dailyConfig()); // mark = 1.0
+
+    await client.query(
+      `DELETE FROM price_bar WHERE symbol = 'NVDA' AND ts >= $1`,
+      [tradingDay(1).toISOString()],
+    );
+    const regressed = await runAudit(pool, dailyConfig()); // regresses, mark stays 1.0
+    expect(regressed.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(1);
+
+    // Restore full coverage — clean against the unchanged 1.0 mark.
+    for (let d = 1; d <= 4; d++) await insertBar('NVDA', tradingDay(d));
+    const restored = await runAudit(pool, dailyConfig());
+    expect(restored.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(0);
+  });
+
+  // A true ticker rename must stay silent here: BNY never had the pre-transition
+  // bars (they live under BK), so its coverage ratio is stable run-to-run and
+  // does not regress — the watermark does not re-introduce the false abort that
+  // the transition downgrade exists to prevent.
+  it('does not regress on a stable ticker transition (BNY)', async () => {
+    await seedSymbol('BNY');
+    await insertBar('BNY', tradingDay(0));
+    await insertBar('BNY', tradingDay(4));
+    await seedSymbol('BK', true, null, new Date(T0 + 4 * DAY_MS));
+    for (const dayOff of [1, 2, 3]) await insertBar('BK', tradingDay(dayOff));
+
+    await runAudit(pool, dailyConfig());
+    const second = await runAudit(pool, dailyConfig());
+    expect(second.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(0);
+    expect(
+      second.symbols['BNY']?.issues.some(
+        (i) => i.code === CODE.COVERAGE_REGRESSION,
+      ),
+    ).toBeFalsy();
+  });
+
+  // The whole reason the mark is a ratio and not a day count: the real audit
+  // window is recomputed from "now" each deploy and slides forward, so its
+  // trading-day count varies run-to-run. A fully-covered symbol must stay clean
+  // across that slide. Two windows of different trading-day counts (10 then 5),
+  // both fully covered: the ratio holds at 1.0 → no regression. A count-based
+  // mark (10 → 5) would false-positive here — this test would fail it.
+  it('does not regress when the window slides to a different trading-day count', async () => {
+    await seedSymbol('IBM');
+    // Full daily coverage across two weeks — 10 trading days, no holidays
+    // (offsets 5/6 are the weekend and carry no bars).
+    for (const off of [0, 1, 2, 3, 4, 7, 8, 9, 10, 11]) {
+      await insertBar('IBM', tradingDay(off));
+    }
+    const daily = { timespan: 'day', multiplier: 1, gapThreshold: 3 } as const;
+
+    // Wide window: the full two weeks (10 trading days) → ratio 1.0, mark set.
+    const wide = await runAudit(
+      pool,
+      weekConfig({ ...daily, startMs: T0, endMs: T0 + 11 * DAY_MS }),
+    );
+    expect(wide.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(0);
+
+    // Slid window: just the second week (5 trading days), still fully covered.
+    const slid = await runAudit(
+      pool,
+      weekConfig({
+        ...daily,
+        startMs: T0 + 7 * DAY_MS,
+        endMs: T0 + 11 * DAY_MS,
+      }),
+    );
+    expect(slid.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(0);
+    expect(
+      slid.symbols['IBM']?.issues.some(
+        (i) => i.code === CODE.COVERAGE_REGRESSION,
+      ),
+    ).toBeFalsy();
   });
 });
 
