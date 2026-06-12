@@ -98,7 +98,16 @@ Goal: FS must not prevent non-FS platform features from shipping in parallel.
       `018_fs_transactions`, no `checkOrder` violation. A negative control
       (injecting a `006`) still throws the original
       `… is preceding already run migration 1700000000007_symbol-metadata`,
-      confirming the test detects interleaving.
+      confirming the test detects interleaving. FS-08 then added `019_fs_season`
+      (PR #74); the chain now runs `012…019`.
+  - ⚠️ **Forward risk (merge/deploy ordering):** a main-targeted PR (#75) claims
+      `020_symbol-coverage-watermark`. It is **not** on `origin/main` yet, so the
+      fix above holds for prod's current state (`000–005`, `007`, `011`). But
+      `checkOrder` trips only on the prod *upgrade*, never in CI — so if `020`
+      merges + **deploys to prod** before this PR deploys, the FS `012–019` chain
+      will again sort before an already-run `020` and abort the deploy. Mitigation:
+      deploy PR #70 **before** main's `020`, **or** renumber the FS chain to
+      `021+` at that point. Tracked in the `project-migration-numbering` memory.
 - [x] **F2** — `/me` now catches Postgres `42P01` (undefined_table) from
       `getUserLeagues` and degrades to `leagues: []` with a warn log; any other
       error still propagates. Platform login bootstrap no longer hard-depends on
