@@ -605,6 +605,7 @@ components:
         - marketData429sLast24h
         - jobQueueDepth
         - backfillRemaining
+        - worstLag
       properties:
         lastEodUpdateAt:
           type: ['string', 'null']
@@ -625,6 +626,24 @@ components:
         backfillRemaining:
           type: integer
           description: Count of universe_symbol rows with backfilled = false
+        worstLag:
+          type: ['object', 'null']
+          description: >-
+            Worst price-bar staleness across the playable corpus — the symbol
+            whose latest bar is furthest behind the freshness reference (now
+            during the session, else the most recent NYSE close). null when no
+            playable symbol has any bars.
+          required: [symbol, latestBarAt, lagSec]
+          properties:
+            symbol:
+              type: string
+              description: The worst-lagging playable symbol
+            latestBarAt:
+              type: string
+              description: ISO timestamp of that symbol's most recent bar
+            lagSec:
+              type: integer
+              description: Seconds between the freshness reference and latestBarAt (>= 0)
 
 paths:
   # --- Auth & session ---
