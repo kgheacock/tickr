@@ -1,11 +1,11 @@
 # 28 — Harden the audit's ticker-transition awareness
 
-> **Status:** in progress (Step 1 landed — adjacency filter) • **Depends on:** 19, 25
+> **Status:** in progress (Steps 1 & 2 landed) • **Depends on:** 19, 25
 >
-> **Progress:** Step 1 (adjacency filter, no schema change) implemented in
+> **Progress:** Steps 1 (adjacency filter) and 2 (coverage high-water-mark,
+> table `symbol_coverage_watermark`, migration `…020`) implemented in
 > `apps/api/src/audit/run-audit.ts` — [PR #75](https://github.com/kgheacock/tickr/pull/75).
-> Steps 2 (coverage high-water-mark) and 3 (CIK lineage) are still pending and
-> will ship as their own PRs.
+> Step 3 (CIK lineage) is still pending and will ship as its own PR.
 
 ## Goal
 
@@ -132,11 +132,17 @@ not CIK — track that separately if/when it bites.
       prod re-run is pending and is structurally covered by the deploy's
       pre-migration audit gate, which fails closed (re-flags BNY) if the
       assumed geometry is wrong._
-- [ ] **Step 2:** A symbol whose stored coverage drops below its recorded
-      high-water-mark produces a distinct regression **error**; a clean re-run
-      and the BNY transition do not.
-- [ ] **Step 2:** Watermark is scoped so intentional retention/downsampling does
-      not false-positive.
+- [x] **Step 2:** A symbol whose stored coverage drops below its recorded
+      high-water-mark produces a distinct regression **error** (`COVERAGE_REGRESSION`);
+      a clean re-run and the BNY transition do not. Integration tests cover all
+      three, plus a monotonic-mark guard (a regression run does not rebase the
+      baseline down).
+- [x] **Step 2:** Watermark is scoped so intentional retention/downsampling does
+      not false-positive: compared as a covered/expected **ratio** (rolling-window
+      trading-day jitter never moves a fully-covered symbol off 1.0); counted over
+      the audit **window** (policy-aged bars pruned outside it aren't counted); and
+      on distinct trading **days** (intra-day downsampling leaves the day count
+      unchanged). Scoped to the playable corpus, so excluded symbols aren't marked.
 - [ ] **Step 3:** `universe_symbol.cik` is populated by the metadata refresh and
       survives a symbol's retirement; BK's CIK is backfilled.
 - [ ] **Step 3:** Transition downgrades require a shared CIK; a same-window
