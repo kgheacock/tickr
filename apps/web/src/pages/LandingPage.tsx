@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
 import { useLogout } from '../auth/useLogout';
 import { TickerTape } from '../components/TickerTape';
@@ -76,6 +77,9 @@ export function LandingPage() {
               <>
                 <p className={styles.columnHead}>Account</p>
                 <p className={styles.account}>{user.email}</p>
+                <Link to="/leagues" className={styles.leaguesLink}>
+                  My Leagues →
+                </Link>
                 <button className={styles.signout} onClick={handleLogout}>
                   Sign out
                 </button>

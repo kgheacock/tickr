@@ -30,6 +30,10 @@ export interface InventoryOptions {
   q?: string | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
+  /** Restrict to the caller's owned players (their roster); needs `userId`. */
+  mine?: boolean | undefined;
+  /** The caller, when `mine` is set. Ownership is exclusive per ticker. */
+  userId?: string | undefined;
 }
 
 interface OwnershipCols {
@@ -75,6 +79,12 @@ export async function listPlayers(
   }
   if (opts.available) {
     filters.push(`re.symbol IS NULL`);
+  }
+  // The caller's roster: ownership is exclusive per ticker, so the owner row is
+  // unique — filtering re.user_id yields exactly the symbols this manager holds.
+  if (opts.mine && opts.userId) {
+    params.push(opts.userId);
+    filters.push(`re.user_id = $${params.length}`);
   }
   if (opts.q) {
     params.push(`${opts.q.toUpperCase()}%`);
@@ -219,16 +229,19 @@ export function registerPlayersRoutes(fastify: FastifyInstance): void {
       q?: string;
       limit?: string;
       offset?: string;
+      mine?: string;
     };
   }>('/leagues/:id/players', async (req, reply) => {
     if (!(await requireLeagueMember(req, reply, req.params.id))) return;
-    const { group, available, q, limit, offset } = req.query;
+    const { group, available, q, limit, offset, mine } = req.query;
     return listPlayers(pool, req.params.id, {
       group,
       available: available === 'true',
       q,
       limit: limit !== undefined ? Number(limit) : undefined,
       offset: offset !== undefined ? Number(offset) : undefined,
+      mine: mine === 'true',
+      userId: req.userId!,
     });
   });
 

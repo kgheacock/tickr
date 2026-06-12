@@ -172,6 +172,35 @@ describe('listPlayers', () => {
     expect(q.items.map((i) => i.symbol)).toEqual(['AMZN']);
   });
 
+  it('?mine returns only the caller’s owned players', async () => {
+    const otherId = randomUUID();
+    await pool.query(
+      `INSERT INTO app_user (id, display_name, email) VALUES ($1, 'Rival', 'rival@x.com')`,
+      [otherId],
+    );
+    await pool.query(
+      `INSERT INTO fs_league_member (league_id, user_id, role, team_name)
+       VALUES ($1, $2, 'manager', 'Bears')`,
+      [leagueId, otherId],
+    );
+    await seedSymbol('MINE');
+    await seedSymbol('THEIRS');
+    await seedSymbol('FREE');
+    // Exclusive ownership: MINE is the caller's, THEIRS is the rival's.
+    await pool.query(
+      `INSERT INTO fs_roster_entry (league_id, user_id, symbol, is_short, acquired_via)
+       VALUES ($1, $2, 'MINE', false, 'draft'), ($1, $3, 'THEIRS', false, 'draft')`,
+      [leagueId, commishId, otherId],
+    );
+
+    const mine = await listPlayers(pool, leagueId, {
+      mine: true,
+      userId: commishId,
+    });
+    expect(mine.items.map((i) => i.symbol)).toEqual(['MINE']);
+    expect(mine.total).toBe(1);
+  });
+
   it('paginates with total/limit/offset', async () => {
     for (const s of ['AA', 'BB', 'CC', 'DD']) await seedSymbol(s);
     const page = await listPlayers(pool, leagueId, { limit: 2, offset: 1 });
