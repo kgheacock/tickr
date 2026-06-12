@@ -12,6 +12,13 @@
  *   COVERAGE_GAP          - >= GAP_THRESHOLD consecutive trading days missing, in an
  *                           internal or trailing position (a leading gap is a late
  *                           listing and is reported as a warning instead)
+ *   COVERAGE_REGRESSION   - a symbol's covered/expected ratio dropped below its
+ *                           recorded high-water-mark (symbol_coverage_watermark) by
+ *                           more than AUDIT_WATERMARK_TOLERANCE — likely data loss,
+ *                           even when scattered (so it slips under COVERAGE_GAP's
+ *                           consecutive-day threshold). A true rename does not
+ *                           regress. Reset an intentional, permanent drop by hand:
+ *                           DELETE FROM symbol_coverage_watermark WHERE symbol='X'.
  *   OHLC_VIOLATION        - low > open/close, open/close > high, or volume < 0
  *   DUPLICATE_BAR         - > 1 bar in a single granularity bucket (symbol, bucket)
  *   INTRADAY_GAP          - (type 'no_session_bars') a playable symbol has bars but none
@@ -47,6 +54,8 @@
  *                                    consecutive within-session bars (skipped for day/week/month)
  *   AUDIT_SESSION_OPEN_ET            default 09:30 — NYSE regular-session open (ET wall-clock)
  *   AUDIT_SESSION_CLOSE_ET           default 16:00 — NYSE regular-session close (ET wall-clock)
+ *   AUDIT_WATERMARK_TOLERANCE        default 0.02 — fractional coverage-ratio drop below a
+ *                                    symbol's high-water-mark tolerated before COVERAGE_REGRESSION
  *
  * Exits 0 on a clean corpus (errors = 0), non-zero if any errors are found.
  */
@@ -124,6 +133,9 @@ async function main(): Promise<void> {
     ),
     sessionOpenEt: process.env['AUDIT_SESSION_OPEN_ET'] ?? '09:30',
     sessionCloseEt: process.env['AUDIT_SESSION_CLOSE_ET'] ?? '16:00',
+    watermarkTolerance: parseFloat(
+      process.env['AUDIT_WATERMARK_TOLERANCE'] ?? '0.02',
+    ),
   };
 
   const pool = new pg.Pool({

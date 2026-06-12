@@ -6,6 +6,7 @@ import {
   findCoverageGaps,
   buildBucketExpr,
   findTransitionPredecessor,
+  isCoverageRegression,
 } from '../../src/audit/run-audit.js';
 import type { CoverageGap } from '../../src/audit/run-audit.js';
 
@@ -343,6 +344,31 @@ describe('findTransitionPredecessor', () => {
         0.1,
       ),
     ).toBe('BK');
+  });
+});
+
+// ─── isCoverageRegression ─────────────────────────────────────────────────────
+
+describe('isCoverageRegression', () => {
+  it('a full-coverage re-run (1.0 vs 1.0) is not a regression', () => {
+    expect(isCoverageRegression(1.0, 1.0, 0.02)).toBe(false);
+  });
+
+  it('a drop beyond tolerance is a regression', () => {
+    expect(isCoverageRegression(0.8, 1.0, 0.02)).toBe(true);
+  });
+
+  it('a drop within tolerance is not a regression (absorbs window jitter)', () => {
+    expect(isCoverageRegression(0.99, 1.0, 0.02)).toBe(false);
+  });
+
+  it('exactly at the tolerance edge is not a regression', () => {
+    expect(isCoverageRegression(0.98, 1.0, 0.02)).toBe(false);
+  });
+
+  it('a stable partial-coverage symbol (late listing) does not regress', () => {
+    // A symbol that has only ever reached 0.6 coverage holds at 0.6.
+    expect(isCoverageRegression(0.6, 0.6, 0.02)).toBe(false);
   });
 });
 

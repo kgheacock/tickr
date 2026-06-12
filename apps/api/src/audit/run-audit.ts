@@ -6,6 +6,7 @@ import { isNyseHoliday } from '../market/holidays.js';
 export const CODE = {
   NO_BARS: 'NO_BARS',
   COVERAGE_GAP: 'COVERAGE_GAP',
+  COVERAGE_REGRESSION: 'COVERAGE_REGRESSION',
   OHLC_VIOLATION: 'OHLC_VIOLATION',
   DUPLICATE_BAR: 'DUPLICATE_BAR',
   INTRADAY_GAP: 'INTRADAY_GAP',
@@ -52,6 +53,14 @@ export interface AuditConfig {
   sessionOpenEt: string;
   /** NYSE regular-session close as an ET wall-clock time (HH:MM). Defaults to 16:00. */
   sessionCloseEt: string;
+  /**
+   * Fractional drop in a symbol's covered/expected ratio, below its recorded
+   * high-water-mark, that is tolerated before flagging COVERAGE_REGRESSION.
+   * A fully-covered symbol sits at ratio 1.0 in every window, so this absorbs
+   * only floating-point noise — keep it small (e.g. 0.02). See the
+   * symbol_coverage_watermark migration.
+   */
+  watermarkTolerance: number;
 }
 
 export interface AuditReport {
@@ -204,6 +213,21 @@ export function findTransitionPredecessor(
   return matches.length === 1 ? matches[0]! : null;
 }
 
+/**
+ * True when a symbol's current coverage ratio has dropped below its recorded
+ * high-water-mark by more than `tolerance`. Compared as a ratio (covered /
+ * expected) rather than an absolute day count so the rolling audit window's
+ * run-to-run trading-day jitter does not register as loss — a fully-covered
+ * symbol stays at 1.0 in every window.
+ */
+export function isCoverageRegression(
+  currentCoverage: number,
+  watermarkCoverage: number,
+  tolerance: number,
+): boolean {
+  return currentCoverage < watermarkCoverage - tolerance;
+}
+
 /** Finds runs of missing trading days >= gapThreshold in length. */
 export function findCoverageGaps(
   expectedDays: string[],
@@ -328,6 +352,7 @@ export async function runAudit(
     intradayGapMinutes,
     sessionOpenEt,
     sessionCloseEt,
+    watermarkTolerance,
   } = config;
 
   const expectsIntraday =
@@ -466,6 +491,118 @@ export async function runAudit(
       } else {
         addError(audits, symbol, { code: CODE.COVERAGE_GAP, detail: gap });
       }
+    }
+  }
+
+  // ─── 1.5: Coverage high-water-mark (durable data-loss / regression guard) ────
+  //
+  // Per (symbol, granularity) we remember the best covered/expected ratio ever
+  // seen and flag any current ratio that has dropped below it (beyond tolerance)
+  // as an error — the "did THIS symbol lose data it once had" signal, which the
+  // gap and transition checks do not provide. The mark is read first (for the
+  // regression verdict), then raised monotonically (a regression run never
+  // lowers it). See migration 1700000000020_symbol-coverage-watermark.sql.
+  //
+  // The pre-deploy audit runs BEFORE migrations (scripts/deploy.sh), so on the
+  // first deploy that ships this the table does not exist yet — guard on its
+  // presence and simply skip (next deploy, post-migration, seeds the marks).
+  const granularity = `${multiplier} ${timespan}`;
+  const { rows: wmTableRows } = await pool.query<{ present: boolean }>(
+    `SELECT to_regclass('public.symbol_coverage_watermark') IS NOT NULL AS present`,
+  );
+
+  if (wmTableRows[0]?.present && expectedDays.length > 0) {
+    const expectedCount = expectedDays.length;
+
+    const { rows: wmRows } = await pool.query<{
+      symbol: string;
+      coverage_ratio: number;
+    }>(
+      `SELECT symbol, coverage_ratio
+         FROM symbol_coverage_watermark
+        WHERE granularity = $1`,
+      [granularity],
+    );
+    const watermark = new Map(wmRows.map((r) => [r.symbol, r.coverage_ratio]));
+
+    // Actual bar extent per symbol, for the diagnostic snapshot stored with the
+    // mark (the regression verdict itself uses only the covered-day ratio).
+    const { rows: extentRows } = await pool.query<{
+      symbol: string;
+      oldest_ts: Date;
+      newest_ts: Date;
+    }>(
+      `SELECT symbol, min(ts) AS oldest_ts, max(ts) AS newest_ts
+         FROM price_bar
+        WHERE ts >= $1::timestamptz
+        GROUP BY symbol`,
+      [startIso],
+    );
+    const extent = new Map(extentRows.map((r) => [r.symbol, r]));
+
+    for (const { symbol } of symbolRows) {
+      if (!playable.has(symbol)) continue;
+      const presentDates = symbolDates.get(symbol);
+      // Zero-bar symbols are already reported as NO_BARS; nothing to watermark.
+      if (!presentDates || presentDates.size === 0) continue;
+
+      const covered = expectedDays.reduce(
+        (n, d) => (presentDates.has(d) ? n + 1 : n),
+        0,
+      );
+      const ratio = covered / expectedCount;
+
+      const stored = watermark.get(symbol);
+      if (
+        stored !== undefined &&
+        isCoverageRegression(ratio, stored, watermarkTolerance)
+      ) {
+        addError(audits, symbol, {
+          code: CODE.COVERAGE_REGRESSION,
+          detail: {
+            granularity,
+            currentCoverage: Math.round(ratio * 10000) / 10000,
+            watermarkCoverage: Math.round(stored * 10000) / 10000,
+            tolerance: watermarkTolerance,
+            coveredTradingDays: covered,
+            expectedTradingDays: expectedCount,
+            note:
+              'Coverage dropped below this symbol’s recorded high-water-mark ' +
+              '— likely data loss (a true ticker rename does not regress, as ' +
+              'the successor never had the pre-transition bars). If this reduction ' +
+              'is intentional and permanent, reset the baseline by deleting this ' +
+              'symbol’s row from symbol_coverage_watermark.',
+          },
+        });
+      }
+
+      // Monotonic high-water-mark: the ON CONFLICT WHERE clause makes a write a
+      // no-op unless the new ratio is >= the stored one, so a regression run can
+      // never rebase the baseline downward.
+      const ext = extent.get(symbol);
+      await pool.query(
+        `INSERT INTO symbol_coverage_watermark
+           (symbol, granularity, coverage_ratio, trading_days, expected_days,
+            oldest_ts, newest_ts, observed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+         ON CONFLICT (symbol, granularity) DO UPDATE SET
+           coverage_ratio = EXCLUDED.coverage_ratio,
+           trading_days   = EXCLUDED.trading_days,
+           expected_days  = EXCLUDED.expected_days,
+           oldest_ts      = EXCLUDED.oldest_ts,
+           newest_ts      = EXCLUDED.newest_ts,
+           observed_at    = now()
+         WHERE EXCLUDED.coverage_ratio >= symbol_coverage_watermark.coverage_ratio`,
+        [
+          symbol,
+          granularity,
+          ratio,
+          covered,
+          expectedCount,
+          ext?.oldest_ts ?? null,
+          ext?.newest_ts ?? null,
+        ],
+      );
     }
   }
 
@@ -729,6 +866,7 @@ export async function runAudit(
   const errorCounts: Record<ErrorCode, number> = {
     NO_BARS: 0,
     COVERAGE_GAP: 0,
+    COVERAGE_REGRESSION: 0,
     OHLC_VIOLATION: 0,
     DUPLICATE_BAR: 0,
     INTRADAY_GAP: 0,
