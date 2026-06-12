@@ -18,6 +18,7 @@
 import type { Pool, PoolClient } from 'pg';
 import type { Lineup, LineupSlot, RosterConfig } from '@tickr/shared-types';
 import { FantasyError } from './leagues.js';
+import { assertSeasonWritable } from './season.js';
 import { isEligible } from './eligibility.js';
 import { mandatorySlots, autofillLineup, type FilledSlot } from './autofill.js';
 
@@ -133,9 +134,12 @@ export async function ensureLineupRow(
   week: number,
   forUpdate = false,
 ): Promise<LineupRow> {
+  // season_id (FS-08) is resolved inline from the natural key; the season row
+  // exists once the draft completed, which is when lineups become settable.
   await db.query(
-    `INSERT INTO fs_lineup (league_id, user_id, season, week)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO fs_lineup (league_id, user_id, season, week, season_id)
+     VALUES ($1, $2, $3, $4,
+             (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = $3))
      ON CONFLICT (league_id, user_id, season, week) DO NOTHING`,
     [leagueId, userId, season, week],
   );
@@ -311,6 +315,8 @@ export async function setLineup(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // FS-08: an archived season is read-only.
+    await assertSeasonWritable(client, leagueId, season);
     const cfg = await loadRosterConfig(client, leagueId);
     const row = await ensureLineupRow(
       client,

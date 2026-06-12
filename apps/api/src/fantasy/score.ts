@@ -161,8 +161,10 @@ async function upsertScore(
 ): Promise<void> {
   await db.query(
     `INSERT INTO fs_weekly_score
-       (league_id, user_id, season, week, total_points, breakdown, computed_at)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, now())
+       (league_id, user_id, season, week, total_points, breakdown, computed_at,
+        season_id)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, now(),
+             (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = $3))
      ON CONFLICT (league_id, user_id, season, week)
      DO UPDATE SET total_points = EXCLUDED.total_points,
                    breakdown    = EXCLUDED.breakdown,

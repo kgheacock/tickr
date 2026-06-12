@@ -19,6 +19,7 @@ import { settleMatchups } from '../fantasy/settle.js';
 import {
   publishScoreUpdated,
   publishMatchupUpdated,
+  publishSeasonChampion,
 } from '../events/publisher.js';
 
 export interface ScoringJobOptions {
@@ -39,10 +40,15 @@ export interface ScoringResult {
   scores: number;
 }
 
-/** Active leagues to score this run. */
+/**
+ * Leagues to score this run. `playoffs` are included (FS-08): the bracket's
+ * matchups settle off the same weekly scores, so a playoff week must still be
+ * scored — otherwise games tie 0–0 and advance on seed alone.
+ */
 async function activeLeagueIds(pool: Pool): Promise<string[]> {
   const { rows } = await pool.query<{ id: string }>(
-    `SELECT id FROM fs_league WHERE status = 'active' ORDER BY id`,
+    `SELECT id FROM fs_league
+      WHERE status IN ('active', 'playoffs') ORDER BY id`,
   );
   return rows.map((r) => r.id);
 }
@@ -85,13 +91,24 @@ export async function runWeeklyScoring(
     // FS-06: settle this week's head-to-head matchups off the just-persisted
     // scores and rebuild standings. In-process (not off the score.updated echo)
     // so a settle is never dropped, and durable — outside the redis guard.
+    // FS-08: the settle also drives the season→playoffs transition and crowns a
+    // champion when the final settles.
+    let champion: string | null = null;
     if (!provisional) {
-      await settleMatchups(pool, leagueId, opts.week, season);
+      const settle = await settleMatchups(pool, leagueId, opts.week, season);
+      champion = settle.championUserId;
     }
 
     if (redis) {
       if (!provisional) {
         await publishScoreUpdated(redis, { leagueId, season, week: opts.week });
+        if (champion) {
+          await publishSeasonChampion(redis, {
+            leagueId,
+            season,
+            championUserId: champion,
+          });
+        }
       }
       await publishMatchupUpdated(
         redis,

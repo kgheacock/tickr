@@ -72,6 +72,14 @@ async function seedLeague(): Promise<{
             ($1, $3, 'manager', 'TB', now() + interval '1 second')`,
     [leagueId, a, b],
   );
+  // FS-08: the season-1 row the lineup NOT NULL season_id FK resolves to.
+  await pool.query(
+    `INSERT INTO fs_season
+       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       FROM fs_league WHERE id = $1`,
+    [leagueId],
+  );
   return { leagueId, a, b };
 }
 
@@ -274,8 +282,9 @@ describe('respondToTrade', () => {
     });
 
     await pool.query(
-      `INSERT INTO fs_lineup (league_id, user_id, season, week, locked_at)
-       VALUES ($1, $2, 1, 1, now())`,
+      `INSERT INTO fs_lineup (league_id, user_id, season, week, locked_at, season_id)
+       VALUES ($1, $2, 1, 1, now(),
+               (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = 1))`,
       [leagueId, a],
     );
     await expect(

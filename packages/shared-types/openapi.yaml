@@ -1478,6 +1478,73 @@ components:
           items:
             $ref: '#/components/schemas/Trade'
 
+    # --- Season & playoffs (item 08) ---
+
+    Season:
+      type: object
+      description: One season's lifecycle row for a league
+      required:
+        - id
+        - leagueId
+        - seasonNumber
+        - status
+        - regularWeeks
+        - playoffSeeds
+        - championUserId
+        - startedAt
+        - endedAt
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        seasonNumber:
+          type: integer
+        status:
+          type: string
+          enum: [regular, playoffs, archived]
+        regularWeeks:
+          type: integer
+          description: Regular-season length; the bracket opens the week after
+        playoffSeeds:
+          type: integer
+          description: Top-K standings seeds into the single-elim bracket
+        championUserId:
+          type: ['string', 'null']
+          description: Crowned once the final playoff matchup settles
+        startedAt:
+          type: ['string', 'null']
+          format: date-time
+        endedAt:
+          type: ['string', 'null']
+          format: date-time
+
+    SeasonsResponse:
+      type: object
+      description: A league's seasons, newest first
+      required: [seasons]
+      properties:
+        seasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Season'
+
+    SeasonDetail:
+      type: object
+      description: One season with its final standings and playoff bracket
+      required: [season, standings, playoffMatchups]
+      properties:
+        season:
+          $ref: '#/components/schemas/Season'
+        standings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Standing'
+        playoffMatchups:
+          type: array
+          items:
+            $ref: '#/components/schemas/Matchup'
+
 paths:
   # --- Auth & session ---
 

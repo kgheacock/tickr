@@ -67,3 +67,9 @@ export type TradeItem = Schemas['TradeItem'];
 export type Trade = Schemas['Trade'];
 export type ProposeTradeRequest = Schemas['ProposeTradeRequest'];
 export type TradesResponse = Schemas['TradesResponse'];
+
+// --- Season & playoffs (item 08) ---
+export type Season = Schemas['Season'];
+export type SeasonStatus = Season['status'];
+export type SeasonsResponse = Schemas['SeasonsResponse'];
+export type SeasonDetail = Schemas['SeasonDetail'];

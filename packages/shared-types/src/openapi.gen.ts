@@ -1050,6 +1050,34 @@ export interface components {
             incoming: components["schemas"]["Trade"][];
             outgoing: components["schemas"]["Trade"][];
         };
+        /** @description One season's lifecycle row for a league */
+        Season: {
+            id: string;
+            leagueId: string;
+            seasonNumber: number;
+            /** @enum {string} */
+            status: "regular" | "playoffs" | "archived";
+            /** @description Regular-season length; the bracket opens the week after */
+            regularWeeks: number;
+            /** @description Top-K standings seeds into the single-elim bracket */
+            playoffSeeds: number;
+            /** @description Crowned once the final playoff matchup settles */
+            championUserId: string | null;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            endedAt: string | null;
+        };
+        /** @description A league's seasons, newest first */
+        SeasonsResponse: {
+            seasons: components["schemas"]["Season"][];
+        };
+        /** @description One season with its final standings and playoff bracket */
+        SeasonDetail: {
+            season: components["schemas"]["Season"];
+            standings: components["schemas"]["Standing"][];
+            playoffMatchups: components["schemas"]["Matchup"][];
+        };
     };
     responses: {
         /** @description Unauthenticated */
