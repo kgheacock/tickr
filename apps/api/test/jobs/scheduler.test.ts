@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Redis } from 'ioredis';
 
 // Capture cron registrations and stub out everything the scheduler touches so the
@@ -191,6 +191,44 @@ describe('registerScheduledJobs', () => {
 
       expect(mocks.seedUniverse).not.toHaveBeenCalled();
       expect(mocks.runMetadataRefresh).not.toHaveBeenCalled();
+    });
+  });
+
+  // Dev escape hatch: TICKR_DISABLE_REMOTE_JOBS=1 skips every job that reaches the
+  // external data APIs (backfill, intraday sweep, universe refresh) while leaving
+  // the DB/Redis-only alerts job running. deploy.sh refuses the flag in prod.
+  describe('TICKR_DISABLE_REMOTE_JOBS=1', () => {
+    const prev = process.env['TICKR_DISABLE_REMOTE_JOBS'];
+    beforeEach(() => {
+      process.env['TICKR_DISABLE_REMOTE_JOBS'] = '1';
+    });
+    afterEach(() => {
+      if (prev === undefined) delete process.env['TICKR_DISABLE_REMOTE_JOBS'];
+      else process.env['TICKR_DISABLE_REMOTE_JOBS'] = prev;
+    });
+
+    it('registers only the alerts cron and skips the external-data schedules', () => {
+      registerScheduledJobs(fakeRedis);
+
+      // Both intraday and alerts use '0 */5 * * * *'; with remote jobs off only
+      // the alerts firing remains, so exactly one cron is registered.
+      expect(mocks.schedule).toHaveBeenCalledTimes(1);
+      expect(mocks.schedule.mock.calls[0]?.[0]).toBe('0 */5 * * * *');
+    });
+
+    it('does not run the startup backfill or touch the Massive locks', () => {
+      registerScheduledJobs(fakeRedis);
+
+      expect(mocks.runBackfill).not.toHaveBeenCalled();
+      expect(acquiredKeys()).not.toContain(BACKFILL_LOCK);
+    });
+
+    it('still fires the alerts check on its cron', async () => {
+      registerScheduledJobs(fakeRedis);
+      callbackFor('0 */5 * * * *')();
+
+      await vi.waitFor(() => expect(mocks.runAlertCheck).toHaveBeenCalled());
+      expect(mocks.runIntradayUpdate).not.toHaveBeenCalled();
     });
   });
 });

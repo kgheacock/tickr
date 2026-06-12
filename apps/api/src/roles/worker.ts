@@ -7,17 +7,23 @@ import { registerScheduledJobs } from '../jobs/scheduler.js';
 import { requireEnv } from '../config.js';
 
 export async function runWorker(): Promise<void> {
-  try {
-    requireEnv('MASSIVE_API_KEY');
-  } catch {
-    console.error(
-      JSON.stringify({
-        level: 'error',
-        component: 'worker',
-        msg: 'MASSIVE_API_KEY is required but not set — backfill cannot run',
-      }),
-    );
-    process.exit(1);
+  // MASSIVE_API_KEY is mandatory in prod (every data job needs it). The dev-only
+  // TICKR_DISABLE_REMOTE_JOBS=1 skips all external-data jobs (see scheduler.ts),
+  // so the key isn't needed then — deploy.sh refuses that flag in prod, keeping
+  // the loud-fail-without-key invariant intact for real deploys.
+  if (process.env['TICKR_DISABLE_REMOTE_JOBS'] !== '1') {
+    try {
+      requireEnv('MASSIVE_API_KEY');
+    } catch {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          component: 'worker',
+          msg: 'MASSIVE_API_KEY is required but not set — backfill cannot run',
+        }),
+      );
+      process.exit(1);
+    }
   }
 
   await runMigrations();
