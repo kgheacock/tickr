@@ -31,7 +31,7 @@ user stories — same slicing rationale as v1.
 | 09 | [Dashboard & live following](09-dashboard.md) | 04, 05, 06 | done ([#76](https://github.com/kgheacock/tickr/pull/76)) |
 | 10 | [Auto-managers (bots)](10-auto-managers.md) | 03, 04 | done ([#77](https://github.com/kgheacock/tickr/pull/77)) |
 | 11 | [Reminders & recaps](11-reminders-and-recaps.md) | 04, 05, 06 | done ([#79](https://github.com/kgheacock/tickr/pull/79)) |
-| 12 | [Commissioner & admin tools](12-commissioner-and-admin.md) | 01 | pending |
+| 12 | [Commissioner & admin tools](12-commissioner-and-admin.md) | 01 | done ([#81](https://github.com/kgheacock/tickr/pull/81)) |
 | 13 | [QA release review (PR #70 → main)](13-qa-release-review.md) | 01–07 | in-progress ([#70](https://github.com/kgheacock/tickr/pull/70)) |
 
 ## Dependency graph (at a glance)
