@@ -203,6 +203,32 @@ export function mostRecentClose(now: Date): Date {
 }
 
 /**
+ * The ET calendar date ('YYYY-MM-DD') of the most recent regular-session close
+ * at or before `now`. This is the "just-closed session" the post-close Finnhub
+ * capture (TODO/30) keys its provisional close on.
+ *
+ * It is holiday-aware by construction: it renders the ET date of
+ * mostRecentClose, which walks back over weekends and holidays. So a capture
+ * fired on a holiday Friday keys to the prior trading day's close (the one the
+ * weekly scorer needs and that Massive won't deliver until Monday) rather than
+ * to the non-trading Friday.
+ */
+export function mostRecentSessionDate(now: Date): string {
+  const close = mostRecentClose(now);
+  // en-CA renders as YYYY-MM-DD. The close is 16:00 ET, mid-day, so the ET
+  // calendar date is unambiguous regardless of the UTC offset.
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(close);
+  const get = (type: string): string =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+/**
  * Returns true if `now` falls within the NYSE *regular* trading session —
  * weekdays 09:30 (inclusive) to 16:00 (exclusive) ET, excluding holidays.
  *

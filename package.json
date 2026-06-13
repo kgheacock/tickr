@@ -18,6 +18,7 @@
     "db:restore": "./scripts/db-restore.sh",
     "gen:types": "openapi-typescript packages/shared-types/openapi.yaml -o packages/shared-types/src/openapi.gen.ts",
     "gen:massive": "openapi-typescript schema/massive.com/openapi.json -o apps/api/src/massive/massive.gen.ts && prettier --write apps/api/src/massive/massive.gen.ts",
+    "gen:finnhub": "openapi-typescript schema/finnhub.io/openapi.json -o apps/api/src/finnhub/finnhub.gen.ts && prettier --write apps/api/src/finnhub/finnhub.gen.ts",
     "lint:openapi": "redocly lint packages/shared-types/openapi.yaml",
     "data-audit": "tsx scripts/data-audit.ts",
     "backfill": "pnpm --filter @tickr/api run backfill",
