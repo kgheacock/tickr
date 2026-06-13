@@ -11,9 +11,12 @@ and draft them onto your team.
 **Track:** v2. Layered on the existing market-data corpus; does not replace the
 perpetual platform. See the [root TODO README](../README.md) → "Epics (v2+)".
 
-**Status legend:** `pending` / `in-progress` / `done`. This epic is `pending`
-(outline). Each item below is a vertical slice ≈ one focused PR, bundling 3–7
-user stories — same slicing rationale as v1.
+**Status legend:** `pending` / `in-progress` / `done`. Build items **00–12 are
+all `done`**; the epic is in **release review** — the integration PR #70
+(`fantasy-street` → `main`) is the last gate (item 13: ✅ QA-ready, ❌ deploy
+blocked on a migration renumber — see [13](13-qa-release-review.md) F5). Each
+item below is a vertical slice ≈ one focused PR, bundling 3–7 user stories —
+same slicing rationale as v1.
 
 ## Items
 
@@ -32,7 +35,7 @@ user stories — same slicing rationale as v1.
 | 10 | [Auto-managers (bots)](10-auto-managers.md) | 03, 04 | done ([#77](https://github.com/kgheacock/tickr/pull/77)) |
 | 11 | [Reminders & recaps](11-reminders-and-recaps.md) | 04, 05, 06 | done ([#79](https://github.com/kgheacock/tickr/pull/79)) |
 | 12 | [Commissioner & admin tools](12-commissioner-and-admin.md) | 01 | done ([#81](https://github.com/kgheacock/tickr/pull/81)) |
-| 13 | [QA release review (PR #70 → main)](13-qa-release-review.md) | 01–07 | in-progress ([#70](https://github.com/kgheacock/tickr/pull/70)) |
+| 13 | [QA release review (PR #70 → main)](13-qa-release-review.md) | 01–12 | in-progress ([#70](https://github.com/kgheacock/tickr/pull/70)) — ✅ QA-ready, ❌ deploy-blocked on migration renumber (F5) |
 
 ## Dependency graph (at a glance)
 
