@@ -1,6 +1,6 @@
 # 30 — Finnhub early weekly-close capture
 
-> **Status:** pending • **Plan PR:** [#80](https://github.com/kgheacock/tickr/pull/80) • **Depends on:** 05, 13, 26 • **Consumer:** [FS-05 scoring](fantasy-street/05-scoring-and-shorting.md)
+> **Status:** in review • **Plan PR:** [#80](https://github.com/kgheacock/tickr/pull/80) • **Impl PR:** [#83](https://github.com/kgheacock/tickr/pull/83) • **Depends on:** 05, 13, 26 • **Consumer:** [FS-05 scoring](fantasy-street/05-scoring-and-shorting.md)
 
 ## Goal
 
@@ -92,22 +92,24 @@ when the authoritative close isn't present yet**.
 
 ## Open questions
 
-- **Friday-only vs every weekday.** Friday-only satisfies weekly scoring.
-  Capturing every weekday close would also keep the admin worst-lag chip
-  (item 29) from reading ~1 day stale off-hours, at ~9 min of Finnhub budget per
-  day. Decide before step 4; record in `docs/09-open-questions.md` if contested.
+- **Friday-only vs every weekday.** **Decided: Friday-only** (`0 30 21 * * 5`).
+  It satisfies the only live consumer (FS-05 weekly scoring) at the minimum
+  Finnhub spend. Capturing every weekday would also keep the admin worst-lag chip
+  (item 29) from reading ~1 day stale off-hours, but nothing needs that today —
+  widening the cron to `0 30 21 * * 1-5` later is a one-line change if a daily
+  consumer appears.
 
 ## Definition of done
 
-- [ ] `schema/finnhub.io/openapi.json` is the trimmed OpenAPI 3.0 spec and
+- [x] `schema/finnhub.io/openapi.json` is the trimmed OpenAPI 3.0 spec and
       `gen:finnhub` regenerates `finnhub.gen.ts` deterministically. *(spec landed
       in the doc-only change; `gen:finnhub` wiring is step 2)*
-- [ ] `session_close` persists `(symbol, session_date) → close` in cents; the
+- [x] `session_close` persists `(symbol, session_date) → close` in cents; the
       Friday post-close job upserts every playable symbol idempotently.
-- [ ] The capture runs only in the `worker` role through the Redis token bucket
+- [x] The capture runs only in the `worker` role through the Redis token bucket
       (no un-bucketed Finnhub call; non-worker import throws).
-- [ ] `price_bar` and `insertBars` are **unchanged** — provisional closes never
+- [x] `price_bar` and `insertBars` are **unchanged** — provisional closes never
       enter the authoritative store; `replay.ts`/`prices.ts` are untouched.
-- [ ] FS-05's Friday close resolution prefers authoritative `price_bar` and falls
+- [x] FS-05's Friday close resolution prefers authoritative `price_bar` and falls
       back to `session_close`; documented in FS-05.
-- [ ] `tsc --noEmit`, prettier, and eslint clean; tests above pass.
+- [x] `tsc --noEmit`, prettier, and eslint clean; tests above pass.

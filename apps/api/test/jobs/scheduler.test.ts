@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   schedule: vi.fn(),
   runBackfill: vi.fn(),
   runIntradayUpdate: vi.fn(),
+  runCloseCapture: vi.fn(),
   runMetadataRefresh: vi.fn(),
   seedUniverse: vi.fn(),
   runAlertCheck: vi.fn(),
@@ -23,6 +24,9 @@ vi.mock('../../src/jobs/backfill.js', () => ({
 }));
 vi.mock('../../src/jobs/intraday-update.js', () => ({
   runIntradayUpdate: mocks.runIntradayUpdate,
+}));
+vi.mock('../../src/jobs/close-capture.js', () => ({
+  runCloseCapture: mocks.runCloseCapture,
 }));
 vi.mock('../../src/jobs/refresh-metadata.js', () => ({
   runMetadataRefresh: mocks.runMetadataRefresh,
@@ -46,6 +50,7 @@ import { registerScheduledJobs } from '../../src/jobs/scheduler.js';
 const BACKFILL_LOCK = 'massive:job:backfill';
 const SESSION_UPDATE_LOCK = 'massive:job:session-update';
 const UNIVERSE_REFRESH_LOCK = 'massive:job:universe-refresh';
+const CLOSE_CAPTURE_LOCK = 'finnhub:job:close-capture';
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 
 const fakeRedis = {} as unknown as Redis;
@@ -68,6 +73,7 @@ describe('registerScheduledJobs', () => {
     mocks.releaseLock.mockResolvedValue(undefined);
     mocks.runBackfill.mockResolvedValue({ completed: 0, failed: [] });
     mocks.runIntradayUpdate.mockResolvedValue(undefined);
+    mocks.runCloseCapture.mockResolvedValue(undefined);
     mocks.seedUniverse.mockResolvedValue(undefined);
     mocks.runMetadataRefresh.mockResolvedValue({
       total: 0,
@@ -88,8 +94,25 @@ describe('registerScheduledJobs', () => {
     expect(exprs).toContain('0 0 * * * *'); // hourly backfill
     expect(exprs).toContain('0 */5 * * * *'); // intraday live tail + alerts
     expect(exprs).toContain('0 0 0 * * 1,3,6'); // universe refresh Mon/Wed/Sat
-    // backfill, intraday, universe, alerts (the post-close EOD cron was dropped)
-    expect(mocks.schedule).toHaveBeenCalledTimes(4);
+    expect(exprs).toContain('0 30 21 * * 5'); // Friday early close capture
+    // backfill, intraday, universe, close-capture, alerts (the post-close EOD
+    // cron was dropped)
+    expect(mocks.schedule).toHaveBeenCalledTimes(5);
+  });
+
+  it('Friday close capture runs runCloseCapture under its own lock', async () => {
+    registerScheduledJobs(fakeRedis);
+
+    callbackFor('0 30 21 * * 5')();
+
+    await vi.waitFor(() =>
+      expect(mocks.runCloseCapture).toHaveBeenCalledWith(fakeRedis),
+    );
+    expect(mocks.tryAcquireLock).toHaveBeenCalledWith(
+      fakeRedis,
+      CLOSE_CAPTURE_LOCK,
+      expect.any(Number),
+    );
   });
 
   describe('backfill (off-hours only)', () => {

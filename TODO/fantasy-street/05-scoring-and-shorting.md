@@ -39,6 +39,19 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
   close`, per symbol, from `price_bar` (use the most recent close at-or-before
   each Friday, mirroring `eval/replay.ts` point-in-time resolution; holiday-short
   weeks resolve to the last available close).
+- **This-Friday close = authoritative else provisional** (TODO/30). Massive's
+  free tier doesn't serve the current day and the intraday sweep never runs
+  weekends, so **this** Friday's authoritative `price_bar` close doesn't land
+  until Monday — but the scorer settles Friday evening. The Finnhub close-capture
+  job (`session_close`, keyed by `(symbol, session_date)`) fills it provisionally
+  after the close. So the **this-Friday** leg resolves
+  `COALESCE(price_bar close at-or-before Friday, session_close for that
+  session_date)`; the **last-Friday** leg reads `price_bar` only (its
+  authoritative bar is always present a week later). When Monday's real bar lands
+  the authoritative value wins automatically — no overwrite logic, no phantom
+  rows (authoritative keyed by `ts`, provisional by `session_date`; they never
+  collide). `returns.ts` owns this fallback; `replay.ts`/`prices.ts` stay
+  `price_bar`-only so backtests never see provisional same-day data.
 - **Points** — long slot `= r × 10`; Defense (short) `= −r × 10`. Weekly total =
   Σ started slots, **uncapped, losses included** (locked decision; mercy cap is
   open question #2, deferred). Short gain floored at 0 (−100% → +1000); short
@@ -62,9 +75,13 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
    `fs_weekly_score` with the full `breakdown`. Idempotent upsert (re-scoring a
    week overwrites — supports FS-12 dispute corrections).
 4. **Scoring job** — from `jobs/scheduler.ts`, the **Friday** post-close firing
-   (`0 30 21 * * 5`, holiday-aware) under a Redis lock: score the just-closed
-   week for every `active` league, then publish `score.updated`. Hands off to
-   FS-06 to settle matchups.
+   under a Redis lock: score the just-closed week for every `active` league, then
+   publish `score.updated`. Hands off to FS-06 to settle matchups.
+   - **Run *after* close-capture completes, not at the same instant.** TODO/30's
+     capture also fires `0 30 21 * * 5` and its ~9-min sweep isn't finished when
+     it starts — a scorer that also fires at 21:30 would read a half-populated
+     `session_close`. Schedule this settle later (e.g. `0 45 21 * * 5`, or gate it
+     on the capture lock being free) so every provisional close is in place first.
 5. **Read endpoints.** `GET /leagues/:id/scores?week=` (all managers' totals +
    breakdown for the week) and `GET /leagues/:id/lineup/:userId/score?week=`
    (one team's per-slot explainer).

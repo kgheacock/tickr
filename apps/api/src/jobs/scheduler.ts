@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import type { Redis } from 'ioredis';
 import { runBackfill } from './backfill.js';
 import { runIntradayUpdate } from './intraday-update.js';
+import { runCloseCapture } from './close-capture.js';
 import { runMetadataRefresh } from './refresh-metadata.js';
 import { tryAcquireLock, releaseLock } from './locks.js';
 import { seedUniverse } from '../db/seed-universe.js';
@@ -21,6 +22,7 @@ const LONG_LOCK_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const BACKFILL_LOCK = 'massive:job:backfill';
 const SESSION_UPDATE_LOCK = 'massive:job:session-update';
 const UNIVERSE_REFRESH_LOCK = 'massive:job:universe-refresh';
+const CLOSE_CAPTURE_LOCK = 'finnhub:job:close-capture';
 
 const baseLog = jobLogger('scheduler');
 
@@ -143,6 +145,27 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   }
 
+  // Early weekly-close capture: Friday 21:30 UTC (item 30). Massive's free tier
+  // doesn't serve the current day and the intraday sweep never runs on weekends,
+  // so Friday's close wouldn't reach price_bar until Monday. This sweeps the
+  // playable corpus through Finnhub /quote (where `c` has frozen at the official
+  // close by 21:00 UTC) into the provisional session_close store so the Fantasy
+  // Street Friday scorer (FS-05) can settle the week Friday evening. NOT
+  // skipped on a holiday Friday: mostRecentSessionDate walks back to the prior
+  // trading day, capturing the close the scorer still needs (and that Massive
+  // won't deliver until Monday). The ~9-min sweep runs under its own lock; the
+  // FS-05 settle must read session_close *after* this completes (see FS-05).
+  // Gated off in dev with the other external-data jobs — it hits the Finnhub API.
+  if (!remoteJobsDisabled) {
+    cron.schedule('0 30 21 * * 5', () => {
+      void withLock(redis, CLOSE_CAPTURE_LOCK, () =>
+        runCloseCapture(redis),
+      ).catch((err: unknown) => {
+        log('error', 'close capture failed', { err: String(err) });
+      });
+    });
+  }
+
   // Alerts: every 5 minutes, check for stuck states (EOD lag, backfill stuck,
   // Massive 429 burst) and fire once per window (item 10).
   cron.schedule('0 */5 * * * *', () => {
@@ -155,6 +178,6 @@ export function registerScheduledJobs(redis: Redis): void {
     'info',
     remoteJobsDisabled
       ? 'scheduler registered (alerts only — external-data jobs disabled via TICKR_DISABLE_REMOTE_JOBS)'
-      : 'scheduler registered (off-hours backfill, intraday live tail, M/W/Sat universe refresh + metadata, alerts)',
+      : 'scheduler registered (off-hours backfill, intraday live tail, M/W/Sat universe refresh + metadata, Friday close capture, alerts)',
   );
 }
