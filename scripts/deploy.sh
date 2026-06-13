@@ -35,6 +35,14 @@ if grep -Eq '^[[:space:]]*TICKR_DEV_AUTH[[:space:]]*=[[:space:]]*[^[:space:]]' "
   die "TICKR_DEV_AUTH is set in $SECRETS — the dev auth bypass must never be enabled in production; remove it before deploying"
 fi
 
+# Refuse to deploy with the dev-only remote-job kill switch enabled.
+# TICKR_DISABLE_REMOTE_JOBS skips every external-data job (backfill, intraday
+# sweep, universe refresh — see apps/api/src/jobs/scheduler.ts); in prod it would
+# silently halt all data ingestion and leave the corpus stale with no error.
+if grep -Eq '^[[:space:]]*TICKR_DISABLE_REMOTE_JOBS[[:space:]]*=[[:space:]]*[^[:space:]]' "$SECRETS"; then
+  die "TICKR_DISABLE_REMOTE_JOBS is set in $SECRETS — this dev-only flag halts all data ingestion and must never be enabled in production; remove it before deploying"
+fi
+
 log "fetching origin/main..."
 git fetch --quiet origin main
 

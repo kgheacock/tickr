@@ -82,3 +82,15 @@ Massive job pushed **off-hours** so it never competes for the daytime budget.
 > **Known limitation (accepted):** best-effort only — at 5 req/min each symbol's
 > tail can be up to ~one sweep (~100 min) stale. Closing this needs a higher
 > `MASSIVE_RPS_LIMIT` (paid tier) or a smaller live-tail universe.
+
+## Follow-on: dev escape hatch — `TICKR_DISABLE_REMOTE_JOBS` ([#82](https://github.com/kgheacock/tickr/pull/82))
+
+`pnpm dev` brought up the worker, which registered all three external-data jobs
+this item added (backfill, intraday sweep, universe refresh) — requiring a real
+`MASSIVE_API_KEY` locally and burning the shared free-tier rate budget on every
+dev boot. PR #82 gates those three behind a dev-only `TICKR_DISABLE_REMOTE_JOBS`
+flag (default off), set on the dev worker in `docker-compose.dev.yml`, and
+relaxes the `MASSIVE_API_KEY` requirement when it is on. The DB/Redis-only alerts
+job still runs. `scripts/deploy.sh` refuses the flag in prod — set there it would
+silently halt all data ingestion — mirroring the existing `TICKR_DEV_AUTH` guard.
+Scheduler tests cover the flag-on path (alerts only, no Massive locks).

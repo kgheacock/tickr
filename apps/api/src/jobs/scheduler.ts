@@ -55,6 +55,20 @@ async function withLock(
 }
 
 export function registerScheduledJobs(redis: Redis): void {
+  // Dev escape hatch: skip every job that reaches the external data APIs (Massive
+  // + the Wikipedia universe pull) so `pnpm dev` runs the platform without a real
+  // MASSIVE_API_KEY and without burning the shared free-tier rate budget. Default
+  // off — prod never sets it, and scripts/deploy.sh refuses to deploy if it is.
+  // The DB/Redis-only alerts job still runs (its webhook fetch is gated on a URL
+  // that dev won't have).
+  const remoteJobsDisabled = process.env['TICKR_DISABLE_REMOTE_JOBS'] === '1';
+  if (remoteJobsDisabled) {
+    log(
+      'warn',
+      'TICKR_DISABLE_REMOTE_JOBS=1 — skipping all external-data jobs (backfill, intraday sweep, universe refresh). NEVER enable this in production.',
+    );
+  }
+
   // Backfill hydrates the ~2yr history of not-yet-backfilled symbols (e.g. members
   // added by the M/W/Sat reconcile). It shares the Massive rate bucket with the
   // intraday sweep, so it is gated to run *outside* the regular session — during
@@ -80,8 +94,10 @@ export function registerScheduledJobs(redis: Redis): void {
   };
 
   // Startup catch-up (off-hours) + hourly thereafter.
-  backfillIfOffHours('startup');
-  cron.schedule('0 0 * * * *', () => backfillIfOffHours('hourly'));
+  if (!remoteJobsDisabled) {
+    backfillIfOffHours('startup');
+    cron.schedule('0 0 * * * *', () => backfillIfOffHours('hourly'));
+  }
 
   // Intraday live tail: every 5 min during the regular session (09:30–16:00 ET,
   // DST-aware, holidays excluded). At 5 req/min a full ~500-symbol sweep takes
@@ -92,36 +108,40 @@ export function registerScheduledJobs(redis: Redis): void {
   // sweep re-fetches a trailing multi-day window with ON CONFLICT inserts, any
   // bars a near-close sweep missed are filled by the next session — self-healing,
   // so no separate post-close pass is scheduled.
-  cron.schedule('0 */5 * * * *', () => {
-    if (!isRegularSession(new Date())) return;
-    void withLock(
-      redis,
-      SESSION_UPDATE_LOCK,
-      () => runIntradayUpdate(redis),
-      LONG_LOCK_TTL_MS,
-      true,
-    ).catch((err: unknown) => {
-      log('error', 'intraday sweep failed', { err: String(err) });
+  if (!remoteJobsDisabled) {
+    cron.schedule('0 */5 * * * *', () => {
+      if (!isRegularSession(new Date())) return;
+      void withLock(
+        redis,
+        SESSION_UPDATE_LOCK,
+        () => runIntradayUpdate(redis),
+        LONG_LOCK_TTL_MS,
+        true,
+      ).catch((err: unknown) => {
+        log('error', 'intraday sweep failed', { err: String(err) });
+      });
     });
-  });
+  }
 
   // Universe refresh: 00:00 UTC every Mon/Wed/Sat (off-hours). Pulls the live S&P
   // 500 list from Wikipedia (default 0.1 departure cap — the mass-retirement
   // guard), then refreshes metadata/branding directly after so newly-added members
   // get names + logos. Their price history is filled by the off-hours backfill.
-  cron.schedule('0 0 0 * * 1,3,6', () => {
-    void withLock(
-      redis,
-      UNIVERSE_REFRESH_LOCK,
-      async () => {
-        await seedUniverse();
-        await runMetadataRefresh(redis);
-      },
-      LONG_LOCK_TTL_MS,
-    ).catch((err: unknown) => {
-      log('error', 'universe refresh failed', { err: String(err) });
+  if (!remoteJobsDisabled) {
+    cron.schedule('0 0 0 * * 1,3,6', () => {
+      void withLock(
+        redis,
+        UNIVERSE_REFRESH_LOCK,
+        async () => {
+          await seedUniverse();
+          await runMetadataRefresh(redis);
+        },
+        LONG_LOCK_TTL_MS,
+      ).catch((err: unknown) => {
+        log('error', 'universe refresh failed', { err: String(err) });
+      });
     });
-  });
+  }
 
   // Alerts: every 5 minutes, check for stuck states (EOD lag, backfill stuck,
   // Massive 429 burst) and fire once per window (item 10).
@@ -133,6 +153,8 @@ export function registerScheduledJobs(redis: Redis): void {
 
   log(
     'info',
-    'scheduler registered (off-hours backfill, intraday live tail, M/W/Sat universe refresh + metadata, alerts)',
+    remoteJobsDisabled
+      ? 'scheduler registered (alerts only — external-data jobs disabled via TICKR_DISABLE_REMOTE_JOBS)'
+      : 'scheduler registered (off-hours backfill, intraday live tail, M/W/Sat universe refresh + metadata, alerts)',
   );
 }
