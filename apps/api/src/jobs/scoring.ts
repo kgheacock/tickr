@@ -158,7 +158,12 @@ export async function runWeeklyScoring(
   // Settle only: pull the just-closed bars for the rostered symbols up front so
   // every league is valued off the same close (the intraday tail may not have
   // swept them all by now). Best-effort — never blocks the settle if it fails.
-  if (!provisional && redis) {
+  // This is the one external-data hop on the settle path (Massive), so it honors
+  // the same TICKR_DISABLE_REMOTE_JOBS dev guard the scheduler applies to every
+  // other external-data job; with it set, the settle still runs off whatever bars
+  // already exist. NEVER set in prod (deploy.sh refuses it).
+  const remoteJobsDisabled = process.env['TICKR_DISABLE_REMOTE_JOBS'] === '1';
+  if (!provisional && redis && !remoteJobsDisabled) {
     await captureCloseBars(pool, redis, season, opts.week);
   }
 
