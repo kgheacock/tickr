@@ -32,3 +32,8 @@ export async function releaseLock(
 ): Promise<void> {
   await redis.eval(RELEASE_LUA, 1, key, owner);
 }
+
+/** True if the lock key currently exists (held by some owner). */
+export async function isLockHeld(redis: Redis, key: string): Promise<boolean> {
+  return (await redis.exists(key)) === 1;
+}

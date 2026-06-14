@@ -4,7 +4,7 @@ import { runBackfill } from './backfill.js';
 import { runIntradayUpdate } from './intraday-update.js';
 import { runCloseCapture } from './close-capture.js';
 import { runMetadataRefresh } from './refresh-metadata.js';
-import { tryAcquireLock, releaseLock } from './locks.js';
+import { tryAcquireLock, releaseLock, isLockHeld } from './locks.js';
 import { seedUniverse } from '../db/seed-universe.js';
 import { isRegularSession } from '../market/holidays.js';
 import { runAlertCheck } from '../alerts/checker.js';
@@ -77,7 +77,8 @@ export function registerScheduledJobs(redis: Redis): void {
   // market hours the whole budget belongs to the live tail. Self-terminates when
   // nothing is pending, so an off-hours firing is a no-op once the corpus is full.
   const backfillIfOffHours = (trigger: string): void => {
-    if (isRegularSession(new Date())) {
+    const now = new Date();
+    if (isRegularSession(now)) {
       log('info', 'backfill skipped — market open (runs off-hours only)', {
         trigger,
       });
@@ -87,6 +88,23 @@ export function registerScheduledJobs(redis: Redis): void {
       redis,
       BACKFILL_LOCK,
       async () => {
+        // Saturday only: the weekend catch-up sweep (below) is the first Massive
+        // job that fires in the same off-hours window as this backfill, and both
+        // draw the single global token bucket (massive:bucket). Yield the rate
+        // budget to an active sweep so it pulls Friday's tail at full throughput;
+        // the next hourly firing resumes the backfill once the sweep releases
+        // SESSION_UPDATE_LOCK. Scoped to Saturday so an orphaned session lock (a
+        // mid-session weekday deploy, see intraday-update) never stalls the
+        // weekday off-hours backfill.
+        if (
+          now.getUTCDay() === 6 &&
+          (await isLockHeld(redis, SESSION_UPDATE_LOCK))
+        ) {
+          log('info', 'backfill deferred — Saturday catch-up sweep active', {
+            trigger,
+          });
+          return;
+        }
         await runBackfill(redis);
       },
       LONG_LOCK_TTL_MS,
@@ -121,6 +139,34 @@ export function registerScheduledJobs(redis: Redis): void {
         true,
       ).catch((err: unknown) => {
         log('error', 'intraday sweep failed', { err: String(err) });
+      });
+    });
+  }
+
+  // Saturday catch-up sweep: 13:30 UTC (~09:30 ET). Friday's bars are 403'd on
+  // Friday itself (the free tier never serves the current trading day) and the
+  // in-session sweep above never runs on the weekend, so Friday's prices would
+  // otherwise not reach the authoritative price_bar store until Monday's session.
+  // The free tier *does* serve the prior trading day by the weekend (verified
+  // 2026-06-14: Friday 06-12 bars were available), so a single Saturday sweep pulls
+  // Friday's now-available tail forward by two days. runIntradayUpdate re-fetches a
+  // trailing multi-day window with ON CONFLICT inserts — the same self-healing
+  // append the weekday sweep does, just unconditional (Saturday is never a regular
+  // session, so there is no session gate to apply). Reuses SESSION_UPDATE_LOCK so
+  // it can't double-run, and the 13:30 mid-hour slot means it holds that lock
+  // before the top-of-hour backfill fires — backfillIfOffHours then defers to it,
+  // keeping the shared Massive rate bucket undivided. The Friday session_close
+  // capture (item 30) still settles the FS scorer; this fills the price_bar store
+  // that charts and backtests read.
+  if (!remoteJobsDisabled) {
+    cron.schedule('0 30 13 * * 6', () => {
+      void withLock(
+        redis,
+        SESSION_UPDATE_LOCK,
+        () => runIntradayUpdate(redis),
+        LONG_LOCK_TTL_MS,
+      ).catch((err: unknown) => {
+        log('error', 'Saturday catch-up sweep failed', { err: String(err) });
       });
     });
   }

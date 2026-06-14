@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   isRegularSession: vi.fn(),
   tryAcquireLock: vi.fn(),
   releaseLock: vi.fn(),
+  isLockHeld: vi.fn(),
 }));
 
 vi.mock('node-cron', () => ({ default: { schedule: mocks.schedule } }));
@@ -43,6 +44,7 @@ vi.mock('../../src/market/holidays.js', () => ({
 vi.mock('../../src/jobs/locks.js', () => ({
   tryAcquireLock: mocks.tryAcquireLock,
   releaseLock: mocks.releaseLock,
+  isLockHeld: mocks.isLockHeld,
 }));
 
 import { registerScheduledJobs } from '../../src/jobs/scheduler.js';
@@ -85,6 +87,8 @@ describe('registerScheduledJobs', () => {
     mocks.runAlertCheck.mockResolvedValue(undefined);
     // Default to off-hours so the startup backfill runs; flip per-test.
     mocks.isRegularSession.mockReturnValue(false);
+    // Default to no sweep in flight so the backfill's Saturday yield is inert.
+    mocks.isLockHeld.mockResolvedValue(false);
   });
 
   it('registers exactly the expected cron schedules', () => {
@@ -94,10 +98,11 @@ describe('registerScheduledJobs', () => {
     expect(exprs).toContain('0 0 * * * *'); // hourly backfill
     expect(exprs).toContain('0 */5 * * * *'); // intraday live tail + alerts
     expect(exprs).toContain('0 0 0 * * 1,3,6'); // universe refresh Mon/Wed/Sat
+    expect(exprs).toContain('0 30 13 * * 6'); // Saturday catch-up sweep
     expect(exprs).toContain('0 30 21 * * 5'); // Friday early close capture
-    // backfill, intraday, universe, close-capture, alerts (the post-close EOD
-    // cron was dropped)
-    expect(mocks.schedule).toHaveBeenCalledTimes(5);
+    // backfill, intraday, Saturday catch-up, universe, close-capture, alerts (the
+    // post-close EOD cron was dropped)
+    expect(mocks.schedule).toHaveBeenCalledTimes(6);
   });
 
   it('Friday close capture runs runCloseCapture under its own lock', async () => {
@@ -180,6 +185,70 @@ describe('registerScheduledJobs', () => {
 
       expect(mocks.runIntradayUpdate).not.toHaveBeenCalled();
       expect(acquiredKeys()).not.toContain(SESSION_UPDATE_LOCK);
+    });
+  });
+
+  describe('Saturday catch-up sweep', () => {
+    it('sweeps under the session lock regardless of session state (Saturday is never a regular session)', async () => {
+      // The sweep must run with no session gate — prove it fires even when
+      // isRegularSession reports closed (the weekend default).
+      mocks.isRegularSession.mockReturnValue(false);
+      registerScheduledJobs(fakeRedis);
+
+      callbackFor('0 30 13 * * 6')();
+
+      await vi.waitFor(() =>
+        expect(mocks.runIntradayUpdate).toHaveBeenCalledWith(fakeRedis),
+      );
+      expect(mocks.tryAcquireLock).toHaveBeenCalledWith(
+        fakeRedis,
+        SESSION_UPDATE_LOCK,
+        SIX_HOURS_MS,
+      );
+    });
+
+    it('defers the off-hours backfill while the Saturday sweep holds the session lock', async () => {
+      // Freeze to a Saturday (2026-06-13) outside market hours so the backfill's
+      // Saturday-only yield engages; the sweep is represented as holding the lock.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-13T14:05:00Z'));
+      try {
+        mocks.isRegularSession.mockReturnValue(false);
+        mocks.isLockHeld.mockResolvedValue(true);
+
+        registerScheduledJobs(fakeRedis);
+        callbackFor('0 0 * * * *')(); // hourly backfill firing
+
+        await vi.waitFor(() =>
+          expect(mocks.isLockHeld).toHaveBeenCalledWith(
+            fakeRedis,
+            SESSION_UPDATE_LOCK,
+          ),
+        );
+        expect(mocks.runBackfill).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not consult the sweep lock on a weekday — an orphaned session lock never stalls the off-hours backfill', async () => {
+      // A Wednesday (2026-06-10) off-hours: the Saturday-only guard short-circuits
+      // before isLockHeld, so even a stale/orphaned session lock is ignored.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-10T06:00:00Z'));
+      try {
+        mocks.isRegularSession.mockReturnValue(false);
+        mocks.isLockHeld.mockResolvedValue(true); // orphaned lock — must be ignored
+
+        registerScheduledJobs(fakeRedis);
+        mocks.runBackfill.mockClear(); // drop the startup firing
+        callbackFor('0 0 * * * *')();
+
+        await vi.waitFor(() => expect(mocks.runBackfill).toHaveBeenCalled());
+        expect(mocks.isLockHeld).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 
