@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Redis } from 'ioredis';
 
 // Capture cron registrations and stub out everything the scheduler touches so the
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   schedule: vi.fn(),
   runBackfill: vi.fn(),
   runIntradayUpdate: vi.fn(),
+  runCloseCapture: vi.fn(),
   runMetadataRefresh: vi.fn(),
   seedUniverse: vi.fn(),
   runAlertCheck: vi.fn(),
@@ -24,6 +25,9 @@ vi.mock('../../src/jobs/backfill.js', () => ({
 }));
 vi.mock('../../src/jobs/intraday-update.js', () => ({
   runIntradayUpdate: mocks.runIntradayUpdate,
+}));
+vi.mock('../../src/jobs/close-capture.js', () => ({
+  runCloseCapture: mocks.runCloseCapture,
 }));
 vi.mock('../../src/jobs/refresh-metadata.js', () => ({
   runMetadataRefresh: mocks.runMetadataRefresh,
@@ -48,6 +52,7 @@ import { registerScheduledJobs } from '../../src/jobs/scheduler.js';
 const BACKFILL_LOCK = 'massive:job:backfill';
 const SESSION_UPDATE_LOCK = 'massive:job:session-update';
 const UNIVERSE_REFRESH_LOCK = 'massive:job:universe-refresh';
+const CLOSE_CAPTURE_LOCK = 'finnhub:job:close-capture';
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 
 const fakeRedis = {} as unknown as Redis;
@@ -70,6 +75,7 @@ describe('registerScheduledJobs', () => {
     mocks.releaseLock.mockResolvedValue(undefined);
     mocks.runBackfill.mockResolvedValue({ completed: 0, failed: [] });
     mocks.runIntradayUpdate.mockResolvedValue(undefined);
+    mocks.runCloseCapture.mockResolvedValue(undefined);
     mocks.seedUniverse.mockResolvedValue(undefined);
     mocks.runMetadataRefresh.mockResolvedValue({
       total: 0,
@@ -92,6 +98,7 @@ describe('registerScheduledJobs', () => {
     expect(exprs).toContain('0 0 * * * *'); // hourly backfill
     expect(exprs).toContain('0 */5 * * * *'); // intraday live tail + alerts
     expect(exprs).toContain('0 0 0 * * 1,3,6'); // universe refresh Mon/Wed/Sat
+    expect(exprs).toContain('0 30 21 * * 5'); // Friday early close capture
     // Fantasy Street jobs (FS-02/04/05/07).
     expect(exprs).toContain('0 0 6 * * 0'); // classifier: Sunday 06:00 UTC
     expect(exprs).toContain('0 30 14 * * 1-5'); // lineup lock: weekday open
@@ -100,9 +107,25 @@ describe('registerScheduledJobs', () => {
     expect(exprs).toContain('0 45 21 * * 5'); // waiver run: Friday post-settle
     expect(exprs).toContain('0 0 18 * * 0'); // lineup reminders: Sunday evening
     expect(exprs).toContain('0 0 13 * * 1-5'); // lineup reminders: weekday morning
-    // backfill, intraday, universe, alerts (post-close EOD cron dropped on main)
-    // + 7 Fantasy Street crons. Startup backfill is a direct call, not scheduled.
-    expect(mocks.schedule).toHaveBeenCalledTimes(11);
+    // 5 market-data crons (backfill, intraday, universe, close-capture, alerts;
+    // the post-close EOD cron was dropped) + 7 Fantasy Street crons. Startup
+    // backfill is a direct call, not scheduled.
+    expect(mocks.schedule).toHaveBeenCalledTimes(12);
+  });
+
+  it('Friday close capture runs runCloseCapture under its own lock', async () => {
+    registerScheduledJobs(fakeRedis);
+
+    callbackFor('0 30 21 * * 5')();
+
+    await vi.waitFor(() =>
+      expect(mocks.runCloseCapture).toHaveBeenCalledWith(fakeRedis),
+    );
+    expect(mocks.tryAcquireLock).toHaveBeenCalledWith(
+      fakeRedis,
+      CLOSE_CAPTURE_LOCK,
+      expect.any(Number),
+    );
   });
 
   describe('backfill (off-hours only)', () => {
@@ -204,6 +227,59 @@ describe('registerScheduledJobs', () => {
 
       expect(mocks.seedUniverse).not.toHaveBeenCalled();
       expect(mocks.runMetadataRefresh).not.toHaveBeenCalled();
+    });
+  });
+
+  // Dev escape hatch: TICKR_DISABLE_REMOTE_JOBS=1 skips every job that reaches the
+  // external data APIs (backfill, intraday sweep, universe refresh, Friday close
+  // capture) while leaving the DB/Redis-only jobs running — the alerts check plus
+  // every Fantasy Street cron (classifier, lineup lock, scoring, waivers,
+  // reminders). deploy.sh refuses the flag in prod.
+  describe('TICKR_DISABLE_REMOTE_JOBS=1', () => {
+    const prev = process.env['TICKR_DISABLE_REMOTE_JOBS'];
+    beforeEach(() => {
+      process.env['TICKR_DISABLE_REMOTE_JOBS'] = '1';
+    });
+    afterEach(() => {
+      if (prev === undefined) delete process.env['TICKR_DISABLE_REMOTE_JOBS'];
+      else process.env['TICKR_DISABLE_REMOTE_JOBS'] = prev;
+    });
+
+    it('skips the external-data schedules but keeps alerts + the FS crons', () => {
+      registerScheduledJobs(fakeRedis);
+
+      const exprs = mocks.schedule.mock.calls.map((c) => c[0]);
+      // External-data crons are gated off: hourly backfill, universe refresh and
+      // Friday close capture. (The intraday sweep shares '0 */5 * * * *' with the
+      // ungated alerts check, so that expression still appears — via alerts.)
+      expect(exprs).not.toContain('0 0 * * * *'); // hourly backfill
+      expect(exprs).not.toContain('0 0 0 * * 1,3,6'); // universe refresh
+      expect(exprs).not.toContain('0 30 21 * * 5'); // Friday close capture
+      // Alerts + the 7 DB/Redis-only Fantasy Street crons remain.
+      expect(exprs).toContain('0 */5 * * * *'); // alerts
+      expect(exprs).toContain('0 0 6 * * 0'); // classifier
+      expect(exprs).toContain('0 30 14 * * 1-5'); // lineup lock
+      expect(exprs).toContain('0 35 21 * * 5'); // weekly settle
+      expect(exprs).toContain('0 35 21 * * 1-4'); // provisional scoring
+      expect(exprs).toContain('0 45 21 * * 5'); // waiver run
+      expect(exprs).toContain('0 0 18 * * 0'); // lineup reminders (Sunday)
+      expect(exprs).toContain('0 0 13 * * 1-5'); // lineup reminders (weekday)
+      expect(mocks.schedule).toHaveBeenCalledTimes(8);
+    });
+
+    it('does not run the startup backfill or touch the Massive locks', () => {
+      registerScheduledJobs(fakeRedis);
+
+      expect(mocks.runBackfill).not.toHaveBeenCalled();
+      expect(acquiredKeys()).not.toContain(BACKFILL_LOCK);
+    });
+
+    it('still fires the alerts check on its cron', async () => {
+      registerScheduledJobs(fakeRedis);
+      callbackFor('0 */5 * * * *')();
+
+      await vi.waitFor(() => expect(mocks.runAlertCheck).toHaveBeenCalled());
+      expect(mocks.runIntradayUpdate).not.toHaveBeenCalled();
     });
   });
 });

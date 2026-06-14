@@ -642,6 +642,15 @@ export interface components {
             /** @description Count of universe_symbol rows with backfilled = false */
             backfillRemaining: number;
             fantasy: components["schemas"]["FantasyHealth"];
+            /** @description Worst price-bar staleness across the playable corpus — the symbol whose latest bar is furthest behind the freshness reference (now during the session, else the most recent NYSE close). null when no playable symbol has any bars. */
+            worstLag: {
+                /** @description The worst-lagging playable symbol */
+                symbol: string;
+                /** @description ISO timestamp of that symbol's most recent bar */
+                latestBarAt: string;
+                /** @description Seconds between the freshness reference and latestBarAt (>= 0) */
+                lagSec: number;
+            } | null;
         };
         /** @description Slot layout for a league's weekly lineup plus bench depth */
         RosterConfig: {

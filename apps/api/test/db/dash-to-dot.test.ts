@@ -12,15 +12,15 @@ const migrationsDir = fileURLToPath(
   new URL('../../migrations', import.meta.url),
 );
 
-// Everything before the dash→dot rename (011) is "the schema as it stood before
-// the rename"; later FS migrations (012+) sort after it, so locate 011 by name
-// rather than assuming it is the last file.
+// Everything sorting before the dash→dot rename is "the schema as it stood
+// before the rename". Target the rename migration explicitly by name rather than
+// assuming it sorts last — later migrations (FS 012+, the coverage watermark)
+// must not shift which step we treat as the rename.
+const RENAME_MIGRATION = '1700000000011_universe-dash-to-dot.sql';
 const allMigrations = readdirSync(migrationsDir)
   .filter((f) => f.endsWith('.sql'))
   .sort();
-const beforeRenameCount = allMigrations.findIndex((f) =>
-  f.includes('universe-dash-to-dot'),
-);
+const beforeRenameCount = allMigrations.indexOf(RENAME_MIGRATION);
 
 let container: StartedPostgreSqlContainer;
 let client: pg.Client;
@@ -75,12 +75,14 @@ beforeAll(async () => {
      VALUES ('BRK-B', 'image/svg+xml')`,
   );
 
-  // Now apply the rename migration (011) and any later migrations.
+  // Now apply exactly the rename migration (011) — not the migrations after it,
+  // which are unrelated to what this test exercises.
   await runner({
     databaseUrl,
     dir: migrationsDir,
     direction: 'up',
     migrationsTable: 'pgmigrations',
+    count: 1,
     verbose: false,
   });
 }, 120_000);

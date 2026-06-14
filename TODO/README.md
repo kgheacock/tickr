@@ -49,6 +49,9 @@ of each file as you go.
 | 25 | [Universe source: CSV → live Wikipedia constituents](25-universe-from-wikipedia.md) | 03, 13 | [in review](https://github.com/kgheacock/tickr/pull/64) |
 | 26 | [Schedule data jobs in the worker cron](26-schedule-data-jobs-cron.md) | 22, 25 | [in review](https://github.com/kgheacock/tickr/pull/69) |
 | 27 | [Symbol metadata JSON endpoint](27-symbol-metadata-endpoint.md) | 22 | [in review](https://github.com/kgheacock/tickr/pull/67) |
+| 28 | [Harden audit ticker-transition awareness](28-audit-transition-hardening.md) | 19, 25 | pending |
+| 29 | [Admin logs: backfill status → worst price-bar lag](29-admin-logs-worst-lag.md) | 10, 23 | [in review](https://github.com/kgheacock/tickr/pull/78) |
+| 30 | [Finnhub early weekly-close capture](30-finnhub-weekly-close.md) | 05, 13, 26 | [in review](https://github.com/kgheacock/tickr/pull/83) |
 
 > **Pivot (items 16–18):** the project is being re-scoped from a trading
 > *game* to a market-data + returns *platform*. Item 16 keeps the data corpus

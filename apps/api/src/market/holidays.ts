@@ -104,6 +104,129 @@ export function isNyseHoliday(utcDate: Date): boolean {
 
 const SESSION_OPEN_MIN = 9 * 60 + 30; // 09:30 ET
 const SESSION_CLOSE_MIN = 16 * 60; // 16:00 ET
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+interface EtParts {
+  year: number;
+  month: number; // 1-12
+  day: number;
+  hour: number; // 0-23
+  minute: number;
+}
+
+/** Wall-clock America/New_York fields for an instant (DST-correct via Intl). */
+function etParts(date: Date): EtParts {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type: string): string =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return {
+    year: parseInt(get('year'), 10),
+    month: parseInt(get('month'), 10),
+    day: parseInt(get('day'), 10),
+    // Intl with hour12:false can render midnight as '24' in some runtimes.
+    hour: parseInt(get('hour'), 10) % 24,
+    minute: parseInt(get('minute'), 10),
+  };
+}
+
+/** Is the given ET calendar date a regular NYSE trading day (weekday, non-holiday)? */
+function isEtTradingDay(year: number, month: number, day: number): boolean {
+  // Noon UTC of the date keeps isNyseHoliday's fixed-offset ET conversion on the
+  // same calendar day (matches run-audit's isTradingDay).
+  const noon = new Date(Date.UTC(year, month - 1, day, 12));
+  const dow = noon.getUTCDay();
+  if (dow === 0 || dow === 6) return false;
+  return !isNyseHoliday(noon);
+}
+
+/** The UTC instant of `hour:minute` ET on the given ET calendar date. */
+function etWallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+): Date {
+  // Two-step zoned→UTC: treat the wall clock as if UTC, then correct by the
+  // offset revealed by rendering that instant back in ET. Accurate for 16:00 ET
+  // (the only DST-ambiguous hour is 02:00, which never closes a session).
+  const asUtc = Date.UTC(year, month - 1, day, hour, minute);
+  const r = etParts(new Date(asUtc));
+  const etAsUtc = Date.UTC(r.year, r.month - 1, r.day, r.hour, r.minute);
+  return new Date(asUtc - (etAsUtc - asUtc));
+}
+
+/**
+ * The most recent NYSE regular-session close (16:00 ET) at or before `now`,
+ * as a UTC instant. During a live session this is the *previous* session's
+ * close (today's 16:00 hasn't happened yet); after today's close it is today's.
+ * Walks back over weekends and holidays.
+ *
+ * Pairs with isRegularSession to bound "how fresh should the data be": callers
+ * use `isRegularSession(now) ? now : mostRecentClose(now)`, i.e. the generalized
+ * min(now, today's close) that also handles non-trading days.
+ */
+export function mostRecentClose(now: Date): Date {
+  const et = etParts(now);
+  let { year, month, day } = et;
+  const minuteOfDay = et.hour * 60 + et.minute;
+
+  // Today only qualifies once its close has passed; otherwise step back to the
+  // previous trading day. The longest closure run (holiday + weekend) is ~4 days,
+  // so a small bound is a safe loop guard.
+  if (!(isEtTradingDay(year, month, day) && minuteOfDay >= SESSION_CLOSE_MIN)) {
+    let cursor = Date.UTC(year, month - 1, day, 12) - DAY_MS;
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(cursor);
+      const y = d.getUTCFullYear();
+      const mo = d.getUTCMonth() + 1;
+      const dd = d.getUTCDate();
+      if (isEtTradingDay(y, mo, dd)) {
+        year = y;
+        month = mo;
+        day = dd;
+        break;
+      }
+      cursor -= DAY_MS;
+    }
+  }
+
+  return etWallClockToUtc(year, month, day, 16, 0);
+}
+
+/**
+ * The ET calendar date ('YYYY-MM-DD') of the most recent regular-session close
+ * at or before `now`. This is the "just-closed session" the post-close Finnhub
+ * capture (TODO/30) keys its provisional close on.
+ *
+ * It is holiday-aware by construction: it renders the ET date of
+ * mostRecentClose, which walks back over weekends and holidays. So a capture
+ * fired on a holiday Friday keys to the prior trading day's close (the one the
+ * weekly scorer needs and that Massive won't deliver until Monday) rather than
+ * to the non-trading Friday.
+ */
+export function mostRecentSessionDate(now: Date): string {
+  const close = mostRecentClose(now);
+  // en-CA renders as YYYY-MM-DD. The close is 16:00 ET, mid-day, so the ET
+  // calendar date is unambiguous regardless of the UTC offset.
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(close);
+  const get = (type: string): string =>
+    parts.find((p) => p.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
 
 /**
  * Returns true if `now` falls within the NYSE *regular* trading session —
@@ -191,7 +314,6 @@ export function nyseRegularCloseAnchor(d: Date): Date {
 // scoring crons fire mid-day UTC, well clear of the midnight boundary, so the ET
 // calendar date is stable when picking the week's Friday.
 const ET_OFFSET_MS = 5 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The Friday of `now`'s week (ET) — today on Friday, the coming Friday Mon–Thu.

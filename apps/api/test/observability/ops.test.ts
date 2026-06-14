@@ -118,4 +118,103 @@ describe('GET /admin/ops', () => {
     expect(body.jobQueueDepth).toBe(0);
     expect(body.backfillRemaining).toBe(0);
   });
+
+  describe('worstLag', () => {
+    // The lateral query reads from price_bar; seed a controlled corpus and read
+    // it back. Each case resets both tables so the worst-lag pick is unambiguous.
+    async function reset(): Promise<void> {
+      await pgPool.query('DELETE FROM price_bar');
+      await pgPool.query('DELETE FROM universe_symbol');
+    }
+
+    async function addSymbol(
+      symbol: string,
+      opts: {
+        backfilled?: boolean;
+        removedAt?: string | null;
+        dataStatus?: string | null;
+        latestBar?: string | null;
+      } = {},
+    ): Promise<void> {
+      await pgPool.query(
+        `INSERT INTO universe_symbol (symbol, backfilled, removed_at, data_status)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          symbol,
+          opts.backfilled ?? true,
+          opts.removedAt ?? null,
+          opts.dataStatus ?? null,
+        ],
+      );
+      if (opts.latestBar) {
+        await pgPool.query(
+          `INSERT INTO price_bar (symbol, ts, open, high, low, close, volume)
+           VALUES ($1, $2, 100, 100, 100, 100, 1)`,
+          [symbol, opts.latestBar],
+        );
+      }
+    }
+
+    async function fetchOps(): Promise<OpsResponse> {
+      const token = await sessionFor(ADMIN_ID);
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/admin/ops',
+        headers: { cookie: `tickr_sid=${token}` },
+      });
+      expect(res.statusCode).toBe(200);
+      return res.json<OpsResponse>();
+    }
+
+    afterAll(reset);
+
+    it('is null when no playable symbol has any bars', async () => {
+      await reset();
+      await addSymbol('AAA', { latestBar: null });
+      const body = await fetchOps();
+      expect(body.worstLag).toBeNull();
+    });
+
+    it('picks the playable symbol whose latest bar is oldest', async () => {
+      await reset();
+      // FRESH printed seconds ago; STALE last printed 30d ago → STALE wins.
+      const now = Date.now();
+      await addSymbol('FRESH', {
+        latestBar: new Date(now - 60_000).toISOString(),
+      });
+      // 30 days back so lagSec stays clearly large no matter when CI runs: the
+      // reference is min(now, last close) and the longest closure run is ~5 days,
+      // so `30d − delta` is always well over 2d (a 3d bar would clamp toward 0
+      // over a holiday weekend).
+      const staleTs = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+      await addSymbol('STALE', { latestBar: staleTs });
+
+      const body = await fetchOps();
+      expect(body.worstLag).not.toBeNull();
+      expect(body.worstLag?.symbol).toBe('STALE');
+      expect(body.worstLag?.latestBarAt).toBe(new Date(staleTs).toISOString());
+      expect(body.worstLag?.lagSec).toBeGreaterThan(2 * 24 * 60 * 60);
+    });
+
+    it('ignores removed / incomplete / not-yet-backfilled symbols', async () => {
+      await reset();
+      const ancient = new Date('2000-01-03T21:00:00Z').toISOString();
+      // All excluded by the playable predicate despite very old bars.
+      await addSymbol('REMOVED', {
+        removedAt: new Date().toISOString(),
+        latestBar: ancient,
+      });
+      await addSymbol('INCOMPLETE', {
+        dataStatus: 'incomplete',
+        latestBar: ancient,
+      });
+      await addSymbol('PENDING', { backfilled: false, latestBar: ancient });
+      // The only playable symbol — fresh — so it is the worst (and only) lag.
+      const recent = new Date(Date.now() - 60_000).toISOString();
+      await addSymbol('PLAYABLE', { latestBar: recent });
+
+      const body = await fetchOps();
+      expect(body.worstLag?.symbol).toBe('PLAYABLE');
+    });
+  });
 });

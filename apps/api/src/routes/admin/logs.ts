@@ -183,7 +183,7 @@ export async function registerAdminLogsRoutes(
     async (_req, reply) => {
       reply.type('text/html; charset=utf-8');
       // Bake the deployed commit into the page server-side (it's constant per
-      // process) so there's no client fetch/flash for it; the backfill bar,
+      // process) so there's no client fetch/flash for it; the worst-lag bar,
       // which genuinely changes, is polled from the client.
       const commit = process.env['TICKR_COMMIT'] ?? 'unknown';
       return renderLogViewer(commit);
@@ -227,16 +227,14 @@ function renderLogViewer(commit: string): string {
   }
   header a.commit:hover { border-color: #555; color: #afafff; }
   header .commit.dim { color: #767676; }
-  header .backfill {
+  header .lag {
     display: inline-flex; align-items: center; gap: 5px; color: #888;
   }
-  header .backfill .dot {
+  header .lag .dot {
     width: 8px; height: 8px; border-radius: 50%;
     background: #767676; display: inline-block;
   }
-  header .backfill.ok .dot { background: #5fd75f; }
-  header .backfill.busy .dot { background: #ffd75f; }
-  header .backfill.err .dot { background: #ff5f5f; }
+  header .lag.err .dot { background: #ff5f5f; }
   #log { flex: 1 1 auto; overflow-y: auto; padding: 6px 10px; white-space: pre-wrap; word-break: break-word; }
   .line { display: block; }
   .ts { color: #5f5f5f; }
@@ -259,8 +257,8 @@ function renderLogViewer(commit: string): string {
 <header>
   <span class="title">tickr logs</span>
   ${commitChipHtml(commit)}
-  <span class="backfill" id="backfill" title="universe backfill status (polled from /admin/ops)">
-    <span class="dot"></span><span id="backfill-text">backfill…</span>
+  <span class="lag" id="lag" title="worst price-bar lag in the DB: latest bar vs. now (or the last NYSE close off-hours), polled from /admin/ops">
+    <span class="dot"></span><span id="lag-text">lag…</span>
   </span>
   <label>level
     <select id="level">
@@ -359,13 +357,24 @@ function renderLogViewer(commit: string): string {
     poll();
   }
 
-  // Minimal backfill status bar. Polled less often than the log tail (the ops
-  // endpoint isn't at logLevel:warn, so each call shows up as an info line in
-  // the very feed below) and kept honest: backfillRemaining is the primary
-  // signal; jobQueueDepth is reported as general job activity, not "backfill".
-  var backfillEl = document.getElementById('backfill');
-  var backfillTextEl = document.getElementById('backfill-text');
+  // Minimal worst-lag bar: the staleness of the most-behind playable symbol's
+  // latest price bar vs. the freshness reference (now in-session, else the last
+  // close). Polled less often than the log tail (the ops endpoint isn't at
+  // logLevel:warn, so each call shows up as an info line in the very feed below).
+  var lagEl = document.getElementById('lag');
+  var lagTextEl = document.getElementById('lag-text');
   var opsTimer = null;
+
+  function fmtDur(sec) {
+    if (sec < 60) return sec + 's';
+    if (sec < 3600) return Math.round(sec / 60) + 'm';
+    if (sec < 86400) {
+      var h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+      return h + 'h' + (m ? m + 'm' : '');
+    }
+    var d = Math.floor(sec / 86400), h2 = Math.round((sec % 86400) / 3600);
+    return d + 'd' + (h2 ? h2 + 'h' : '');
+  }
 
   function pollOps() {
     fetch('/api/v1/admin/ops', { credentials: 'same-origin', headers: { accept: 'application/json' } })
@@ -374,22 +383,21 @@ function renderLogViewer(commit: string): string {
         return r.json();
       })
       .then(function (d) {
-        var rem = d.backfillRemaining;
-        var depth = d.jobQueueDepth;
-        if (rem === 0) {
-          backfillEl.className = 'backfill ok';
-          backfillTextEl.textContent = 'backfill idle';
-        } else {
-          backfillEl.className = 'backfill busy';
-          backfillTextEl.textContent = 'backfill · ' + rem + ' remaining';
-        }
-        if (depth > 0) {
-          backfillTextEl.textContent += ' · ' + depth + ' job' + (depth === 1 ? '' : 's') + ' active';
-        }
+        // Neutral by design: the number alone is the signal. Thresholded colors
+        // were rejected because the worst lag legitimately spikes to the
+        // time-since-last-close every morning (the worst symbol sits on the prior
+        // close until the ~100-min intraday sweep catches it — scheduler.ts), so
+        // any fixed red threshold would scream daily during normal operation. The
+        // dot only goes red when the poll itself fails (see catch).
+        var wl = d.worstLag;
+        lagEl.className = 'lag';
+        lagTextEl.textContent = wl
+          ? 'lag · ' + wl.symbol + ' ' + fmtDur(wl.lagSec)
+          : 'lag · no data';
       })
       .catch(function () {
-        backfillEl.className = 'backfill err';
-        backfillTextEl.textContent = 'backfill ?';
+        lagEl.className = 'lag err';
+        lagTextEl.textContent = 'lag ?';
       });
   }
 

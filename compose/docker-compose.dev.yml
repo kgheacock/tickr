@@ -41,6 +41,11 @@ services:
   worker:
     environment:
       NODE_ENV: development
+      # Skip every job that reaches the external data APIs (Massive + the Wikipedia
+      # universe pull) so dev runs without a real MASSIVE_API_KEY and without
+      # burning the shared free-tier rate budget (see jobs/scheduler.ts). The prod
+      # overlay never sets this and deploy.sh refuses it.
+      TICKR_DISABLE_REMOTE_JOBS: '1'
     volumes:
       - ../apps/api/src:/app/apps/api/src
       - ../packages/shared-types/src:/app/packages/shared-types/src

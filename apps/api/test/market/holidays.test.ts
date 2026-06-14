@@ -3,6 +3,7 @@ import {
   isRegularSession,
   isNyseHoliday,
   nyseRegularCloseAnchor,
+  mostRecentClose,
 } from '../../src/market/holidays.js';
 
 // Helper: build a UTC instant from an explicit offset so the test states the
@@ -102,5 +103,51 @@ describe('nyseRegularCloseAnchor', () => {
     expect(priorFri.toISOString()).toBe('2025-03-07T20:59:59.999Z'); // EST 21:00Z
     const gapHours = (thisFri.getTime() - priorFri.getTime()) / 3_600_000;
     expect(gapHours).toBe(7 * 24 - 1);
+  });
+});
+
+describe('mostRecentClose', () => {
+  // EDT close = 20:00 UTC (16:00 - 4h); EST close = 21:00 UTC (16:00 - 5h).
+  it('returns the previous session close mid-session (cap at last close)', () => {
+    // Wed 2025-07-16 11:00 ET — today's 16:00 hasn't happened, so the last
+    // completed close is Tue 2025-07-15 16:00 EDT = 20:00 UTC.
+    expect(mostRecentClose(utc('2025-07-16T15:00:00Z')).toISOString()).toBe(
+      '2025-07-15T20:00:00.000Z',
+    );
+  });
+
+  it('returns today’s close once it has passed (EDT)', () => {
+    // Wed 2025-07-16 18:00 ET (22:00 UTC) — after today's close.
+    expect(mostRecentClose(utc('2025-07-16T22:00:00Z')).toISOString()).toBe(
+      '2025-07-16T20:00:00.000Z',
+    );
+  });
+
+  it('returns today’s close once it has passed (EST, 21:00 UTC)', () => {
+    // Wed 2025-01-15 18:00 ET (23:00 UTC).
+    expect(mostRecentClose(utc('2025-01-15T23:00:00Z')).toISOString()).toBe(
+      '2025-01-15T21:00:00.000Z',
+    );
+  });
+
+  it('walks back over a weekend to Friday’s close', () => {
+    // Sat 2025-07-19 12:00 ET → Fri 2025-07-18 16:00 EDT = 20:00 UTC.
+    expect(mostRecentClose(utc('2025-07-19T16:00:00Z')).toISOString()).toBe(
+      '2025-07-18T20:00:00.000Z',
+    );
+  });
+
+  it('walks back over a holiday (Juneteenth 2025, Thu) to Wednesday’s close', () => {
+    // Thu 2025-06-19 10:00 ET is a holiday → Wed 2025-06-18 16:00 EDT = 20:00 UTC.
+    expect(mostRecentClose(utc('2025-06-19T14:00:00Z')).toISOString()).toBe(
+      '2025-06-18T20:00:00.000Z',
+    );
+  });
+
+  it('exactly at the close counts today (16:00 ET inclusive)', () => {
+    // Wed 2025-07-16 16:00 ET = 20:00 UTC.
+    expect(mostRecentClose(utc('2025-07-16T20:00:00Z')).toISOString()).toBe(
+      '2025-07-16T20:00:00.000Z',
+    );
   });
 });
