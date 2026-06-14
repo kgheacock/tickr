@@ -39,6 +39,14 @@ export async function runApi(): Promise<void> {
     logger: { ...baseLoggerOptions, stream: getLogDestination() },
     genReqId: genRequestId,
     requestIdLogLabel: 'request_id',
+    // Caddy is the sole ingress (compose/Caddyfile{,.prod} -> reverse_proxy
+    // api:3000) and is the only hop in front of us, so trust exactly one proxy
+    // hop. This makes request.ip the real client IP instead of Caddy's
+    // container address, so logs show the true source and the per-IP rate
+    // limiter below buckets per client rather than lumping everyone behind the
+    // proxy into one global bucket. Trusting a fixed hop count (not `true`)
+    // avoids honoring spoofed X-Forwarded-For if the api port is ever exposed.
+    trustProxy: 1,
   });
 
   registerMetrics(fastify);
