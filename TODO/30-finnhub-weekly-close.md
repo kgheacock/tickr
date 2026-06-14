@@ -21,7 +21,10 @@ when the authoritative close isn't present yet**.
   intraday sweep is gated to regular sessions (`scheduler.ts` `isRegularSession`),
   so it never runs on weekends — **Friday's close doesn't reach `price_bar` until
   Monday.** The FS-05 Friday scorer at 21:30 UTC would otherwise walk back to
-  Thursday's close and mis-score the week.
+  Thursday's close and mis-score the week. (The `price_bar` side of this gap is
+  separately narrowed by the Saturday catch-up sweep — [item 26 follow-on /
+  PR #86](26-schedule-data-jobs-cron.md) — but this `session_close` stopgap is
+  still needed for the *Friday-evening* settle, hours before any Saturday sweep.)
 - **Finnhub fills the close, not the intraday.** Free `/quote` returns today's
   data including `c` (current price). Verified post-close: `c` **freezes at the
   official regular-session close and does not drift with after-hours** (TMO 469.34
