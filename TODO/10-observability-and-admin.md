@@ -134,5 +134,18 @@ limiting on the surviving admin endpoints.
       `jobQueueDepth`).
 - [x] Player calling `/admin/ops` → 403.
 - [x] Per-IP rate limiting is Redis-backed; auth-start and admin routes carry
-      explicit per-route caps; 429s include `Retry-After`.
+      explicit per-route caps; 429s include `Retry-After`. (Keyed per *real*
+      client IP only after the proxy fix below — see Follow-on.)
 - [x] Alerter logs (or sends) exactly one alert per stuck-state window.
+
+## Follow-on: trust the proxy hop so rate limiting is actually per-IP ([#85](https://github.com/kgheacock/tickr/pull/85))
+
+The rate limiter above was registered without `trustProxy`, so behind Caddy
+(the sole ingress) every request appeared to come from Caddy's container IP
+(`172.18.0.7` in prod logs). That collapsed the "per-IP" 60/min bucket into a
+single **global** bucket — one scanner could exhaust the budget for all real
+users — and hid true client IPs from request logs. PR #85 sets `trustProxy: 1`
+on the Fastify instance: exactly one `X-Forwarded-For` hop (Caddy) is trusted,
+restoring real client IPs in logs and genuine per-client rate limiting. A fixed
+hop count (not `true`) avoids honoring spoofed `X-Forwarded-For` if the api port
+is ever exposed directly. Surfaced by `.env`/config probe traffic in prod logs.
