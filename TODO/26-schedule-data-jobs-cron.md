@@ -94,3 +94,26 @@ relaxes the `MASSIVE_API_KEY` requirement when it is on. The DB/Redis-only alert
 job still runs. `scripts/deploy.sh` refuses the flag in prod — set there it would
 silently halt all data ingestion — mirroring the existing `TICKR_DEV_AUTH` guard.
 Scheduler tests cover the flag-on path (alerts only, no Massive locks).
+
+## Follow-on: Saturday catch-up sweep — land Friday bars before Monday ([#86](https://github.com/kgheacock/tickr/pull/86))
+
+The intraday live tail is session-gated, so it never runs on the weekend, and
+the Massive free tier 403s the current trading day — so Friday's bars don't reach
+the authoritative `price_bar` store until Monday's session (the same gap item 30
+papers over for the FS scorer via the provisional `session_close`, but only for
+that one consumer; charts/backtests still waited until Monday). Verified the free
+tier *does* serve the prior trading day over the weekend (Sun 2026-06-14: Friday
+06-12 TMO bars present, `status=DELAYED`), so PR #86 adds a **Saturday 13:30 UTC
+sweep** (`0 30 13 * * 6`) running `runIntradayUpdate` to pull Friday's now-available
+tail forward two days. Idempotent (`ON CONFLICT`), so Monday's sweep still
+self-heals if a Saturday run is too early.
+
+Upholds this item's "every other Massive job pushed off-hours so it never competes
+for the budget" invariant on the new weekend overlap: the Saturday sweep and the
+hourly off-hours backfill both draw the single global Massive token bucket, so the
+backfill now **defers on Saturday** while the sweep holds `SESSION_UPDATE_LOCK`
+(new `isLockHeld()` helper). The 13:30 mid-hour slot guarantees the sweep holds
+the lock before the top-of-hour backfill fires (no race); the deferral is
+Saturday-scoped so an orphaned weekday session lock never stalls the off-hours
+backfill. Scheduler tests extended (cron count 5→6, the new sweep, the Saturday
+deferral, and the weekday-ignores-lock case).
