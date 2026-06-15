@@ -111,3 +111,4 @@ export type BackfillRequest = components['schemas']['BackfillRequest'];
 
 // --- Admin / ops ---
 export type OpsResponse = components['schemas']['OpsResponse'];
+export type JobStatus = components['schemas']['JobStatus'];
