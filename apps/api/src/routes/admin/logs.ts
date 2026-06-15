@@ -213,6 +213,8 @@ function renderLogViewer(commit: string): string {
     position: sticky; top: 0;
   }
   header .title { color: #fff; font-weight: 600; }
+  header a.nav { color: #8787d7; text-decoration: none; }
+  header a.nav:hover { color: #afafff; }
   header label { color: #888; }
   header select, header button {
     background: #111; color: #ddd; border: 1px solid #333;
@@ -256,6 +258,7 @@ function renderLogViewer(commit: string): string {
 <body>
 <header>
   <span class="title">tickr logs</span>
+  <a class="nav" href="/api/v1/admin/jobs" title="open the jobs viewer">jobs →</a>
   ${commitChipHtml(commit)}
   <span class="lag" id="lag" title="worst price-bar lag in the DB: latest bar vs. now (or the last NYSE close off-hours), polled from /admin/ops">
     <span class="dot"></span><span id="lag-text">lag…</span>

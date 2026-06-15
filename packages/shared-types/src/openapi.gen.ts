@@ -651,6 +651,44 @@ export interface components {
                 /** @description Seconds between the freshness reference and latestBarAt (>= 0) */
                 lagSec: number;
             } | null;
+            /** @description Per-job run status for the scheduled worker jobs, in registry order. One entry per known job, including jobs that have never run (e.g. external-data jobs under TICKR_DISABLE_REMOTE_JOBS). */
+            jobs: components["schemas"]["JobStatus"][];
+        };
+        /** @description Last-run status of one scheduled worker job (admin /admin/jobs viewer) */
+        JobStatus: {
+            /** @description Stable job identifier (kebab-case); distinct per job even when two jobs share a lock */
+            name: string;
+            /** @description Human-readable schedule (e.g. "Fri 21:35 UTC") */
+            cadence: string;
+            /** @description Cron expression(s) the job is scheduled on, for reference */
+            cron: string;
+            /** @description What the job does */
+            description: string;
+            /** @description True for jobs that reach an external data API; these are skipped entirely under TICKR_DISABLE_REMOTE_JOBS, so "never ran" in dev is expected rather than a fault. */
+            remote: boolean;
+            /** @description True while a run is in flight (per-job marker with a TTL crash-net) */
+            running: boolean;
+            /** @description ISO timestamp the job last started, or null if it has never run */
+            lastStartAt: string | null;
+            /** @description ISO timestamp the last actual execution finished, or null */
+            lastFinishAt: string | null;
+            /**
+             * @description Outcome of the last actual execution (never a busy-skip), or null
+             * @enum {string|null}
+             */
+            lastOutcome: "ok" | "error" | null;
+            /** @description Duration of the last execution in ms, or null */
+            lastDurationMs: number | null;
+            /** @description Truncated error from the last failed execution; null/empty after a success */
+            lastError: string | null;
+            /** @description ISO timestamp a firing was last skipped because the prior run still held the lock */
+            lastSkipAt: string | null;
+            /** @description Lifetime count of actual executions */
+            runs: number;
+            /** @description Lifetime count of executions that threw */
+            fails: number;
+            /** @description Lifetime count of busy-skips (lock already held) */
+            skips: number;
         };
         /** @description Slot layout for a league's weekly lineup plus bench depth */
         RosterConfig: {
