@@ -1,6 +1,14 @@
 # 30 — Finnhub early weekly-close capture
 
-> **Status:** in review • **Plan PR:** [#80](https://github.com/kgheacock/tickr/pull/80) • **Impl PR:** [#83](https://github.com/kgheacock/tickr/pull/83) • **Depends on:** 05, 13, 26 • **Consumer:** [FS-05 scoring](fantasy-street/05-scoring-and-shorting.md)
+> **Status:** in review • **Plan PR:** [#80](https://github.com/kgheacock/tickr/pull/80) • **Impl PR:** [#83](https://github.com/kgheacock/tickr/pull/83) • **Daily-cadence follow-on:** [#88](https://github.com/kgheacock/tickr/pull/88) • **Depends on:** 05, 13, 26 • **Consumer:** [FS-05 scoring](fantasy-street/05-scoring-and-shorting.md)
+
+> **Follow-on (PR #88):** the capture cron was widened from **Friday-only** to
+> **every trading day** (`0 30 21 * * 1-5`, NYSE-holiday-skipped) so `session_close`
+> now records each session's close, not just Friday's — the one-line widening the
+> Open Question below anticipated. The job was already day-agnostic (keyed on
+> `mostRecentSessionDate`); `price_bar` stays the authoritative Massive-backfilled
+> store, `session_close` its parallel provisional sibling. Consumer wiring (the
+> FS-05 COALESCE) remains pending, unchanged by #88.
 
 ## Goal
 
@@ -54,9 +62,11 @@ when the authoritative close isn't present yet**.
   `schema/finnhub.io/openapi.json`. Worker-role-only (import-time role guard);
   Redis token bucket honors the 60 req/min free tier — a ~502-symbol sweep takes
   ~9 min, comfortably inside the post-close window.
-- **Capture cadence.** A holiday-aware post-close cron under a Redis lock,
-  aligned with FS-05's `0 30 21 * * 5` (Friday only is sufficient for weekly
-  scoring; `c` has settled by 21:00 UTC so 21:30 is safe). See open question.
+- **Capture cadence.** A holiday-aware post-close cron under a Redis lock at
+  21:30 UTC (`c` has settled by 21:00 UTC so 21:30 is safe). Originally
+  Friday-only (`0 30 21 * * 5`, sufficient for weekly scoring); **widened to
+  every trading day (`0 30 21 * * 1-5`, holiday-skipped) in PR #88** so every
+  session's close is recorded. See open question.
 
 ## Steps (to build — not in this doc-only change)
 
@@ -95,12 +105,14 @@ when the authoritative close isn't present yet**.
 
 ## Open questions
 
-- **Friday-only vs every weekday.** **Decided: Friday-only** (`0 30 21 * * 5`).
-  It satisfies the only live consumer (FS-05 weekly scoring) at the minimum
-  Finnhub spend. Capturing every weekday would also keep the admin worst-lag chip
-  (item 29) from reading ~1 day stale off-hours, but nothing needs that today —
-  widening the cron to `0 30 21 * * 1-5` later is a one-line change if a daily
-  consumer appears.
+- **Friday-only vs every weekday.** ~~**Decided: Friday-only** (`0 30 21 * * 5`).~~
+  **Reversed in PR #88 → every trading day (`0 30 21 * * 1-5`, holiday-skipped).**
+  Friday-only satisfied the only live consumer (FS-05 weekly scoring) at the
+  minimum Finnhub spend, and the widening was always flagged as a one-line change
+  if a daily consumer appeared. The daily capture builds out the platform's
+  pricing coverage — each session's close lands hours-to-days before Massive's
+  ~24h-delayed bars — at ~5× the `/quote` volume (~10k calls/month; still within
+  the 60 req/min bucket, but confirm against any Finnhub monthly cap).
 
 ## Definition of done
 
