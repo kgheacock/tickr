@@ -26,16 +26,16 @@ export async function runWorker(): Promise<void> {
     }
   }
 
-  // FINNHUB_API_KEY powers only the Friday early weekly-close capture (item 30),
-  // not the core Massive pipeline — so a missing key is a warning, not a fatal.
-  // Surface it at boot, though: without it the capture would otherwise fail every
-  // symbol on each Friday run, silently, visible only deep in the logs.
+  // FINNHUB_API_KEY powers only the daily early close capture (item 30), not the
+  // core Massive pipeline — so a missing key is a warning, not a fatal. Surface it
+  // at boot, though: without it the capture would otherwise fail every symbol on
+  // each trading day's run, silently, visible only deep in the logs.
   if (!process.env['FINNHUB_API_KEY']) {
     console.warn(
       JSON.stringify({
         level: 'warn',
         component: 'worker',
-        msg: 'FINNHUB_API_KEY not set — Friday early close-capture (item 30) will no-op until it is provided',
+        msg: 'FINNHUB_API_KEY not set — daily early close-capture (item 30) will no-op until it is provided',
       }),
     );
   }

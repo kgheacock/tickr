@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   seedUniverse: vi.fn(),
   runAlertCheck: vi.fn(),
   isRegularSession: vi.fn(),
+  isNyseHoliday: vi.fn(),
   tryAcquireLock: vi.fn(),
   releaseLock: vi.fn(),
   isLockHeld: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock('../../src/alerts/checker.js', () => ({
 }));
 vi.mock('../../src/market/holidays.js', () => ({
   isRegularSession: mocks.isRegularSession,
+  isNyseHoliday: mocks.isNyseHoliday,
 }));
 vi.mock('../../src/jobs/locks.js', () => ({
   tryAcquireLock: mocks.tryAcquireLock,
@@ -87,6 +89,8 @@ describe('registerScheduledJobs', () => {
     mocks.runAlertCheck.mockResolvedValue(undefined);
     // Default to off-hours so the startup backfill runs; flip per-test.
     mocks.isRegularSession.mockReturnValue(false);
+    // Default to a normal trading day so the daily close capture fires; flip per-test.
+    mocks.isNyseHoliday.mockReturnValue(false);
     // Default to no sweep in flight so the backfill's Saturday yield is inert.
     mocks.isLockHeld.mockResolvedValue(false);
   });
@@ -99,16 +103,16 @@ describe('registerScheduledJobs', () => {
     expect(exprs).toContain('0 */5 * * * *'); // intraday live tail + alerts
     expect(exprs).toContain('0 0 0 * * 1,3,6'); // universe refresh Mon/Wed/Sat
     expect(exprs).toContain('0 30 13 * * 6'); // Saturday catch-up sweep
-    expect(exprs).toContain('0 30 21 * * 5'); // Friday early close capture
+    expect(exprs).toContain('0 30 21 * * 1-5'); // daily early close capture
     // backfill, intraday, Saturday catch-up, universe, close-capture, alerts (the
     // post-close EOD cron was dropped)
     expect(mocks.schedule).toHaveBeenCalledTimes(6);
   });
 
-  it('Friday close capture runs runCloseCapture under its own lock', async () => {
+  it('daily close capture runs runCloseCapture under its own lock', async () => {
     registerScheduledJobs(fakeRedis);
 
-    callbackFor('0 30 21 * * 5')();
+    callbackFor('0 30 21 * * 1-5')();
 
     await vi.waitFor(() =>
       expect(mocks.runCloseCapture).toHaveBeenCalledWith(fakeRedis),
@@ -118,6 +122,17 @@ describe('registerScheduledJobs', () => {
       CLOSE_CAPTURE_LOCK,
       expect.any(Number),
     );
+  });
+
+  it('skips the close capture on an NYSE holiday (no fresh close, no wasted sweep)', async () => {
+    mocks.isNyseHoliday.mockReturnValue(true);
+    registerScheduledJobs(fakeRedis);
+
+    callbackFor('0 30 21 * * 1-5')();
+    await Promise.resolve();
+
+    expect(mocks.runCloseCapture).not.toHaveBeenCalled();
+    expect(acquiredKeys()).not.toContain(CLOSE_CAPTURE_LOCK);
   });
 
   describe('backfill (off-hours only)', () => {
