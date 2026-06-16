@@ -8,13 +8,17 @@
  * skipped, so universe churn never blocks a deploy.
  *
  * Errors (cause a non-zero exit / block the deploy):
- *   NO_BARS               - playable symbol has zero price_bar rows in the window
+ *   NO_BARS               - still-indexed symbol has zero price_bar rows in the window
+ *                           (zero bars on a retired symbol is no-longer-ingested
+ *                           churn — reported as a warning instead)
  *   COVERAGE_GAP          - >= GAP_THRESHOLD consecutive trading days missing, in an
- *                           internal or trailing position (a leading gap is a late
- *                           listing and is reported as a warning instead)
- *   COVERAGE_REGRESSION   - a symbol's covered/expected ratio dropped below its
- *                           recorded high-water-mark (symbol_coverage_watermark) by
- *                           more than AUDIT_WATERMARK_TOLERANCE — likely data loss,
+ *                           internal or trailing position, on a still-indexed symbol
+ *                           (a leading gap is a late listing, and a gap on a symbol
+ *                           retired from the index is no longer-ingested churn —
+ *                           both are reported as warnings instead)
+ *   COVERAGE_REGRESSION   - a still-indexed symbol's covered/expected ratio dropped
+ *                           below its recorded high-water-mark (symbol_coverage_watermark)
+ *                           by more than AUDIT_WATERMARK_TOLERANCE — likely data loss,
  *                           even when scattered (so it slips under COVERAGE_GAP's
  *                           consecutive-day threshold). A true rename does not
  *                           regress. Reset an intentional, permanent drop by hand:
@@ -29,7 +33,10 @@
  *   NOT_BACKFILLED        - symbol in universe_symbol with backfilled = false
  *   EXCLUDED              - data_status = 'incomplete' (delisted/depth-capped); excluded
  *                           from the playable corpus, checks skipped
- *   COVERAGE_GAP          - leading gap (history starts late — typically a listing/IPO)
+ *   COVERAGE_GAP          - leading gap (history starts late — typically a listing/IPO),
+ *                           OR any gap on a symbol retired from the index (removed_at
+ *                           set; detail.deindexed = true) — no longer ingested, so the
+ *                           gap is expected churn, not data loss
  *   INTRADAY_GAP          - (type 'session_gap') sparse within-session coverage on a
  *                           thinly-traded name; data sparsity, not corruption
  *   SPLIT_CANDIDATE       - consecutive-day close ratio matches a common split factor
