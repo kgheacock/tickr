@@ -25,15 +25,22 @@ function log(
  * Post-close capture of each playable symbol's official regular-session close
  * from Finnhub /quote, persisted to the provisional `session_close` store
  * (TODO/30). After 16:00 ET, Finnhub's `c` holds the frozen official close, so a
- * post-close sweep can supply Friday's close hours before Massive's free-tier
- * bars land (next trading day). The Fantasy Street weekly scorer (FS-05) reads
- * this as a fallback when the authoritative `price_bar` close isn't present yet.
+ * post-close sweep can supply each trading day's close hours-to-days before
+ * Massive's free-tier 15-min bars backfill it (Massive serves a session's bars
+ * only the next trading day, and never on weekends — so Friday's don't land
+ * until Monday). Day-agnostic by construction: it keys on mostRecentSessionDate,
+ * so the same sweep serves the daily cron for any session (see scheduler.ts).
  *
- * Deliberately does NOT touch `price_bar`/insertBars — that store stays
- * Massive-pure so backtests and charts never see provisional same-day data.
+ * `session_close` and `price_bar` are two PARALLEL stores, joinable later if
+ * needed but never merged here: this writes only session_close, and deliberately
+ * does NOT touch `price_bar`/insertBars — that store stays Massive-pure (15-min
+ * authoritative bars) so backtests and charts never see provisional same-day
+ * data. When Massive's bar for a session lands, both rows coexist; nothing here
+ * overwrites either.
  *
- * Runs once after the close under a Redis lock (see scheduler.ts). Each symbol
- * goes through the Finnhub token bucket; at 60/min a ~502-symbol sweep is ~9 min.
+ * Runs after each trading day's close under a Redis lock (see scheduler.ts). Each
+ * symbol goes through the Finnhub token bucket; at 60/min a ~502-symbol sweep is
+ * ~9 min.
  */
 export async function runCloseCapture(redis: Redis): Promise<void> {
   // The just-closed session, holiday-aware (a holiday Friday keys to the prior
