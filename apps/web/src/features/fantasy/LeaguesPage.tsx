@@ -6,6 +6,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { client } from '../../api/client';
+import { Paper, Rule } from '../../components';
 import { fantasyKeys } from './api';
 import styles from './LeaguesPage.module.css';
 
@@ -16,13 +17,14 @@ export function LeaguesPage() {
   });
 
   return (
-    <div className={styles.page}>
+    <Paper width="760px">
       <header className={styles.head}>
         <Link to="/" className={styles.back}>
           ← tickr
         </Link>
         <h1 className={styles.title}>My Leagues</h1>
       </header>
+      <Rule weight="section" className={styles.headRule} />
 
       {isLoading ? (
         <p className={styles.note}>Loading leagues…</p>
@@ -47,6 +49,6 @@ export function LeaguesPage() {
           ))}
         </ul>
       )}
-    </div>
+    </Paper>
   );
 }

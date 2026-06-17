@@ -10,7 +10,8 @@
  * (kicker + title with the double-rule treatment) renders when `title` is set —
  * everything else is up to the caller.
  */
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { Kicker } from './Kicker';
 import styles from './Modal.module.css';
 
 interface ModalProps {
@@ -20,8 +21,20 @@ interface ModalProps {
   label?: string;
   /** Optional masthead headline; renders the double-rule header when set. */
   title?: string;
+  /**
+   * Custom masthead body, rendered in place of the default `<h2>` title (the
+   * kicker still shows above it, the double rule below). For headers that need
+   * more than a text headline — e.g. a logo beside a ticker/name stack.
+   */
+  masthead?: ReactNode;
   /** Optional eyebrow above the title (e.g. a section name). */
   kicker?: string;
+  /**
+   * Override the sheet's max width (a CSS length). Defaults to 540px — wide
+   * enough for forms; content-heavy reports can request more. The viewport
+   * gutter cap still applies, so this only widens on roomy screens.
+   */
+  width?: string;
   /** Hide the corner close button (e.g. for a blocking confirmation). */
   hideClose?: boolean;
   children: ReactNode;
@@ -31,7 +44,9 @@ export function Modal({
   onClose,
   label,
   title,
+  masthead,
   kicker,
+  width,
   hideClose = false,
   children,
 }: ModalProps) {
@@ -49,6 +64,7 @@ export function Modal({
     <dialog
       ref={dialogRef}
       className={styles.dialog}
+      style={width ? ({ '--modal-width': width } as CSSProperties) : undefined}
       aria-label={label ?? title}
       // Escape (the dialog's `cancel` event) and backdrop clicks both close.
       onCancel={(e) => {
@@ -73,10 +89,12 @@ export function Modal({
             ×
           </button>
         )}
-        {title ? (
+        {title || masthead ? (
           <header className={styles.header}>
-            {kicker ? <p className={styles.kicker}>{kicker}</p> : null}
-            <h2 className={styles.title}>{title}</h2>
+            {kicker ? (
+              <Kicker className={styles.kicker}>{kicker}</Kicker>
+            ) : null}
+            {masthead ?? <h2 className={styles.title}>{title}</h2>}
           </header>
         ) : null}
         {children}

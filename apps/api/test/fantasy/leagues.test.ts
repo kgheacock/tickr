@@ -111,6 +111,85 @@ describe('FS-01 leagues & membership', () => {
     ]);
   });
 
+  // FS-14 create flow: a seat list derives capacity, sets the commissioner's
+  // team name, mints bot seats, and labels human seats as invites.
+  it('creates a league from a seat list (team name, bots, labelled invites)', async () => {
+    const owner = await seedUser('owner');
+    const view = await createLeague(
+      {
+        name: 'Seated',
+        teamName: 'The Dip Buyers',
+        seasonLengthWeeks: 52,
+        joinPolicy: 'invite',
+        members: [
+          { isBot: true },
+          { isBot: true },
+          { isBot: false, email: 'friend@example.com' },
+        ],
+      },
+      owner,
+      pool,
+    );
+
+    // size = 1 commissioner + 3 seats. For instant play every seat is filled by
+    // an auto-manager up front (commissioner + 3 bots), so the league is full
+    // with no open slots — the human seat is bot-held until claim-on-join lands.
+    expect(view.size).toBe(4);
+    expect(view.members).toHaveLength(4);
+    expect(view.openSlots).toBe(0);
+    expect(view.members.find((m) => m.userId === owner)?.teamName).toBe(
+      'The Dip Buyers',
+    );
+
+    // The human seat still records a labelled invite (delivery is stubbed for
+    // now) so a future claim-on-join can hand its team to the real manager.
+    const { rows } = await pool.query<{ email: string | null }>(
+      'SELECT email FROM fs_invite WHERE league_id = $1',
+      [view.id],
+    );
+    expect(rows.map((r) => r.email)).toEqual(['friend@example.com']);
+  });
+
+  it('rejects a seat list outside the 4–12 capacity', async () => {
+    const owner = await seedUser('owner');
+    expect(
+      await codeOf(() =>
+        createLeague(
+          {
+            name: 'TooSmall',
+            seasonLengthWeeks: 52,
+            joinPolicy: 'invite',
+            members: [{ isBot: true }],
+          },
+          owner,
+          pool,
+        ),
+      ),
+    ).toBe('VALIDATION');
+  });
+
+  it('rejects an invalid invitee email in a seat list', async () => {
+    const owner = await seedUser('owner');
+    expect(
+      await codeOf(() =>
+        createLeague(
+          {
+            name: 'BadEmail',
+            seasonLengthWeeks: 52,
+            joinPolicy: 'invite',
+            members: [
+              { isBot: true },
+              { isBot: true },
+              { isBot: false, email: 'not-an-email' },
+            ],
+          },
+          owner,
+          pool,
+        ),
+      ),
+    ).toBe('VALIDATION');
+  });
+
   // DoD: a second user joins via a valid invite and appears in LeagueView
   it('lets a second user join via a valid invite token', async () => {
     const owner = await seedUser('owner');

@@ -16,6 +16,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   LeagueMember,
   Matchup,
+  RosterTransactionRequest,
   SetLineupSlot,
   WeeklyScore,
 } from '@tickr/shared-types';
@@ -130,6 +131,32 @@ export function useLeague(leagueId: string, opts: UseLeagueOptions) {
     },
   });
 
+  // Buy/sell change ownership, so the roster (lineup pool), the wire inventory,
+  // and the saved lineup can all shift — refetch each after a transaction.
+  const invalidateRoster = () =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ['fantasy', 'roster', leagueId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['fantasy', 'inventory', leagueId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: fantasyKeys.lineup(leagueId, week, season),
+      }),
+    ]);
+
+  const buyPlayer = useMutation({
+    mutationFn: (req: RosterTransactionRequest) =>
+      client.buyPlayer(leagueId, req),
+    onSuccess: invalidateRoster,
+  });
+
+  const sellPlayer = useMutation({
+    mutationFn: (symbol: string) => client.sellPlayer(leagueId, symbol),
+    onSuccess: invalidateRoster,
+  });
+
   const myUserId = user?.id ?? null;
   const myMatchup = useMemo(
     () =>
@@ -168,6 +195,8 @@ export function useLeague(leagueId: string, opts: UseLeagueOptions) {
     refetchWeek: invalidateWeek,
     setLineup,
     autofill,
+    buyPlayer,
+    sellPlayer,
   };
 }
 

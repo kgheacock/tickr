@@ -1,78 +1,21 @@
 /* Wall Street Journal front-page treatment for the (only remaining) login
-   surface: a sheet of newsprint floating on a desk, a masthead with double
-   rule, a lead story, and a "Sign In" column set off by a vertical rule. */
-
-.page {
-  min-height: 100vh;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: clamp(var(--space-4), 4vw, var(--space-12));
-}
-
-.paper {
-  width: 100%;
-  max-width: 1000px;
-  background: var(--color-paper);
-  border: 1px solid var(--color-border);
-  box-shadow:
-    0 1px 0 rgba(21, 19, 15, 0.04),
-    0 18px 50px -28px rgba(21, 19, 15, 0.4);
-  padding: clamp(var(--space-6), 4vw, var(--space-12));
-}
+   surface: a masthead with double rule, a lead story, and a "Sign In" column
+   set off by a vertical rule. The newsprint sheet/desk is now <Paper>. */
 
 /* ── Masthead ─────────────────────────────────────────────── */
 
-.masthead {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: baseline;
-  gap: var(--space-4);
-}
-
-.flag {
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.masthead .flag:last-child {
-  text-align: right;
-}
-
-.wordmark {
-  font-family: var(--font-serif);
-  font-weight: 700;
-  font-size: clamp(48px, 9vw, 84px);
-  line-height: 0.9;
-  letter-spacing: -0.02em;
-  color: var(--color-text);
-  white-space: nowrap;
-}
-
+/* Masthead (flag/wordmark), the rules, and the kicker are now library
+   primitives (<Masthead>/<Rule>/<Kicker>); only their page-level spacing
+   remains here. */
 .ruleHeavy {
   margin-top: var(--space-4);
-  border-top: 3px double var(--color-rule);
-  height: 4px;
-  border-bottom: 1px solid var(--color-rule);
 }
 
+/* <Subhead> owns the standfirst treatment; the page centres it and sets its
+   breathing room between the masthead rules. */
 .subhead {
-  font-family: var(--font-sans);
   text-align: center;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
   padding: var(--space-3) 0;
-}
-
-.ruleThin {
-  border-top: 1px solid var(--color-rule);
 }
 
 /* ── Lead story + sign-in column ──────────────────────────── */
@@ -84,13 +27,9 @@
   padding-top: clamp(var(--space-6), 4vw, var(--space-10));
 }
 
+/* <Kicker> owns the eyebrow treatment; the lede only sets its gap to the
+   headline below. */
 .kicker {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #9c2b1b;
   margin-bottom: var(--space-3);
 }
 
@@ -207,76 +146,47 @@
   outline-offset: 2px;
 }
 
-/* Logged-in account view: monospace email (it's an identifier) over an
-   outlined "ink" button that reads as part of the newsprint, not a chip. */
-.account {
-  font-family: var(--font-mono);
-  font-size: 14px;
-  color: var(--color-text);
-  word-break: break-all;
+/* Leagues you belong to: a list of serif hyperlinks, each bulleted, set above
+   the create CTA. */
+.leagueList {
   margin-bottom: var(--space-4);
 }
 
-.leaguesLink {
+.leagueItem {
+  display: flex;
+  gap: var(--space-2);
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 1.3;
+  color: var(--color-accent);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+  transition: color 0.15s;
+}
+
+.leagueItem::before {
+  content: '•';
+  color: var(--color-text-muted);
+}
+
+.leagueItem:last-child {
+  border-bottom: none;
+}
+
+.leagueItem:hover {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+/* Primary action in the Account aside: a solid "ink" button that opens the
+   create-league modal in place. */
+/* The primary-button chrome comes from <Button>; the landing CTA only spans
+   the full sign-in column and reserves space beneath it. */
+.createCta {
   display: block;
   width: 100%;
   text-align: center;
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-3);
-  border: 1px solid var(--color-accent);
-  border-radius: var(--radius-md);
-  background: var(--color-accent);
-  color: var(--color-paper);
-  transition:
-    background 0.15s,
-    transform 0.1s;
-}
-
-.leaguesLink:hover {
-  background: var(--color-accent-hover);
-  color: var(--color-paper);
-}
-
-.leaguesLink:active {
-  transform: translateY(1px);
-}
-
-.signout {
-  display: block;
-  width: 100%;
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-rule);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-text);
-  transition:
-    background 0.15s,
-    color 0.15s,
-    transform 0.1s;
-}
-
-.signout:hover {
-  background: var(--color-rule);
-  color: var(--color-paper);
-}
-
-.signout:active {
-  transform: translateY(1px);
-}
-
-.signout:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
 }
 
 .columnRule {

@@ -11,9 +11,8 @@ function owned(
   symbol: string,
   groups: string[],
   ret3m: number | null,
-  isShort = false,
 ): OwnedEntry {
-  return { symbol, isShort, groups, ret3m };
+  return { symbol, groups, ret3m };
 }
 
 describe('mandatorySlots', () => {
@@ -51,17 +50,14 @@ describe('chooseAutofill', () => {
     ]);
   });
 
-  it('picks the most-negative return for the Defense short', () => {
+  it('fills Defense from any owned stock, picking the most-negative return', () => {
+    // Plain long holdings — the slot defines the basis, so any can be shorted
+    // into Defense. The worst performer is the best short (it scores the inverse).
     const fills = chooseAutofill(
       [{ slot: 'defense', slotIndex: 0 }],
-      [
-        owned('SHORTA', [], -2, true),
-        owned('SHORTB', [], -8, true),
-        owned('SHORTC', [], 1, true),
-      ],
+      [owned('AAA', [], -2), owned('BBB', [], -8), owned('CCC', [], 1)],
     );
-    // The worst performer is the best short (Defense scores the inverse).
-    expect(fills[0]!.symbol).toBe('SHORTB');
+    expect(fills[0]!.symbol).toBe('BBB');
     expect(fills[0]!.isShort).toBe(true);
   });
 
@@ -89,20 +85,24 @@ describe('chooseAutofill', () => {
     expect(bySlot.get('growth')).toBe('GROW');
   });
 
-  it('respects short/long: a long cannot fill Defense and a short cannot fill a long slot', () => {
+  it('fills Defense from any stock; long slots still need the classification', () => {
     const fills = chooseAutofill(
       [
         { slot: 'defense', slotIndex: 0 },
         { slot: 'anchor', slotIndex: 0 },
       ],
       [
-        owned('LONG', ['anchor'], 5), // long — only anchor
-        owned('SHORT', [], -5, true), // short — only defense
+        owned('X1', ['anchor'], 5), // fits the anchor long slot
+        owned('X2', [], -5), // no classification — long-ineligible here
       ],
     );
     const bySlot = new Map(fills.map((f) => [f.slot, f]));
-    expect(bySlot.get('defense')!.symbol).toBe('SHORT');
-    expect(bySlot.get('anchor')!.symbol).toBe('LONG');
+    // anchor is the scarce slot (only X1 fits) → X1 long; X2 falls to Defense,
+    // converted to a short by the slot.
+    expect(bySlot.get('anchor')!.symbol).toBe('X1');
+    expect(bySlot.get('anchor')!.isShort).toBe(false);
+    expect(bySlot.get('defense')!.symbol).toBe('X2');
+    expect(bySlot.get('defense')!.isShort).toBe(true);
   });
 
   it('treats Wildcard as universal for any long', () => {

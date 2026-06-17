@@ -4,56 +4,12 @@
   gap: var(--space-6);
 }
 
-.head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.title {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-xl);
-  font-weight: 700;
-}
-
-.lockClock {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
-  color: var(--color-accent);
-  letter-spacing: 0.03em;
-}
-
+/* The roster <Table> carries its own outline; the editor only stacks it above
+   the actions footer. */
 .editor {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  overflow: hidden;
-}
-
-.slots {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.slots th {
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  text-align: left;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.slots td {
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.slots tr:last-child td {
-  border-bottom: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
 .short {
@@ -66,81 +22,106 @@
   font-size: var(--font-size-sm);
 }
 
+/* The "short" tag that sits beside a short holding's ticker in the roster. */
 .shortTag {
-  display: inline-block;
-  margin-left: var(--space-2);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--color-danger);
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  padding: 0 4px;
 }
 
-.symbol {
-  font-family: var(--font-mono);
-  font-weight: 600;
-}
-
-.select {
-  font-family: var(--font-mono);
+/* The read-only slot label for a benched stock once the week locks. */
+.benchLabel {
+  font-family: var(--font-sans);
   font-size: var(--font-size-sm);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-paper);
-  color: var(--color-text);
-  min-width: 130px;
+  color: var(--color-text-muted);
 }
 
-.dupe {
-  border-color: var(--color-danger);
+/* Base styling comes from <Select>; the slot picker only tightens its padding
+   to sit in the compact table row and pins a min-width for column alignment. */
+.select {
+  padding: var(--space-1) var(--space-2);
+  min-width: 130px;
 }
 
 .actions {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--color-border);
   flex-wrap: wrap;
 }
 
-.save,
-.autofill {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-md);
+/* The trailing Sell column in the roster editor — snug to its ghost button. */
+.sellCol {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
 }
 
-.save {
-  background: var(--color-accent);
-  color: var(--color-paper);
-}
-
-.save:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-}
-
-.save:disabled,
-.autofill:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.autofill {
-  border: 1px solid var(--color-rule);
+/* Body copy inside the buy/sell confirmation dialog. */
+.confirmBody {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  margin: 0 0 var(--space-4);
 }
 
 .warn {
   font-family: var(--font-sans);
   font-size: var(--font-size-sm);
   color: var(--color-danger);
+}
+
+/* The open-positions banner above the roster table: a muted label followed by
+   the coloured chips for each unfilled starting slot (or an em dash for none). */
+.openPositions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.openLabel {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.openNone {
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.openChips {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Pushes the Auto-fill button to the far right of the open-positions header,
+   leaving the label + chips grouped on the left. */
+.autofillBtn {
+  margin-left: auto;
+}
+
+/* The same chip row inside the wire nudge modal, spaced off the actions below. */
+.wireSlots {
+  margin-bottom: var(--space-4);
+}
+
+/* Loading / empty state row for the roster table. */
+.empty {
+  font-family: var(--font-serif);
+  font-style: italic;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-6) !important;
 }
 
 .lockedNote {
@@ -207,6 +188,11 @@
 
 .num {
   text-align: right;
+}
+
+/* The lineup's Last wk column centers its value beneath the header label. */
+.lastWk {
+  text-align: center;
 }
 
 .pos {

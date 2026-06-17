@@ -1,12 +1,12 @@
-.page {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: var(--space-8) var(--space-4) var(--space-12);
+/* The page sheet/desk is now <Paper width="760px">; this module styles only the
+   content on the sheet. */
+.head {
+  padding-bottom: var(--space-3);
 }
 
-.head {
-  border-bottom: 2px solid var(--color-rule);
-  padding-bottom: var(--space-3);
+/* Running-head rule under the title — <Rule weight="section">; the margin
+   below it is the gap to the list. */
+.headRule {
   margin-bottom: var(--space-6);
 }
 

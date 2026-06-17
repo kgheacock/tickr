@@ -195,23 +195,23 @@ async function defensePoints(
 }
 
 describe('scoring — README worked examples', () => {
-  it('short TSLA −4% scores +40', async () => {
-    expect(await defensePoints(10_000, 9_600)).toBe(40);
+  it('short TSLA −4% scores +4', async () => {
+    expect(await defensePoints(10_000, 9_600)).toBe(4);
   });
 
-  it('short TSLA +4% scores −40', async () => {
-    expect(await defensePoints(10_000, 10_400)).toBe(-40);
+  it('short TSLA +4% scores −4', async () => {
+    expect(await defensePoints(10_000, 10_400)).toBe(-4);
   });
 
-  it('short a stock that wipes out (−100%) scores +1000, floored', async () => {
-    expect(await defensePoints(10_000, 0)).toBe(1000);
+  it('short a stock that wipes out (−100%) scores +100, floored', async () => {
+    expect(await defensePoints(10_000, 0)).toBe(100);
   });
 
-  it('short a squeeze (+30%) scores −300 (the pick-six)', async () => {
-    expect(await defensePoints(10_000, 13_000)).toBe(-300);
+  it('short a squeeze (+30%) scores −30 (the pick-six)', async () => {
+    expect(await defensePoints(10_000, 13_000)).toBe(-30);
   });
 
-  it('a long slot scores r × 10', async () => {
+  it('a long slot scores r', async () => {
     const { leagueId, userId } = await activeLeague();
     await seedSymbolBars('ANCH', 10_000, 10_800); // +8%
     await rosterEntry(leagueId, userId, 'ANCH');
@@ -221,17 +221,17 @@ describe('scoring — README worked examples', () => {
       week: 1,
       weekEnd: WEEK_END,
     });
-    expect(score.totalPoints).toBe(80);
+    expect(score.totalPoints).toBe(8);
   });
 });
 
 describe('weekly total', () => {
   it('is the uncapped sum of started slots with losses included; breakdown sums to total', async () => {
     const { leagueId, userId } = await activeLeague();
-    await seedSymbolBars('ANCH', 10_000, 10_800); // +8%  → +80
-    await seedSymbolBars('GROW', 10_000, 9_500); //  −5%  → −50 (loss)
-    await seedSymbolBars('SHRT', 10_000, 13_000); // +30% short → −300 (uncapped)
-    await seedSymbolBars('WILD', 10_000, 11_200); // +12% → +120
+    await seedSymbolBars('ANCH', 10_000, 10_800); // +8%  → +8
+    await seedSymbolBars('GROW', 10_000, 9_500); //  −5%  → −5 (loss)
+    await seedSymbolBars('SHRT', 10_000, 13_000); // +30% short → −30 (uncapped)
+    await seedSymbolBars('WILD', 10_000, 11_200); // +12% → +12
     await rosterEntry(leagueId, userId, 'ANCH');
     await rosterEntry(leagueId, userId, 'GROW');
     await rosterEntry(leagueId, userId, 'SHRT', true);
@@ -247,14 +247,14 @@ describe('weekly total', () => {
       week: 1,
       weekEnd: WEEK_END,
     });
-    expect(score.totalPoints).toBe(80 - 50 - 300 + 120); // −150
+    expect(score.totalPoints).toBe(8 - 5 - 30 + 12); // −15
     const sum = score.breakdown.reduce((a, b) => a + b.points, 0);
     expect(sum).toBeCloseTo(score.totalPoints, 10);
   });
 
   it('excludes bench slots from the total', async () => {
     const { leagueId, userId } = await activeLeague();
-    await seedSymbolBars('ANCH', 10_000, 11_000); // +10% → +100
+    await seedSymbolBars('ANCH', 10_000, 11_000); // +10% → +10
     await seedSymbolBars('BNCH', 10_000, 20_000); // +100% but benched
     await rosterEntry(leagueId, userId, 'ANCH');
     await rosterEntry(leagueId, userId, 'BNCH');
@@ -267,7 +267,7 @@ describe('weekly total', () => {
       week: 1,
       weekEnd: WEEK_END,
     });
-    expect(score.totalPoints).toBe(100);
+    expect(score.totalPoints).toBe(10);
     expect(score.breakdown).toHaveLength(1);
   });
 
@@ -297,7 +297,7 @@ describe('weekly total', () => {
 describe('settle + read path', () => {
   it('persists every active league manager and reads back via the query path', async () => {
     const { leagueId, userId } = await activeLeague();
-    await seedSymbolBars('ANCH', 10_000, 10_500); // +5% → +50
+    await seedSymbolBars('ANCH', 10_000, 10_500); // +5% → +5
     await rosterEntry(leagueId, userId, 'ANCH');
     await seedLineup(leagueId, userId, [{ slot: 'anchor', symbol: 'ANCH' }]);
 
@@ -307,22 +307,22 @@ describe('settle + read path', () => {
       weekEnd: WEEK_END,
     });
     expect(settled).toHaveLength(1);
-    expect(settled[0]!.totalPoints).toBe(50);
+    expect(settled[0]!.totalPoints).toBe(5);
     expect(settled[0]!.provisional).toBe(false);
 
     const all = await loadLeagueScores(pool, leagueId, 1);
     expect(all).toHaveLength(1);
-    expect(all[0]!.totalPoints).toBe(50);
+    expect(all[0]!.totalPoints).toBe(5);
     expect(typeof all[0]!.totalPoints).toBe('number');
 
     const one = await loadWeeklyScore(pool, leagueId, userId, 1);
-    expect(one!.totalPoints).toBe(50);
+    expect(one!.totalPoints).toBe(5);
     expect(one!.breakdown[0]!.symbol).toBe('ANCH');
   });
 
   it('re-scoring a week overwrites cleanly (idempotent upsert)', async () => {
     const { leagueId, userId } = await activeLeague();
-    await seedSymbolBars('ANCH', 10_000, 10_500); // +5% → +50
+    await seedSymbolBars('ANCH', 10_000, 10_500); // +5% → +5
     await rosterEntry(leagueId, userId, 'ANCH');
     await seedLineup(leagueId, userId, [{ slot: 'anchor', symbol: 'ANCH' }]);
     await settleLeagueWeek(pool, { leagueId, week: 1, weekEnd: WEEK_END });
@@ -340,7 +340,7 @@ describe('settle + read path', () => {
     );
     expect(rows[0]!.n).toBe(1); // overwrote, not duplicated
     const one = await loadWeeklyScore(pool, leagueId, userId, 1);
-    expect(one!.totalPoints).toBe(100); // +10% now
+    expect(one!.totalPoints).toBe(10); // +10% now
   });
 
   it('returns null for a manager with no settled score', async () => {
@@ -388,7 +388,7 @@ function stubRedis(): {
 describe('runWeeklyScoring job', () => {
   it('settles only active leagues and publishes score.updated + matchup.updated', async () => {
     const active = await activeLeague();
-    await seedSymbolBars('ANCH', 10_000, 10_500); // +5% → +50
+    await seedSymbolBars('ANCH', 10_000, 10_500); // +5% → +5
     await rosterEntry(active.leagueId, active.userId, 'ANCH');
     await seedLineup(active.leagueId, active.userId, [
       { slot: 'anchor', symbol: 'ANCH' },

@@ -31,6 +31,7 @@ export type PlayerMetrics = Schemas['PlayerMetrics'];
 export type PlayerOwnership = Schemas['PlayerOwnership'];
 export type PlayerInventoryItem = Schemas['PlayerInventoryItem'];
 export type PlayerListResponse = Schemas['PlayerListResponse'];
+export type PlayerWeekScore = Schemas['PlayerWeekScore'];
 export type PlayerDetail = Schemas['PlayerDetail'];
 
 // --- Live draft (item 03) ---
@@ -63,6 +64,8 @@ export type WaiverClaim = Schemas['WaiverClaim'];
 export type WaiverOrderEntry = Schemas['WaiverOrderEntry'];
 export type SubmitWaiverRequest = Schemas['SubmitWaiverRequest'];
 export type WaiversResponse = Schemas['WaiversResponse'];
+export type RosterTransactionRequest = Schemas['RosterTransactionRequest'];
+export type RosterTransactionResult = Schemas['RosterTransactionResult'];
 export type TradeItem = Schemas['TradeItem'];
 export type Trade = Schemas['Trade'];
 export type ProposeTradeRequest = Schemas['ProposeTradeRequest'];

@@ -1,0 +1,176 @@
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  /* Width is governed by the Modal sheet (width="720px"); the body just fills
+     it. No min-width here — that previously forced the content wider than the
+     dialog and spilled it past the sheet edge. */
+}
+
+.muted {
+  font-family: var(--font-serif);
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+/* Masthead row inside the modal header: logo on the left, ticker over company
+   name on the right — the same identity layout as a waiver-wire StockCell. */
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.titleText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ticker {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.companyName {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-lg);
+  color: var(--color-text-muted);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.availableTag,
+.heldTag {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.availableTag {
+  color: var(--color-paper);
+  background: var(--color-accent);
+}
+
+.heldTag {
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chipMuted {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-3) 0;
+}
+
+.stat dt {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.stat dd {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--font-size-lg);
+  margin-top: 2px;
+}
+
+.sectionHead {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+}
+
+.scoreTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.scoreTable th {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  text-align: left;
+  padding: var(--space-2);
+  border-bottom: 2px solid var(--color-rule);
+}
+
+.scoreTable td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  font-family: var(--font-serif);
+}
+
+.num {
+  text-align: center;
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--font-size-base);
+}
+
+/* The base `.scoreTable th` (text-align: left) outranks `.num` on specificity,
+   so the numeric headers need an equally specific rule to center over their
+   values rather than drifting to the left edge of the column. */
+.scoreTable th.num {
+  text-align: center;
+}
+
+.pos {
+  color: var(--color-success);
+}
+
+.neg {
+  color: var(--color-danger);
+}
+
+.footnote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-2);
+}

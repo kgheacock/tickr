@@ -3,6 +3,8 @@
      A warm paper sits on a slightly darker desk; ink is near-black, rules
      are hairline, and the single accent is a sober editorial blue. */
   --color-bg: #e7e3d8;
+  /* Panel/field/chart fill. Equal to --color-paper: surfaces read as white and
+     are delineated by their borders/outlines, not by a fill tint. */
   --color-surface: #fbfaf5;
   --color-paper: #fbfaf5;
   --color-border: #d8d3c5;
@@ -13,6 +15,16 @@
   --color-accent-hover: #2d6cb5;
   --color-success: #1f7a4d;
   --color-danger: #a52714;
+
+  /* Category spot-inks — vivid "printed colour key" hues, one per stock
+     classification group. Each stays dark enough to read as crisp label text
+     on cream (CategoryChip uses the ink for both text and border, no fill). */
+  --group-anchor: #9a6b00; /* goldenrod — steady core (kept clear of Value's blue) */
+  --group-growth: #0f7d3d; /* emerald — trending up */
+  --group-momentum: #c2410c; /* burnt orange — heat / movement */
+  --group-value: #1e5fb8; /* editorial blue — sober value */
+  --group-defense: #c0271a; /* vivid red — bearish / short */
+  --group-wildcard: #7a30b8; /* violet — wild */
 
   --radius-sm: 2px;
   --radius-md: 3px;
@@ -31,6 +43,10 @@
   --font-mono: 'JetBrains Mono', 'Fira Mono', monospace;
   --font-sans: 'Libre Franklin', system-ui, -apple-system, sans-serif;
   --font-serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+  /* Financial figures: the Scotch serif set with tabular lining figures, the
+     way agate stock listings are set in print — column-aligned, not coder-mono.
+     Always pair with `font-variant-numeric: tabular-nums lining-nums`. */
+  --font-numeric: 'Newsreader', Georgia, 'Times New Roman', serif;
   --font-size-sm: 13px;
   --font-size-base: 16px;
   --font-size-lg: 19px;

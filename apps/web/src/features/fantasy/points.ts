@@ -1,5 +1,5 @@
 /**
- * Fantasy points formatting. Points are r×10 (long) / −r×10 (short), already
+ * Fantasy points formatting. Points are r (long) / −r (short), already
  * rounded to 2 dp server-side; we render them with a sign and a fixed scale so
  * the scoreboard reads consistently. Percent returns get the same treatment.
  */

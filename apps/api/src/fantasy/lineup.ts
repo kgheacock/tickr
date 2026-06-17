@@ -10,7 +10,8 @@
  * Invariants enforced on every set (DoD):
  *   - each placed symbol is on the caller's fs_roster_entry;
  *   - a non-bench placement is isEligible(symbol, slot);
- *   - Defense holds an is_short entry, every long slot holds a non-short one;
+ *   - the slot defines the basis: Defense is scored short, long slots long —
+ *     placing an owned stock in Defense converts it to a short for the week;
  *   - no symbol is started twice (also DB-guarded by UNIQUE (lineup_id, symbol));
  *   - placements stay within the league roster_config's slot/bench counts;
  *   - a set after the week locks is rejected (409 LINEUP_LOCKED).
@@ -250,23 +251,15 @@ async function validateSet(
       throw new FantasyError('VALIDATION', `${symbol} is started twice`);
     }
     usedSymbols.add(symbol);
-    const isShort = owned.get(symbol)!;
+    // The slot defines the basis: Defense is a short, every long slot a long.
+    // Placing an owned stock in Defense converts it to a short for the week —
+    // the lineup slot is authoritative for scoring (score.ts reads is_short
+    // here, not the roster entry). Bench is unscored, so its basis is moot.
+    const isShort = slot === 'defense';
 
-    // Bench accepts any owned symbol; mandatory slots enforce eligibility +
-    // the short/long rule (Defense short-only, long slots non-short only).
+    // Bench accepts any owned symbol; mandatory slots enforce classification
+    // eligibility (Defense/Wildcard are universal, the earned slots are not).
     if (slot !== 'bench') {
-      if (slot === 'defense' && !isShort) {
-        throw new FantasyError(
-          'VALIDATION',
-          `${symbol} is a long; Defense holds a short`,
-        );
-      }
-      if (slot !== 'defense' && isShort) {
-        throw new FantasyError(
-          'VALIDATION',
-          `${symbol} is a short; ${slot} holds a long`,
-        );
-      }
       if (!(await isEligible(client, symbol, slot))) {
         throw new FantasyError(
           'VALIDATION',
@@ -411,6 +404,19 @@ export async function fillAndPersist(
   userId: string,
   cfg: RosterConfig,
 ): Promise<number> {
+  // Drop slots referencing stocks no longer on the roster (sold/traded/waived
+  // after the lineup was set). They would otherwise read as "filled" and block
+  // auto-fill, and at lock would score a stock the manager no longer owns.
+  // setLineup already rewrites wholesale; this gives auto-fill the same hygiene.
+  await client.query(
+    `DELETE FROM fs_lineup_slot ls
+       WHERE ls.lineup_id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM fs_roster_entry re
+            WHERE re.league_id = $2 AND re.user_id = $3 AND re.symbol = ls.symbol
+         )`,
+    [lineupId, leagueId, userId],
+  );
   const existing = await loadSlots(client, lineupId);
   const fills = await autofillLineup(
     client,

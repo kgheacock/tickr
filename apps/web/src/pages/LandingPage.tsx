@@ -1,7 +1,19 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthProvider';
-import { useLogout } from '../auth/useLogout';
-import { TickerTape } from '../components/TickerTape';
+import { client } from '../api/client';
+import { fantasyKeys } from '../features/fantasy/api';
+import { CreateLeagueModal } from '../features/fantasy/CreateLeagueModal';
+import {
+  Button,
+  Paper,
+  Masthead,
+  Rule,
+  Kicker,
+  Subhead,
+  TickerTape,
+} from '../components';
 import styles from './LandingPage.module.css';
 
 // A spread of recognizable S&P 500 names for the masthead markets strip.
@@ -38,28 +50,35 @@ const EDITION_DATE = new Date().toLocaleDateString('en-US', {
 
 export function LandingPage() {
   const { user, isLoading } = useAuth();
-  const handleLogout = useLogout();
+  const [creating, setCreating] = useState(false);
+
+  // Leagues the signed-in user belongs to, shown as quick links into each
+  // dashboard. Gated on `user`: `/` also renders for logged-out visitors, and an
+  // unauthenticated `/leagues` call would 401. Shares LeaguesPage's cache key, so
+  // a fresh league created via the modal (which invalidates it) shows up here.
+  const leaguesQuery = useQuery({
+    queryKey: fantasyKeys.myLeagues,
+    queryFn: () => client.listLeagues('mine'),
+    enabled: !!user,
+  });
+  const leagues = leaguesQuery.data?.items ?? [];
 
   return (
-    <div className={styles.page}>
-      <div className={styles.paper}>
-        <header className={styles.masthead}>
-          <span className={styles.flag}>Closed Beta</span>
-          <h1 className={styles.wordmark}>tickr</h1>
-          <span className={styles.flag}>{EDITION_DATE}</span>
-        </header>
+    <>
+      <Paper>
+        <Masthead wordmark="tickr" left="Closed Beta" right={EDITION_DATE} />
 
-        <div className={styles.ruleHeavy} />
-        <p className={styles.subhead}>
+        <Rule weight="heavy" className={styles.ruleHeavy} />
+        <Subhead className={styles.subhead}>
           Head-to-Head Stock Leagues · Draft the S&amp;P 500 · Est. MMXXVI
-        </p>
-        <div className={styles.ruleThin} />
+        </Subhead>
+        <Rule weight="thin" />
 
         <TickerTape tickers={MARKET_TICKERS} />
 
         <main className={styles.hero}>
           <article className={styles.lede}>
-            <p className={styles.kicker}>Fantasy Street</p>
+            <Kicker className={styles.kicker}>Fantasy Street</Kicker>
             <h2 className={styles.headline}>
               Draft your team. Set your lineup. Earn your glory.
             </h2>
@@ -75,14 +94,31 @@ export function LandingPage() {
           <aside className={styles.column}>
             {isLoading ? null : user ? (
               <>
-                <p className={styles.columnHead}>Account</p>
-                <p className={styles.account}>{user.email}</p>
-                <Link to="/leagues" className={styles.leaguesLink}>
-                  My Leagues →
-                </Link>
-                <button className={styles.signout} onClick={handleLogout}>
-                  Sign out
-                </button>
+                {/* Account email + Sign out now live in the global Header. This
+                    aside is the signed-in "what next" column: your leagues and
+                    the create CTA. Leagues are a link into each dashboard, listed
+                    above the always-present CTA so there's no loading flash. */}
+                {leagues.length > 0 ? (
+                  <nav className={styles.leagueList} aria-label="My leagues">
+                    <p className={styles.columnHead}>My Leagues</p>
+                    {leagues.map((league) => (
+                      <Link
+                        key={league.id}
+                        to={`/leagues/${league.id}`}
+                        className={styles.leagueItem}
+                      >
+                        {league.name}
+                      </Link>
+                    ))}
+                  </nav>
+                ) : null}
+                {/* Create opens a modal in place — no navigation to a list. */}
+                <Button
+                  className={styles.createCta}
+                  onClick={() => setCreating(true)}
+                >
+                  Start a League
+                </Button>
               </>
             ) : (
               <>
@@ -119,8 +155,12 @@ export function LandingPage() {
             )}
           </aside>
         </main>
-      </div>
-    </div>
+      </Paper>
+
+      {creating ? (
+        <CreateLeagueModal onClose={() => setCreating(false)} />
+      ) : null}
+    </>
   );
 }
 

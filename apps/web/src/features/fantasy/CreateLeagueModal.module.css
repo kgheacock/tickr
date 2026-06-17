@@ -7,12 +7,6 @@
   gap: var(--space-4);
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
 .row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -25,23 +19,7 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.input {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
   color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-3);
-}
-
-.input:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
-  border-color: var(--color-accent);
 }
 
 /* ── Managers roster ──────────────────────────────────────── */
@@ -62,18 +40,6 @@
   padding: 0;
 }
 
-/* A masthead-style count chip next to the "Managers" legend. */
-.count {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-paper);
-  background: var(--color-text);
-  border-radius: 999px;
-  padding: 1px 7px;
-  letter-spacing: 0;
-}
-
 .seatList {
   list-style: none;
   display: flex;
@@ -81,107 +47,42 @@
   gap: var(--space-2);
 }
 
-/* Each manager seat reads as a ruled classifieds line. */
 .seat {
   display: grid;
   grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: var(--space-3);
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-border);
 }
 
 .seatNum {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--color-text-muted);
-  width: 1.4em;
+  color: var(--color-text);
+  width: 1.8em;
   text-align: right;
 }
 
+/* Base input styling comes from <Input>; the roster row only tightens the
+   vertical padding and lets the field shrink within the grid column. */
 .seatEmail {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
   min-width: 0;
 }
 
-.seatEmail:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
-  border-color: var(--color-accent);
-}
-
-.seatEmail:disabled {
-  background: transparent;
-  color: var(--color-text-muted);
-  font-style: italic;
-}
-
-/* Bot toggle — a compact sans switch label. */
+/* Bot toggle — compact uppercase variant of <Checkbox> for the tighter roster
+   row; only the type treatment differs from the component default. */
 .botToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-sans);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-text-muted);
-  cursor: pointer;
-  user-select: none;
 }
 
-.botToggle input {
-  accent-color: var(--color-accent);
-}
-
-.seatRemove {
-  font-family: var(--font-sans);
-  font-size: 18px;
-  line-height: 1;
-  color: var(--color-text-muted);
-  background: none;
-  border: none;
-  padding: 0 var(--space-1);
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.seatRemove:hover:not(:disabled) {
-  color: #9c2b1b;
-}
-
-.seatRemove:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
+/* Pins the ghost <Button> to the left under the roster; chrome is the
+   component's own. */
 .addSeat {
   align-self: flex-start;
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-accent);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-}
-
-.addSeat:hover:not(:disabled) {
-  color: var(--color-accent-hover);
-  text-decoration: underline;
-}
-
-.addSeat:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 /* ── Season ───────────────────────────────────────────────── */
@@ -192,21 +93,10 @@
   gap: var(--space-5);
 }
 
+/* Aligns the <Checkbox> baseline with the adjacent weeks field, whose label
+   sits above its input; chrome is the component's own. */
 .checkLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--color-text);
-  cursor: pointer;
-  user-select: none;
   padding-bottom: var(--space-2);
-}
-
-.checkLabel input {
-  accent-color: var(--color-accent);
 }
 
 .weeksField {
@@ -227,51 +117,4 @@
   justify-content: flex-end;
   gap: var(--space-3);
   padding-top: var(--space-2);
-}
-
-.cancel,
-.submit {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-md);
-  transition:
-    background 0.15s,
-    color 0.15s,
-    transform 0.1s;
-}
-
-.cancel {
-  border: 1px solid var(--color-rule);
-  background: transparent;
-  color: var(--color-text);
-}
-
-.cancel:hover:not(:disabled) {
-  background: var(--color-rule);
-  color: var(--color-paper);
-}
-
-.submit {
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-paper);
-}
-
-.submit:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-}
-
-.cancel:active:not(:disabled),
-.submit:active:not(:disabled) {
-  transform: translateY(1px);
-}
-
-.submit:disabled,
-.cancel:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }

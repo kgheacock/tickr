@@ -10,7 +10,7 @@
   /* Center in the viewport, keeping a small gutter so the sheet never sits
      flush against the screen edges on narrow viewports. */
   margin: auto;
-  width: min(540px, calc(100vw - var(--space-6)));
+  width: min(var(--modal-width, 540px), calc(100vw - var(--space-6)));
   max-height: calc(100vh - var(--space-8));
   overflow: visible;
   border-radius: var(--radius-md);
@@ -79,13 +79,9 @@
   border-bottom: 3px double var(--color-rule);
 }
 
+/* <Kicker> owns the eyebrow treatment; the header only sets its gap to the
+   title below. */
 .kicker {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #9c2b1b;
   margin-bottom: var(--space-2);
 }
 

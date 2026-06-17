@@ -1,0 +1,94 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Matches the page sheet (#fbfaf5). Framed like the Modal with a thick ink
+     rule (the native <dialog>'s currentColor border). */
+  background: var(--color-paper);
+  border: 2px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  font-family: var(--font-serif);
+}
+
+.table th {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 2px solid var(--color-rule);
+}
+
+.table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Sortable header (SortHeader) ─────────────────────────── */
+
+/* The button carries no chrome of its own: it inherits the `.table th` type
+   treatment so a sortable header reads identically to a static one at rest. */
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sortButton:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* The arrow inherits the header's ink colour. Hidden at rest (but holding its
+   space, so hover never shifts the label); a faint ↕ surfaces on hover and the
+   live ↑/↓ shows on the active column. */
+.sortArrow {
+  font-size: 11px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.sortButton:hover .sortArrow,
+.sortButton:focus-visible .sortArrow {
+  opacity: 1;
+}
+
+.sortHead[aria-sort='ascending'] .sortArrow,
+.sortHead[aria-sort='descending'] .sortArrow {
+  opacity: 1;
+}
+
+/* Opt-in interactive row (e.g. a waiver-wire row that opens a stock report).
+   The whole-row hover is the click affordance — a stronger ink-blue wash plus an
+   accent bar inset on the leading edge, so the row reads as a target without any
+   per-cell link chrome. */
+.clickable {
+  cursor: pointer;
+  transition:
+    background 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+.clickable:hover,
+.clickable:focus-visible {
+  background: rgba(26, 79, 138, 0.1);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+  outline: none;
+}

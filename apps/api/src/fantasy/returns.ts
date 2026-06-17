@@ -18,8 +18,53 @@
  * cents) for the breakdown explainer.
  */
 import type { Pool, PoolClient } from 'pg';
+import { currentFriday, nyseRegularCloseAnchor } from '../market/holidays.js';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** A scoring week resolved to its two regular-close anchors (cents at-or-before). */
+export interface WeekWindow {
+  /** The week's Friday 16:00-ET close anchor (the "this" close). */
+  weekEnd: Date;
+  /** The prior Friday's 16:00-ET close anchor (the baseline). */
+  baselineAt: Date;
+}
+
+/**
+ * The last *fully completed* scoring weeks, most recent first. The current
+ * (in-flight) week is excluded: week 0 ends on the Friday before `currentFriday`,
+ * so this reads cleanly any weekday (the only soft edge is the few hours Friday
+ * after settle, acceptable for the scouting columns). Both endpoints anchor at
+ * the 16:00-ET regular close — the same anchor the Friday settle uses — so the
+ * inventory's "points last week" matches the most recent scoringHistory entry.
+ */
+export function recentCompletedWeeks(now: Date, count: number): WeekWindow[] {
+  const friday = currentFriday(now);
+  const weeks: WeekWindow[] = [];
+  for (let i = 1; i <= count; i++) {
+    weeks.push({
+      weekEnd: nyseRegularCloseAnchor(new Date(friday.getTime() - i * WEEK_MS)),
+      baselineAt: nyseRegularCloseAnchor(
+        new Date(friday.getTime() - (i + 1) * WEEK_MS),
+      ),
+    });
+  }
+  return weeks;
+}
+
+/** The single most-recently-completed scoring week's anchors. */
+export function lastCompletedWeek(now: Date): WeekWindow {
+  return recentCompletedWeeks(now, 1)[0]!;
+}
+
+/** Percent move between two closes (cents); null when either is missing / baseline ≤ 0. */
+export function returnPctFrom(
+  lastClose: number | null,
+  thisClose: number | null,
+): number | null {
+  if (lastClose == null || thisClose == null || lastClose <= 0) return null;
+  return ((thisClose - lastClose) / lastClose) * 100;
+}
 
 export interface WeeklyReturn {
   /** Prior-Friday close (cents), or null if no bar resolves at-or-before it. */
@@ -65,11 +110,11 @@ export async function weeklyReturn(
 ): Promise<WeeklyReturn> {
   const lastClose = await closeAtOrBefore(db, symbol, baselineAt);
   const thisClose = await closeAtOrBefore(db, symbol, asOf);
-  if (lastClose == null || thisClose == null || lastClose <= 0) {
-    return { lastClose, thisClose, returnPct: null };
-  }
   // Stock price floors at 0, so a long return floors at −100% (a short's gain
   // caps at +100% / +1000 pts); a squeeze is unbounded above (the "pick-six").
-  const returnPct = ((thisClose - lastClose) / lastClose) * 100;
-  return { lastClose, thisClose, returnPct };
+  return {
+    lastClose,
+    thisClose,
+    returnPct: returnPctFrom(lastClose, thisClose),
+  };
 }

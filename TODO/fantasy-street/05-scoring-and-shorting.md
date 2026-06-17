@@ -25,7 +25,7 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
 
 ## Pre-reads
 - [Epic README → Scoring rules (canonical)](README.md#scoring-rules-canonical-reference)
-  — the `r × 10` / `−r × 10` formulas + the worked-through short table. **Do not
+  — the `r` / `−r` formulas + the worked-through short table. **Do not
   re-derive; implement these.**
 - [FS-04](04-rosters-and-lineups.md) — the locked `fs_lineup` / `fs_lineup_slot`
   set this scores.
@@ -52,9 +52,9 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
   rows (authoritative keyed by `ts`, provisional by `session_date`; they never
   collide). `returns.ts` owns this fallback; `replay.ts`/`prices.ts` stay
   `price_bar`-only so backtests never see provisional same-day data.
-- **Points** — long slot `= r × 10`; Defense (short) `= −r × 10`. Weekly total =
+- **Points** — long slot `= r`; Defense (short) `= −r`. Weekly total =
   Σ started slots, **uncapped, losses included** (locked decision; mercy cap is
-  open question #2, deferred). Short gain floored at 0 (−100% → +1000); short
+  open question #2, deferred). Short gain floored at 0 (−100% → +100); short
   loss unbounded (the "pick-six").
 - **Shorting reuses the single-owner invariant** — a short is a normal
   `fs_roster_entry` with `is_short=true`; `UNIQUE (league_id, symbol)` (FS-03)
@@ -71,7 +71,7 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
    handles missing/holiday closes by walking back to the last available bar.
 3. **Scorer** (`apps/api/src/fantasy/score.ts`) — for one (league, week): load
    each manager's locked `fs_lineup_slot` started set, compute per-slot points
-   (`r×10`, or `−r×10` for `is_short`), sum to `total_points`, write
+   (`r`, or `−r` for `is_short`), sum to `total_points`, write
    `fs_weekly_score` with the full `breakdown`. Idempotent upsert (re-scoring a
    week overwrites — supports FS-12 dispute corrections).
 4. **Scoring job** — from `jobs/scheduler.ts`, the **Friday** post-close firing
@@ -91,8 +91,8 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
    the live topic `{ kind: 'matchup'; leagueId; week }` in `ws/topics.ts` +
    the `WsTopic` union in `shared-types/ws.ts`, and publish `matchup.updated`
    via `events/publisher.ts` as provisional scores change.
-7. **Tests.** Reproduce the README worked examples (short TSLA −4% → +40; +4% →
-   −40; →0 → +1000 floored; squeeze +30% → −300); losses reduce the total;
+7. **Tests.** Reproduce the README worked examples (short TSLA −4% → +4; +4% →
+   −4; →0 → +100 floored; squeeze +30% → −30); losses reduce the total;
    uncapped totals; breakdown sums to `total_points`; idempotent re-score.
 
 ## Files
@@ -106,8 +106,8 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
   `packages/shared-types/src/ws.ts` + `fantasy.ts`.
 
 ## Definition of done
-- [x] Each README short example reproduces exactly (+40 / −40 / +1000 floored /
-      −300), and a long slot scores `r × 10`.
+- [x] Each README short example reproduces exactly (+4 / −4 / +100 floored /
+      −30), and a long slot scores `r`.
 - [x] Weekly total is the uncapped sum of started slots with losses included;
       the `breakdown` sums to `total_points`.
 - [x] The Friday post-close job scores every active league's just-closed week

@@ -34,10 +34,7 @@ function TeamColumn({
               <span className={styles.slotName}>
                 {SLOT_LABELS[b.slot] ?? b.slot}
               </span>
-              <span className={styles.slotSym}>
-                {b.symbol}
-                {b.isShort && <span className={styles.shortTag}>S</span>}
-              </span>
+              <span className={styles.slotSym}>{b.symbol}</span>
               <span className={styles.slotRet}>{fmtPercent(b.returnPct)}</span>
               <span
                 className={`${styles.slotPts} ${b.points >= 0 ? styles.pos : styles.neg}`}

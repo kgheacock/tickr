@@ -12,6 +12,7 @@
  *   …/scores                   weekly scoring & shorting (item 05)
  *   …/schedule|matchups|standings  head-to-head schedule & standings (item 06)
  *   …/waivers|trades               mid-season add/drop & trades (item 07)
+ *   …/roster                       immediate free-agent buy/sell (off the wire)
  *   …/seasons                      season lifecycle, playoffs & history (item 08)
  *   …/notifications                reminders & recaps feed (item 11)
  *   …/settings|members|admin       commissioner & admin tools (item 12)
@@ -30,6 +31,7 @@ import { registerLineupRoutes } from './lineup.js';
 import { registerScoreRoutes } from './scores.js';
 import { registerMatchupRoutes } from './matchups.js';
 import { registerWaiverRoutes } from './waivers.js';
+import { registerRosterRoutes } from './roster.js';
 import { registerTradeRoutes } from './trades.js';
 import { registerSeasonRoutes } from './seasons.js';
 import { registerNotificationRoutes } from './notifications.js';
@@ -51,6 +53,7 @@ export async function registerLeaguesRoutes(
   registerScoreRoutes(fastify);
   registerMatchupRoutes(fastify);
   registerWaiverRoutes(fastify);
+  registerRosterRoutes(fastify);
   registerTradeRoutes(fastify);
   registerSeasonRoutes(fastify);
   registerNotificationRoutes(fastify);

@@ -816,15 +816,34 @@ components:
           type: string
           format: date-time
 
+    CreateLeagueMember:
+      type: object
+      description: >-
+        A seat to fill when creating a league. A bot seat is minted as an
+        auto-manager; a human seat creates a labelled invite for the given
+        email (delivery is not yet wired — see FS-14).
+      required: [isBot]
+      properties:
+        email:
+          type: ['string', 'null']
+          description: Invitee email for a human seat; null/omitted for a bot seat.
+        isBot:
+          type: boolean
+
     CreateLeagueRequest:
       type: object
-      required: [name, size, seasonLengthWeeks, joinPolicy]
+      required: [name, seasonLengthWeeks, joinPolicy]
       properties:
         name:
           type: string
+        teamName:
+          type: ['string', 'null']
+          description: The commissioner's own team name.
         size:
           type: integer
-          description: 4–12
+          description: >-
+            League capacity (4–12). Optional and ignored when `members` is
+            supplied — capacity is then derived as 1 (commissioner) + members.
         seasonLengthWeeks:
           type: integer
         rosterConfig:
@@ -832,6 +851,13 @@ components:
         joinPolicy:
           type: string
           enum: [invite, open]
+        members:
+          type: array
+          description: >-
+            The other seats to fill. Capacity is derived as 1 + members.length,
+            and must land in 4–12 (so 3–11 members).
+          items:
+            $ref: '#/components/schemas/CreateLeagueMember'
 
     UpdateLeagueRequest:
       type: object
@@ -907,10 +933,14 @@ components:
 
     PlayerInventoryItem:
       type: object
-      required: [symbol, groups, recentReturnPct, ownership]
+      required:
+        [symbol, name, groups, recentReturnPct, lastWeekPoints, ownership]
       properties:
         symbol:
           type: string
+        name:
+          type: ['string', 'null']
+          description: Company name (symbol_metadata); null when unfetched
         groups:
           type: array
           items:
@@ -918,8 +948,29 @@ components:
         recentReturnPct:
           type: ['number', 'null']
           description: Trailing ~3-month return, surfaced for scouting
+        lastWeekPoints:
+          type: ['number', 'null']
+          description: >-
+            Fantasy points the stock scored last completed week (long basis,
+            return); null when no price data resolves the week
         ownership:
           $ref: '#/components/schemas/PlayerOwnership'
+
+    PlayerWeekScore:
+      type: object
+      description: One completed week's long-basis fantasy points for a stock
+      required: [weekEnd, returnPct, points]
+      properties:
+        weekEnd:
+          type: string
+          format: date-time
+          description: The week's Friday regular-close anchor
+        returnPct:
+          type: ['number', 'null']
+          description: Week percent return; null when no price data resolves it
+        points:
+          type: ['number', 'null']
+          description: returnPct (long basis); null when returnPct is null
 
     PlayerListResponse:
       type: object
@@ -940,15 +991,20 @@ components:
       type: object
       required:
         - symbol
+        - name
         - groups
         - eligibleSlots
         - recentReturnPct
         - metrics
         - ownership
+        - scoringHistory
         - prices
       properties:
         symbol:
           type: string
+        name:
+          type: ['string', 'null']
+          description: Company name (symbol_metadata); null when unfetched
         groups:
           type: array
           items:
@@ -964,9 +1020,14 @@ components:
           $ref: '#/components/schemas/PlayerMetrics'
         ownership:
           $ref: '#/components/schemas/PlayerOwnership'
+        scoringHistory:
+          type: array
+          description: Per-week long-basis points for recent completed weeks (newest first)
+          items:
+            $ref: '#/components/schemas/PlayerWeekScore'
         prices:
           type: array
-          description: Price-history window (~1y) for the detail chart
+          description: Price-history window (~3 months) for the detail chart
           items:
             $ref: '#/components/schemas/PriceBar'
 
@@ -1171,7 +1232,7 @@ components:
           type: string
         isShort:
           type: boolean
-          description: True for a Defense short (scored as −r×10)
+          description: True for a Defense short (scored as −r)
         lastClose:
           type: ['number', 'null']
           description: Prior-Friday close in cents, or null if no bar resolved
@@ -1183,7 +1244,7 @@ components:
           description: Week percent return, or null when a close was missing
         points:
           type: number
-          description: Slot points (r×10 long, −r×10 short), rounded to 2 dp
+          description: Slot points (r long, −r short), rounded to 2 dp
 
     WeeklyScore:
       type: object
@@ -1419,6 +1480,33 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WaiverOrderEntry'
+
+    RosterTransactionRequest:
+      type: object
+      description: Buy an unowned stock off the wire; pair a drop when the roster is full
+      required: [addSymbol]
+      properties:
+        addSymbol:
+          type: string
+        dropSymbol:
+          type: string
+          description: A stock the caller owns to drop; required when the roster is full
+        isShort:
+          type: boolean
+          description: Add into the Defense (short) slot
+          default: false
+
+    RosterTransactionResult:
+      type: object
+      description: The symbols moved by an immediate buy/sell (null when not applicable)
+      required: [leagueId, added, dropped]
+      properties:
+        leagueId:
+          type: string
+        added:
+          type: ['string', 'null']
+        dropped:
+          type: ['string', 'null']
 
     TradeItem:
       type: object

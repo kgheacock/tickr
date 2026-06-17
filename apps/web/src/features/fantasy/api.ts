@@ -5,7 +5,12 @@
  * no new backend domain logic. This module centralizes the React Query keys and
  * the small client-side helpers the views share.
  */
-import type { LeagueMember, Matchup, WeeklyScore } from '@tickr/shared-types';
+import type {
+  LeagueMember,
+  Matchup,
+  PlayerGroup,
+  WeeklyScore,
+} from '@tickr/shared-types';
 
 export const DEFAULT_SEASON = 1;
 // The schedule→calendar-week mapping is still single-week server-side
@@ -50,6 +55,41 @@ export const SLOT_LABELS: Record<string, string> = {
   wildcard: 'Wildcard',
   bench: 'Bench',
 };
+
+/**
+ * Universal groups every tradeable stock qualifies for (mirrors eligibility.ts
+ * UNIVERSAL on the server). They're roster slots, not earned classifications, so
+ * the UI hides them from the per-stock "Specialization" chips — every row would
+ * carry them, which is noise.
+ */
+export const GLOBAL_GROUPS: ReadonlySet<PlayerGroup> = new Set([
+  'defense',
+  'wildcard',
+]);
+
+/** The earned, price-derived groups — i.e. all groups minus the global slots. */
+export const SPECIALIZATIONS: PlayerGroup[] = [
+  'anchor',
+  'growth',
+  'momentum',
+  'value',
+];
+
+/** A stock's specializations: its groups with the universal slots removed. */
+export function specializationsOf(groups: PlayerGroup[]): PlayerGroup[] {
+  return groups.filter((g) => !GLOBAL_GROUPS.has(g));
+}
+
+/** Every classification group (specializations + globals). */
+const ALL_GROUPS: ReadonlySet<string> = new Set<PlayerGroup>([
+  ...SPECIALIZATIONS,
+  ...GLOBAL_GROUPS,
+]);
+
+/** Narrow a roster-slot string to a coloured group (excludes 'bench'). */
+export function isPlayerGroup(slot: string): slot is PlayerGroup {
+  return ALL_GROUPS.has(slot);
+}
 
 /**
  * Higher score wins; equal (or a bye) is a draw. Mirrors the server's

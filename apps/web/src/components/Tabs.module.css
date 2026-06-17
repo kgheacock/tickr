@@ -1,0 +1,28 @@
+/* Standardised newsprint tab strip — underline-on-active, uppercase sans.
+   Extracted from the league layout header so any routed section can share it. */
+
+.nav {
+  display: flex;
+  gap: var(--space-5);
+}
+
+.tab {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  padding-bottom: var(--space-2);
+  border-bottom: 2px solid transparent;
+}
+
+.tab:hover {
+  color: #9c2b1b;
+}
+
+/* Brick-red active flag — the Kicker red (see Kicker.module.css). */
+.tabActive {
+  color: #9c2b1b;
+  border-bottom-color: #9c2b1b;
+}

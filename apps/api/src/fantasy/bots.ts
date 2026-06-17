@@ -15,28 +15,9 @@
 import type { Pool, PoolClient } from 'pg';
 import type { LeagueView } from '@tickr/shared-types';
 import { FantasyError, assertCommissioner, getLeagueView } from './leagues.js';
+import { mintBots } from './botMint.js';
 
 type Db = Pool | PoolClient;
-
-/**
- * Display-name pool for minted bots, cycled by the league's existing bot count
- * so names stay distinct and stable within a league. Purely cosmetic — bots are
- * keyed by id, not name.
- */
-const BOT_NAMES = [
-  'CPU — Bull',
-  'CPU — Bear',
-  'CPU — Quant',
-  'CPU — Momentum',
-  'CPU — Value',
-  'CPU — Contrarian',
-  'CPU — Index',
-  'CPU — Wildcard',
-  'CPU — Algo',
-  'CPU — Ticker',
-  'CPU — Short',
-  'CPU — Hedge',
-] as const;
 
 const MAX_BOTS_PER_CALL = 12;
 
@@ -111,27 +92,7 @@ export async function addBots(
       );
     }
 
-    let nameOffset = Number(league.bot_count);
-    for (let i = 0; i < count; i++) {
-      const displayName =
-        BOT_NAMES[nameOffset % BOT_NAMES.length] ?? `CPU — ${nameOffset + 1}`;
-      nameOffset += 1;
-      const { rows: userRows } = await client.query<{ id: string }>(
-        `INSERT INTO app_user (id, display_name, email, role)
-         VALUES (gen_random_uuid(), $1, NULL, 'player') RETURNING id`,
-        [displayName],
-      );
-      const userId = userRows[0]!.id;
-      await client.query(
-        `INSERT INTO fs_league_member (league_id, user_id, role, team_name)
-         VALUES ($1, $2, 'manager', $3)`,
-        [leagueId, userId, displayName],
-      );
-      await client.query(
-        `INSERT INTO fs_bot_member (league_id, user_id) VALUES ($1, $2)`,
-        [leagueId, userId],
-      );
-    }
+    await mintBots(client, leagueId, count, Number(league.bot_count));
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

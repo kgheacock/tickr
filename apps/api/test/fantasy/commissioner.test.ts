@@ -332,8 +332,8 @@ async function seedScoredLeague(): Promise<{
   const manager = await addMember(leagueId);
   await seedSeason(leagueId);
   await generateSchedule(pool, leagueId, 1);
-  await seedSymbolBars('AAA', 10_000, 11_000); // +10% → +100
-  await seedSymbolBars('BBB', 10_000, 10_500); // +5%  → +50
+  await seedSymbolBars('AAA', 10_000, 11_000); // +10% → +10
+  await seedSymbolBars('BBB', 10_000, 10_500); // +5%  → +5
   await rosterEntry(leagueId, commissioner, 'AAA');
   await rosterEntry(leagueId, manager, 'BBB');
   await seedWildcardLineup(leagueId, commissioner, 'AAA');
@@ -354,10 +354,10 @@ describe('dispute re-score', () => {
     expect(result.scores).toHaveLength(2);
     expect(
       (await loadWeeklyScore(pool, leagueId, commissioner, 1))!.totalPoints,
-    ).toBe(100);
+    ).toBe(10);
     expect(
       (await loadWeeklyScore(pool, leagueId, manager, 1))!.totalPoints,
-    ).toBe(50);
+    ).toBe(5);
 
     // FS-06: the matchup settled to final with the higher scorer as winner.
     const { rows: mu } = await pool.query<{

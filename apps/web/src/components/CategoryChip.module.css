@@ -1,0 +1,38 @@
+/* Category chip. One muted spot-ink per group sets both the label and a
+   full-strength border on the bare paper — no fill — so the chips read as a
+   high-contrast printed colour key. The per-group class only sets --ink; the
+   base rule derives the rest. */
+
+.chip {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px var(--space-2);
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.anchor {
+  --ink: var(--group-anchor);
+}
+.growth {
+  --ink: var(--group-growth);
+}
+.momentum {
+  --ink: var(--group-momentum);
+}
+.value {
+  --ink: var(--group-value);
+}
+.defense {
+  --ink: var(--group-defense);
+}
+.wildcard {
+  --ink: var(--group-wildcard);
+}

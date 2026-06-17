@@ -8,8 +8,8 @@
  * here — see test/fantasy/score.test.ts.
  *
  * Scoring rules (canonical; epic README → "Scoring rules"):
- *   long slot points    =  r × 10
- *   defense (short) pts  = −r × 10        (positive when the shorted stock falls)
+ *   long slot points    =  r
+ *   defense (short) pts  = −r        (positive when the shorted stock falls)
  *   weekly total         = Σ started (non-bench) slots — uncapped, losses in full
  * where r is the week's percent return (returns.ts). A slot whose return can't
  * be resolved scores 0. Each slot's points are rounded to 2 decimals, then the
@@ -19,18 +19,14 @@ import type { Pool, PoolClient } from 'pg';
 import type { ScoreBreakdownItem, WeeklyScore } from '@tickr/shared-types';
 import { weeklyReturn } from './returns.js';
 
-/** Cosmetic points-per-percent scale (locked decision; open question #5). */
-const POINTS_SCALE = 10;
-
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-/** Points for one started slot: r×10 long, −r×10 short; 0 when r is unknown. */
-function slotPoints(returnPct: number | null, isShort: boolean): number {
+/** Points for one started slot: r long, −r short; 0 when r is unknown. */
+export function slotPoints(returnPct: number | null, isShort: boolean): number {
   if (returnPct == null) return 0;
-  const base = returnPct * POINTS_SCALE;
-  return round2(isShort ? -base : base);
+  return round2(isShort ? -returnPct : returnPct);
 }
 
 interface StartedSlot {

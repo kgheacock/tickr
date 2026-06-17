@@ -725,14 +725,24 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /** @description A seat to fill when creating a league. A bot seat is minted as an auto-manager; a human seat creates a labelled invite for the given email (delivery is not yet wired — see FS-14). */
+        CreateLeagueMember: {
+            /** @description Invitee email for a human seat; null/omitted for a bot seat. */
+            email?: string | null;
+            isBot: boolean;
+        };
         CreateLeagueRequest: {
             name: string;
-            /** @description 4–12 */
-            size: number;
+            /** @description The commissioner's own team name. */
+            teamName?: string | null;
+            /** @description League capacity (4–12). Optional and ignored when `members` is supplied — capacity is then derived as 1 (commissioner) + members. */
+            size?: number;
             seasonLengthWeeks: number;
             rosterConfig?: components["schemas"]["RosterConfig"];
             /** @enum {string} */
             joinPolicy: "invite" | "open";
+            /** @description The other seats to fill. Capacity is derived as 1 + members.length, and must land in 4–12 (so 3–11 members). */
+            members?: components["schemas"]["CreateLeagueMember"][];
         };
         /** @description Commissioner settings edit; allowed only while status = forming */
         UpdateLeagueRequest: {
@@ -779,10 +789,26 @@ export interface components {
         };
         PlayerInventoryItem: {
             symbol: string;
+            /** @description Company name (symbol_metadata); null when unfetched */
+            name: string | null;
             groups: components["schemas"]["PlayerGroup"][];
             /** @description Trailing ~3-month return, surfaced for scouting */
             recentReturnPct: number | null;
+            /** @description Fantasy points the stock scored last completed week (long basis, return); null when no price data resolves the week */
+            lastWeekPoints: number | null;
             ownership: components["schemas"]["PlayerOwnership"];
+        };
+        /** @description One completed week's long-basis fantasy points for a stock */
+        PlayerWeekScore: {
+            /**
+             * Format: date-time
+             * @description The week's Friday regular-close anchor
+             */
+            weekEnd: string;
+            /** @description Week percent return; null when no price data resolves it */
+            returnPct: number | null;
+            /** @description returnPct (long basis); null when returnPct is null */
+            points: number | null;
         };
         PlayerListResponse: {
             items: components["schemas"]["PlayerInventoryItem"][];
@@ -792,13 +818,17 @@ export interface components {
         };
         PlayerDetail: {
             symbol: string;
+            /** @description Company name (symbol_metadata); null when unfetched */
+            name: string | null;
             groups: components["schemas"]["PlayerGroup"][];
             /** @description Roster slot names this stock may fill */
             eligibleSlots: string[];
             recentReturnPct: number | null;
             metrics: components["schemas"]["PlayerMetrics"];
             ownership: components["schemas"]["PlayerOwnership"];
-            /** @description Price-history window (~1y) for the detail chart */
+            /** @description Per-week long-basis points for recent completed weeks (newest first) */
+            scoringHistory: components["schemas"]["PlayerWeekScore"][];
+            /** @description Price-history window (~3 months) for the detail chart */
             prices: components["schemas"]["PriceBar"][];
         };
         /**
@@ -904,7 +934,7 @@ export interface components {
             /** @enum {string} */
             slot: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard" | "bench";
             symbol: string;
-            /** @description True for a Defense short (scored as −r×10) */
+            /** @description True for a Defense short (scored as −r) */
             isShort: boolean;
             /** @description Prior-Friday close in cents, or null if no bar resolved */
             lastClose: number | null;
@@ -912,7 +942,7 @@ export interface components {
             thisClose: number | null;
             /** @description Week percent return, or null when a close was missing */
             returnPct: number | null;
-            /** @description Slot points (r×10 long, −r×10 short), rounded to 2 dp */
+            /** @description Slot points (r long, −r short), rounded to 2 dp */
             points: number;
         };
         /** @description A manager's weekly point total and its per-slot breakdown */
@@ -1023,6 +1053,23 @@ export interface components {
             season: number;
             claims: components["schemas"]["WaiverClaim"][];
             order: components["schemas"]["WaiverOrderEntry"][];
+        };
+        /** @description Buy an unowned stock off the wire; pair a drop when the roster is full */
+        RosterTransactionRequest: {
+            addSymbol: string;
+            /** @description A stock the caller owns to drop; required when the roster is full */
+            dropSymbol?: string;
+            /**
+             * @description Add into the Defense (short) slot
+             * @default false
+             */
+            isShort: boolean;
+        };
+        /** @description The symbols moved by an immediate buy/sell (null when not applicable) */
+        RosterTransactionResult: {
+            leagueId: string;
+            added: string | null;
+            dropped: string | null;
         };
         /** @description One leg of a trade — symbol moves from fromUserId to the other side */
         TradeItem: {

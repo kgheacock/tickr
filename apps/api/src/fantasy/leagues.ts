@@ -11,6 +11,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
+import { mintBots } from './botMint.js';
 import type {
   Invite,
   JoinPolicy,
@@ -26,12 +27,26 @@ import type {
 // UpdateLeagueRequest / … contract types but spell optionals as `?: T |
 // undefined` so values coming straight off zod (`.optional()`) satisfy them
 // under tsconfig's exactOptionalPropertyTypes.
+/** A seat to fill at league-creation time: a bot, or a human invited by email. */
+export interface CreateLeagueMemberInput {
+  email?: string | null | undefined;
+  isBot: boolean;
+}
+
 export interface CreateLeagueInput {
   name: string;
-  size: number;
+  /** The commissioner's own team name (set on their membership row). */
+  teamName?: string | null | undefined;
+  /**
+   * League capacity (4–12). Optional and ignored when `members` is supplied —
+   * capacity is then derived as 1 (commissioner) + members.length.
+   */
+  size?: number | undefined;
   seasonLengthWeeks: number;
   rosterConfig?: RosterConfig | undefined;
   joinPolicy: JoinPolicy;
+  /** The other seats to fill; derives capacity and drives bot/invite creation. */
+  members?: CreateLeagueMemberInput[] | undefined;
 }
 
 export interface UpdateLeagueInput {
@@ -93,6 +108,9 @@ export const DEFAULT_ROSTER_CONFIG: RosterConfig = {
 };
 
 const MAX_BENCH = 4;
+
+/** Pragmatic email shape check for invitee addresses (not full RFC 5322). */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Non-empty slots, every slot a non-empty string, bench in [0, 4]. */
 export function validateRosterConfig(cfg: RosterConfig): void {
@@ -262,8 +280,19 @@ export async function createLeague(
 ): Promise<LeagueView> {
   const name = input.name?.trim();
   if (!name) throw new FantasyError('VALIDATION', 'name is required');
-  if (!Number.isInteger(input.size) || input.size < 4 || input.size > 12) {
-    throw new FantasyError('VALIDATION', 'size must be an integer 4–12');
+
+  // Capacity is derived from the seat list when one is supplied (the create
+  // flow always sends `members`); otherwise it falls back to an explicit `size`
+  // (older callers / tests). Either way it must land in 4–12.
+  const members = input.members;
+  const size = members !== undefined ? 1 + members.length : input.size;
+  if (size === undefined || !Number.isInteger(size) || size < 4 || size > 12) {
+    throw new FantasyError(
+      'VALIDATION',
+      members !== undefined
+        ? 'a league needs 3–11 members (4–12 managers including you)'
+        : 'size must be an integer 4–12',
+    );
   }
   if (
     !Number.isInteger(input.seasonLengthWeeks) ||
@@ -280,6 +309,25 @@ export async function createLeague(
       "joinPolicy must be 'invite' or 'open'",
     );
   }
+  // Every non-commissioner seat is filled by an auto-manager up front so the
+  // league is full and can be auto-drafted the instant it's created (FS-14
+  // instant play — the default). Human ("email") seats additionally get a
+  // labelled invite, so a future claim-on-join flow can hand the bot-held team
+  // over to the real manager. Validate invitee emails before we touch the DB.
+  const seatCount = members?.length ?? 0;
+  const inviteEmails: string[] = [];
+  for (const m of members ?? []) {
+    if (m.isBot) continue;
+    const email = m.email?.trim();
+    if (!email || !EMAIL_RE.test(email)) {
+      throw new FantasyError(
+        'VALIDATION',
+        `invalid invitee email: ${m.email ?? '(empty)'}`,
+      );
+    }
+    inviteEmails.push(email);
+  }
+  const teamName = input.teamName?.trim() || null;
   const rosterConfig = input.rosterConfig ?? DEFAULT_ROSTER_CONFIG;
   validateRosterConfig(rosterConfig);
 
@@ -296,22 +344,36 @@ export async function createLeague(
       [
         name,
         userId,
-        input.size,
+        size,
         input.seasonLengthWeeks,
         JSON.stringify(rosterConfig),
         input.joinPolicy,
       ],
     );
     const league = rows[0]!;
-    // The commissioner is also a member.
+    // The commissioner is also a member, carrying their chosen team name.
     await client.query(
-      `INSERT INTO fs_league_member (league_id, user_id, role)
-       VALUES ($1, $2, 'commissioner')`,
-      [league.id, userId],
+      `INSERT INTO fs_league_member (league_id, user_id, role, team_name)
+       VALUES ($1, $2, 'commissioner', $3)`,
+      [league.id, userId, teamName],
     );
+    // Fill every seat with an auto-manager (so the league is full and instantly
+    // draftable), then create a labelled invite for each human seat. NOTE:
+    // invite email *delivery* — and the claim-on-join handover from the bot to
+    // the real manager — are not wired yet. See TODO/fantasy-street/14-polish.md.
+    if (seatCount > 0) {
+      await mintBots(client, league.id, seatCount, 0);
+    }
+    for (const email of inviteEmails) {
+      await client.query(
+        `INSERT INTO fs_invite (token, league_id, created_by, email)
+         VALUES ($1, $2, $3, $4)`,
+        [randomBytes(24).toString('base64url'), league.id, userId, email],
+      );
+    }
     await client.query('COMMIT');
-    const members = await loadMembers(client, league.id);
-    return toView(league, members);
+    const memberRows = await loadMembers(client, league.id);
+    return toView(league, memberRows);
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

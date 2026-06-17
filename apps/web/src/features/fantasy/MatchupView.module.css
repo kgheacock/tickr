@@ -86,11 +86,6 @@
   font-weight: 600;
 }
 
-.shortTag {
-  color: var(--color-danger);
-  margin-left: 2px;
-}
-
 .slotRet {
   color: var(--color-text-muted);
 }

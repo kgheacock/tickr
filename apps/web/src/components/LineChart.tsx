@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { formatCents } from '../lib/format';
+import { Tooltip } from './Tooltip';
 import styles from './LineChart.module.css';
 
 export interface ChartSeries {
@@ -9,8 +10,25 @@ export interface ChartSeries {
   points: { ts: string; equity: number }[];
 }
 
+/**
+ * A vertical "signpost" dropped at a point on the time axis — a dashed rule
+ * topped with a direction arrow (up/down). Hovering the rule reveals `tooltip`.
+ */
+export interface ChartMarker {
+  ts: string;
+  /** Arrow points up for a gain, down for a loss. */
+  up: boolean;
+  /** Arrow fill colour. */
+  color: string;
+  /** Muted date label centred at the base of the rule. */
+  dateLabel: string;
+  /** Hover content — the date and the numeric move. */
+  tooltip: ReactNode;
+}
+
 interface LineChartProps {
   series: ChartSeries[];
+  markers?: ChartMarker[];
   height?: number;
 }
 
@@ -27,7 +45,7 @@ const Y_TICKS = 4;
  * lightweight-charts so item 18's performance plot carries no third-party
  * attribution requirement (see TODO/11 for migrating the market chart too).
  */
-export function LineChart({ series, height = 320 }: LineChartProps) {
+export function LineChart({ series, markers, height = 320 }: LineChartProps) {
   const model = useMemo(() => {
     const all = series.flatMap((s) => s.points);
     if (all.length === 0) return null;
@@ -66,13 +84,32 @@ export function LineChart({ series, height = 320 }: LineChartProps) {
       return { value, yPos: y(value) };
     });
 
+    // Signposts: a dashed vertical rule at each marker's time, topped with an
+    // up/down arrow. An HTML hit-strip per signpost (positioned by leftPct)
+    // carries the shared Tooltip.
+    const marks = (markers ?? []).map((m) => {
+      const mx = x(m.ts);
+      const dateAnchor =
+        mx > VIEW_W - 24 ? 'end' : mx < 24 ? 'start' : 'middle';
+      return {
+        x: mx,
+        leftPct: (mx / VIEW_W) * 100,
+        up: m.up,
+        color: m.color,
+        dateLabel: m.dateLabel,
+        dateAnchor,
+        tooltip: m.tooltip,
+      } as const;
+    });
+
     return {
       lines,
+      marks,
       yTicks,
       startLabel: new Date(minT).toLocaleDateString(),
       endLabel: new Date(maxT).toLocaleDateString(),
     };
-  }, [series, height]);
+  }, [series, markers, height]);
 
   if (!model) {
     return <div className={styles.empty}>No data to plot</div>;
@@ -82,38 +119,78 @@ export function LineChart({ series, height = 320 }: LineChartProps) {
 
   return (
     <div className={styles.wrap}>
-      <svg
-        className={styles.svg}
-        viewBox={`0 0 ${VIEW_W} ${height}`}
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`Performance chart: ${label}`}
-      >
-        {model.yTicks.map((t) => (
-          <g key={t.yPos}>
-            <line
-              x1={PAD_L}
-              x2={VIEW_W - PAD_R}
-              y1={t.yPos}
-              y2={t.yPos}
-              className={styles.grid}
+      <div className={styles.plot}>
+        <svg
+          className={styles.svg}
+          viewBox={`0 0 ${VIEW_W} ${height}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={`Performance chart: ${label}`}
+        >
+          {model.yTicks.map((t) => (
+            <g key={t.yPos}>
+              <line
+                x1={PAD_L}
+                x2={VIEW_W - PAD_R}
+                y1={t.yPos}
+                y2={t.yPos}
+                className={styles.grid}
+              />
+              <text x={PAD_L + 2} y={t.yPos - 3} className={styles.axisLabel}>
+                {formatCents(t.value)}
+              </text>
+            </g>
+          ))}
+          {model.marks.map((m, i) => {
+            const ah = 9; // arrow height/width in view units
+            const arrow = m.up
+              ? `${m.x},${PAD_T} ${m.x - ah / 2},${PAD_T + ah} ${m.x + ah / 2},${PAD_T + ah}`
+              : `${m.x - ah / 2},${PAD_T} ${m.x + ah / 2},${PAD_T} ${m.x},${PAD_T + ah}`;
+            return (
+              <g key={`mark-${i}`}>
+                <line
+                  x1={m.x}
+                  x2={m.x}
+                  y1={PAD_T + ah}
+                  y2={height - PAD_B}
+                  className={styles.marker}
+                />
+                <polygon points={arrow} fill={m.color} />
+                <text
+                  x={m.x}
+                  y={height - PAD_B + 14}
+                  textAnchor={m.dateAnchor}
+                  className={styles.markerDate}
+                >
+                  {m.dateLabel}
+                </text>
+              </g>
+            );
+          })}
+          {model.lines.map((l, i) => (
+            <polyline
+              key={i}
+              points={l.path}
+              fill="none"
+              stroke={l.color}
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
             />
-            <text x={PAD_L + 2} y={t.yPos - 3} className={styles.axisLabel}>
-              {formatCents(t.value)}
-            </text>
-          </g>
+          ))}
+        </svg>
+        {/* HTML hit-strips over each signpost, carrying the shared Tooltip. */}
+        {model.marks.map((m, i) => (
+          <div
+            key={`hit-${i}`}
+            className={styles.hitSlot}
+            style={{ left: `${m.leftPct}%` }}
+          >
+            <Tooltip content={m.tooltip} className={styles.hitTrigger}>
+              <span className={styles.hitFill} aria-hidden="true" />
+            </Tooltip>
+          </div>
         ))}
-        {model.lines.map((l, i) => (
-          <polyline
-            key={i}
-            points={l.path}
-            fill="none"
-            stroke={l.color}
-            strokeWidth={1.5}
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-      </svg>
+      </div>
       <div className={styles.xAxis}>
         <span>{model.startLabel}</span>
         <span>{model.endLabel}</span>

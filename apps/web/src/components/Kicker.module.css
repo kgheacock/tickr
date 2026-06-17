@@ -1,0 +1,11 @@
+/* Editorial eyebrow: brick-red, uppercase, letter-spaced sans — the section
+   label above a headline. The brand red matches the landing masthead and the
+   Modal header. Outer spacing is the caller's; this owns only the treatment. */
+.kicker {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9c2b1b;
+}

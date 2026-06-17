@@ -214,7 +214,7 @@ and throws `Not run migration …012_fs_leagues is preceding already run migrati
 Invisible to CI and to a fresh-DB migrate; it only trips on the prod *upgrade*,
 exactly like the original F1.
 
-**Recommended fix — renumber the *entire* FS chain `012–023` → `024–035`,
+**Resolved 2026-06-16 — renumbered the *entire* FS chain into the `030+` band,
 preserving internal order.** It is **not** sufficient to renumber only `012–019`:
 the newer FS migrations `021–023` (`fs_bot_member`, `fs_notification`,
 `fs_audit_log`) all `REFERENCES fs_league(id)` (created in `012`), so they must
@@ -222,22 +222,32 @@ stay *after* the league/draft/lineup tables. Renumbering `012–019` above
 `021–023` would invert that FK order. Shifting the whole contiguous block up
 keeps every internal FK valid and sorts all of FS after prod's `020`.
 
+The chain had since grown to 13 files (`024_fs_invite_email`, `025_fs_free_agent`
+added after this finding was written), so the original `024–034` target now
+collided with those. Final mapping shifts the whole block to a clean `030–042`
+band, above both `020_symbol-coverage-watermark` and `023_session-close` (which
+also resolves the `023` filename collision between `fs_audit` and
+`session-close`):
+
 ```
-012_fs_leagues        → 024_fs_leagues
-013_fs_classification → 025_fs_classification
-014_fs_draft          → 026_fs_draft
-015_fs_lineups        → 027_fs_lineups
-016_fs_scores         → 028_fs_scores
-017_fs_matchups       → 029_fs_matchups
-018_fs_transactions   → 030_fs_transactions
-019_fs_season         → 031_fs_season
-021_fs_bots           → 032_fs_bots
-022_fs_notifications  → 033_fs_notifications
-023_fs_audit          → 034_fs_audit
+012_fs_leagues        → 030_fs_leagues
+013_fs_classification → 031_fs_classification
+014_fs_draft          → 032_fs_draft
+015_fs_lineups        → 033_fs_lineups
+016_fs_scores         → 034_fs_scores
+017_fs_matchups       → 035_fs_matchups
+018_fs_transactions   → 036_fs_transactions
+019_fs_season         → 037_fs_season
+021_fs_bots           → 038_fs_bots
+022_fs_notifications  → 039_fs_notifications
+023_fs_audit          → 040_fs_audit
+024_fs_invite_email   → 041_fs_invite_email
+025_fs_free_agent     → 042_fs_free_agent
 ```
 
-(Leaves a clean contiguous `024–034`; `035` reserved as headroom.) DDL-safe: no
-non-FS migration FKs into any `fs_*` table, so the block moves wholesale.
+DDL-safe: no non-FS migration FKs into any `fs_*` table, so the block moves
+wholesale. Orphaned-row caveat below does not bite — single-dev project, and the
+renumber was done against a fresh prod-dump restore that had never run FS.
 
 **Alternative fix — `checkOrder: false` in `apps/api/src/db/migrate.ts`
 (release owner's call).** Renumbering is a treadmill: it clears `020`, but every

@@ -18,7 +18,14 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { client, ApiClientError } from '../../api/client';
-import { Modal } from '../../components/Modal';
+import {
+  Modal,
+  Button,
+  IconButton,
+  Input,
+  Checkbox,
+  Field,
+} from '../../components';
 import { fantasyKeys } from './api';
 import styles from './CreateLeagueModal.module.css';
 
@@ -28,13 +35,19 @@ const MIN_MEMBERS = 3; // 1 commissioner + 3 = 4, the league minimum
 const MAX_MEMBERS = 11; // 1 commissioner + 11 = 12, the league maximum
 
 interface Seat {
-  id: number;
+  id: string;
   email: string;
   isBot: boolean;
 }
 
-let seatSeq = 0;
-const freshSeat = (): Seat => ({ id: seatSeq++, email: '', isBot: false });
+// A stable, collision-proof key per seat. Generated in event handlers (never
+// inside a setState updater) so StrictMode's double-invocation can't mint two
+// seats that share an id and break list reconciliation.
+const freshSeat = (): Seat => ({
+  id: crypto.randomUUID(),
+  email: '',
+  isBot: false,
+});
 
 export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -50,13 +63,13 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
     freshSeat(),
   ]);
 
-  const patchSeat = (id: number, patch: Partial<Seat>) =>
+  const patchSeat = (id: string, patch: Partial<Seat>) =>
     setSeats((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
-  const addSeat = () =>
-    setSeats((prev) =>
-      prev.length < MAX_MEMBERS ? [...prev, freshSeat()] : prev,
-    );
-  const removeSeat = (id: number) =>
+  const addSeat = () => {
+    const seat = freshSeat();
+    setSeats((prev) => (prev.length < MAX_MEMBERS ? [...prev, seat] : prev));
+  };
+  const removeSeat = (id: string) =>
     setSeats((prev) =>
       prev.length > MIN_MEMBERS ? prev.filter((s) => s.id !== id) : prev,
     );
@@ -105,10 +118,8 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
         }}
       >
         <div className={styles.row}>
-          <label className={styles.field}>
-            <span className={styles.label}>League name</span>
-            <input
-              className={styles.input}
+          <Field label="League name">
+            <Input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -117,12 +128,10 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
               required
               autoFocus
             />
-          </label>
+          </Field>
 
-          <label className={styles.field}>
-            <span className={styles.label}>Your team</span>
-            <input
-              className={styles.input}
+          <Field label="Your team">
+            <Input
               type="text"
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
@@ -130,18 +139,16 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
               maxLength={80}
               required
             />
-          </label>
+          </Field>
         </div>
 
         <fieldset className={styles.seats}>
-          <legend className={styles.label}>
-            Managers <span className={styles.count}>{seats.length + 1}</span>
-          </legend>
+          <legend className={styles.label}>Managers</legend>
           <ul className={styles.seatList}>
             {seats.map((seat, i) => (
               <li key={seat.id} className={styles.seat}>
-                <span className={styles.seatNum}>{i + 2}</span>
-                <input
+                <span className={styles.seatNum}>{i + 2})</span>
+                <Input
                   className={styles.seatEmail}
                   type="email"
                   value={seat.isBot ? '' : seat.email}
@@ -154,82 +161,69 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
                   disabled={seat.isBot}
                   aria-label={`Manager ${i + 2} email`}
                 />
-                <label
+                <Checkbox
                   className={styles.botToggle}
+                  label="Bot"
                   title="Fill this seat with an auto-manager"
-                >
-                  <input
-                    type="checkbox"
-                    checked={seat.isBot}
-                    onChange={(e) =>
-                      patchSeat(seat.id, { isBot: e.target.checked })
-                    }
-                  />
-                  <span>Bot</span>
-                </label>
-                <button
-                  type="button"
-                  className={styles.seatRemove}
+                  checked={seat.isBot}
+                  onChange={(e) =>
+                    patchSeat(seat.id, { isBot: e.target.checked })
+                  }
+                />
+                <IconButton
+                  tone="danger"
+                  size="sm"
                   onClick={() => removeSeat(seat.id)}
                   disabled={seats.length <= MIN_MEMBERS}
                   aria-label={`Remove manager ${i + 2}`}
                 >
                   ×
-                </button>
+                </IconButton>
               </li>
             ))}
           </ul>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             className={styles.addSeat}
             onClick={addSeat}
             disabled={seats.length >= MAX_MEMBERS}
           >
             + Add manager
-          </button>
+          </Button>
         </fieldset>
 
         <div className={styles.season}>
-          <label className={styles.checkLabel}>
-            <input
-              type="checkbox"
-              checked={continuous}
-              onChange={(e) => setContinuous(e.target.checked)}
-            />
-            <span>Continuous season</span>
-          </label>
+          <Checkbox
+            className={styles.checkLabel}
+            label="Continuous season"
+            checked={continuous}
+            onChange={(e) => setContinuous(e.target.checked)}
+          />
           {continuous ? null : (
-            <label className={styles.weeksField}>
-              <span className={styles.label}>Weeks</span>
-              <input
-                className={styles.input}
+            <Field label="Weeks" className={styles.weeksField}>
+              <Input
                 type="number"
                 min={1}
                 value={weeks}
                 onChange={(e) => setWeeks(e.target.valueAsNumber || 0)}
               />
-            </label>
+            </Field>
           )}
         </div>
 
         {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.cancel}
+          <Button
+            variant="secondary"
             onClick={onClose}
             disabled={create.isPending}
           >
             Cancel
-          </button>
-          <button
-            type="submit"
-            className={styles.submit}
-            disabled={!canSubmit || create.isPending}
-          >
+          </Button>
+          <Button type="submit" disabled={!canSubmit || create.isPending}>
             {create.isPending ? 'Starting…' : 'Start League'}
-          </button>
+          </Button>
         </div>
       </form>
     </Modal>

@@ -7,11 +7,12 @@
  * action and by the Monday lock job (lock.ts), so an untouched manager still
  * fields a complete, legal lineup (DoD: no empty mandatory slot).
  *
- * Slot rules mirror lineup validation: the Defense slot holds an `is_short`
- * entry; every other (long) slot holds a non-short entry. Ranking is the stored
- * trailing-3-month return (`ret3mPct`): the highest for a long slot, the most
- * negative for a Defense short (a short scores the inverse, so the worst
- * performer is the best pick). Bench is never auto-filled.
+ * Slot rules mirror lineup validation: the slot defines the basis — Defense is a
+ * short that any owned stock may fill (converted to a short for the week), while
+ * every other (long) slot takes a long matching that slot's classification.
+ * Ranking is the stored trailing-3-month return (`ret3mPct`): the highest for a
+ * long slot, the most negative for a Defense short (a short scores the inverse,
+ * so the worst performer is the best pick). Bench is never auto-filled.
  */
 import type { Pool, PoolClient } from 'pg';
 import type { RosterConfig } from '@tickr/shared-types';
@@ -33,7 +34,6 @@ export interface FilledSlot extends SlotRef {
 /** A roster entry the manager owns, with what it can start and how it ranks. */
 export interface OwnedEntry {
   symbol: string;
-  isShort: boolean;
   /** Lower-cased eligible classification groups (anchor/growth/…); no universal. */
   groups: string[];
   /** Trailing 3-month return %, or null when unclassified. */
@@ -59,7 +59,9 @@ function longFits(slot: string, groups: string[]): boolean {
   return slot === 'wildcard' || groups.includes(slot);
 }
 
-/** The owned entries that can legally fill `slot`, respecting short/long. */
+/** The owned entries that can legally fill `slot`. The slot defines the basis:
+ *  Defense accepts any owned stock (converted to a short); a long slot needs the
+ *  matching classification (Wildcard is universal for longs). */
 function candidatesFor(
   slot: string,
   owned: OwnedEntry[],
@@ -68,8 +70,7 @@ function candidatesFor(
   const isDefense = slot === 'defense';
   return owned.filter((o) => {
     if (used.has(o.symbol)) return false;
-    if (isDefense) return o.isShort; // Defense is short-only
-    if (o.isShort) return false; // long slots take longs only
+    if (isDefense) return true; // any owned stock can be shorted into Defense
     return longFits(slot, o.groups);
   });
 }
@@ -122,7 +123,7 @@ export function chooseAutofill(
       slot: ref.slot,
       slotIndex: ref.slotIndex,
       symbol: pick.symbol,
-      isShort: pick.isShort,
+      isShort: ref.slot === 'defense', // the slot defines the basis
     });
   }
   return fills;
@@ -136,23 +137,21 @@ export async function loadOwnedForLineup(
 ): Promise<OwnedEntry[]> {
   const { rows } = await db.query<{
     symbol: string;
-    is_short: boolean;
     groups: string[] | null;
     ret3m: number | null;
   }>(
-    `SELECT re.symbol, re.is_short,
+    `SELECT re.symbol,
             array_remove(array_agg(c."group") FILTER (WHERE c.eligible), NULL)
               AS groups,
             max((c.metrics->>'ret3mPct')::float) AS ret3m
        FROM fs_roster_entry re
        LEFT JOIN fs_player_classification c ON c.symbol = re.symbol
       WHERE re.league_id = $1 AND re.user_id = $2
-      GROUP BY re.symbol, re.is_short`,
+      GROUP BY re.symbol`,
     [leagueId, userId],
   );
   return rows.map((r) => ({
     symbol: r.symbol,
-    isShort: r.is_short,
     groups: r.groups ?? [],
     ret3m: r.ret3m,
   }));

@@ -186,28 +186,30 @@ describe('setLineup validation', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
-  it('rejects a long in the Defense slot', async () => {
+  it('converts a long placed in Defense to a short for the week', async () => {
     const { leagueId, userId } = await activeLeague();
     await seedSymbol('WILD', [], 4);
-    await draftEntry(leagueId, userId, 'WILD'); // long
-    await expect(
-      setLineup(pool, leagueId, userId, {
-        week: 1,
-        slots: [{ slot: 'defense', symbol: 'WILD' }],
-      }),
-    ).rejects.toMatchObject({ code: 'VALIDATION' });
+    await draftEntry(leagueId, userId, 'WILD'); // long roster entry
+    const lineup = await setLineup(pool, leagueId, userId, {
+      week: 1,
+      slots: [{ slot: 'defense', symbol: 'WILD' }],
+    });
+    const defense = lineup.slots.find((s) => s.slot === 'defense')!;
+    expect(defense.symbol).toBe('WILD');
+    expect(defense.isShort).toBe(true);
   });
 
-  it('rejects a short in a long slot', async () => {
+  it('converts a short placed in a long slot to a long for the week', async () => {
     const { leagueId, userId } = await activeLeague();
     await seedSymbol('SHRT', [], -4);
-    await draftEntry(leagueId, userId, 'SHRT', true);
-    await expect(
-      setLineup(pool, leagueId, userId, {
-        week: 1,
-        slots: [{ slot: 'wildcard', symbol: 'SHRT' }],
-      }),
-    ).rejects.toMatchObject({ code: 'VALIDATION' });
+    await draftEntry(leagueId, userId, 'SHRT', true); // short roster entry
+    const lineup = await setLineup(pool, leagueId, userId, {
+      week: 1,
+      slots: [{ slot: 'wildcard', symbol: 'SHRT' }],
+    });
+    const wild = lineup.slots.find((s) => s.slot === 'wildcard')!;
+    expect(wild.symbol).toBe('SHRT');
+    expect(wild.isShort).toBe(false);
   });
 
   it('rejects starting the same symbol twice', async () => {
@@ -263,6 +265,29 @@ describe('autofillRemaining', () => {
     expect(slots.get('wildcard')).toBeDefined();
     // Bench is not auto-filled.
     expect(lineup.slots.some((s) => s.slot === 'bench')).toBe(false);
+  });
+
+  it('reconciles an orphaned slot (stock no longer owned) and refills it', async () => {
+    const { leagueId, userId } = await activeLeague();
+    await seedFullRoster(leagueId, userId);
+    // A stock in the universe but NOT on the roster, parked in the Growth slot —
+    // mimics a started stock that was later sold/traded without cleaning up.
+    await seedSymbol('GONE', ['growth'], 5);
+    await getLineup(pool, leagueId, userId, 1); // creates the empty lineup row
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM fs_lineup WHERE league_id=$1 AND user_id=$2 AND week=1`,
+      [leagueId, userId],
+    );
+    await pool.query(
+      `INSERT INTO fs_lineup_slot (lineup_id, slot, slot_index, symbol, is_short)
+       VALUES ($1, 'growth', 0, 'GONE', false)`,
+      [rows[0]!.id],
+    );
+
+    const lineup = await autofillRemaining(pool, leagueId, userId, 1);
+    // The orphan is gone and Growth is refilled from an owned stock.
+    expect(lineup.slots.some((s) => s.symbol === 'GONE')).toBe(false);
+    expect(lineup.slots.find((s) => s.slot === 'growth')!.symbol).toBe('GROW');
   });
 
   it('preserves a manual placement and only fills the rest', async () => {

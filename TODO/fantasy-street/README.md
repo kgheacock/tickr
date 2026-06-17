@@ -36,6 +36,7 @@ same slicing rationale as v1.
 | 11 | [Reminders & recaps](11-reminders-and-recaps.md) | 04, 05, 06 | done ([#79](https://github.com/kgheacock/tickr/pull/79)) |
 | 12 | [Commissioner & admin tools](12-commissioner-and-admin.md) | 01 | done ([#81](https://github.com/kgheacock/tickr/pull/81)) |
 | 13 | [QA release review (PR #70 → main)](13-qa-release-review.md) | 01–12 | in-progress ([#70](https://github.com/kgheacock/tickr/pull/70)) — ✅ QA-ready, ❌ deploy-blocked on migration renumber (F5) |
+| 14 | [UI polish (post-release follow-ons)](14-polish.md) | 09 | pending — **non-blocking**, ships after #70 |
 
 ## Dependency graph (at a glance)
 
@@ -59,7 +60,7 @@ same slicing rationale as v1.
 | Cadence | **Weekly** matchups; lineups lock **Monday at market open**, frozen all week |
 | Draft | **Live snake draft**, timed picks; **auto-draft** covers offline/missed picks |
 | Roster slots | Anchor · Growth · Momentum · Value · **Defense (short)** · Wildcard + shallow bench |
-| Scoring | Sum of **started** stocks' weekly % return ×10; **losses count fully** |
+| Scoring | Sum of **started** stocks' weekly % return; **losses count fully** |
 | Defense slot | **Short only** — scored as the inverse of the stock's return |
 | Variance cap | **Uncapped for now** (no mercy cap) |
 | Anti-"benching cash" | **Mandatory fixed slots** + auto-fill; the only choice is *which* stock fills each slot |
@@ -70,8 +71,8 @@ Product rules behind items 05/06/11 — not implementation detail. Weekly return
 `r` = (this Friday close − last Friday close) / last Friday close, as a percent.
 
 ```
-long slot points     =  r × 10
-defense (short) pts   = −r × 10        (positive when the shorted stock falls)
+long slot points     =  r
+defense (short) pts   = −r        (positive when the shorted stock falls)
 weekly total          = sum of all started slots   (losses included, uncapped)
 ```
 
@@ -79,10 +80,10 @@ weekly total          = sum of all started slots   (losses included, uncapped)
 
 | Defense pick | Weekly return | Defense points |
 |---|---|---|
-| short TSLA | −4% | **+40** |
-| short TSLA | +4% | −40 |
-| short a stock that goes to ~0 / delists | −100% | **+1000** (gain floored at 0) |
-| short a stock that squeezes | +30% | **−300** (loss unbounded — the "pick-six") |
+| short TSLA | −4% | **+4** |
+| short TSLA | +4% | −4 |
+| short a stock that goes to ~0 / delists | −100% | **+100** (gain floored at 0) |
+| short a stock that squeezes | +30% | **−30** (loss unbounded — the "pick-six") |
 
 - **Asymmetric on purpose:** a short's gain caps near +100%, its loss is
   unbounded — a squeeze is a high-luck swing. Uncapped for now keeps the drama.
@@ -103,4 +104,5 @@ weekly total          = sum of all started slots   (losses included, uncapped)
    manager's short, never both.
 4. **Slot eligibility** — how strictly to classify growth/momentum/value/cap
    tier, and from what data.
-5. **Scoring scale** — ×10 is cosmetic; confirm the point feel.
+5. **Scoring scale** — points are the raw weekly % return (1 point per 1%);
+   confirm the point feel.

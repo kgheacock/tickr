@@ -22,7 +22,8 @@
     "lint:openapi": "redocly lint packages/shared-types/openapi.yaml",
     "data-audit": "tsx scripts/data-audit.ts",
     "backfill": "pnpm --filter @tickr/api run backfill",
-    "metadata": "pnpm --filter @tickr/api run metadata"
+    "metadata": "pnpm --filter @tickr/api run metadata",
+    "classify": "pnpm --filter @tickr/api run classify"
   },
   "devDependencies": {
     "@redocly/cli": "^2.31.5",

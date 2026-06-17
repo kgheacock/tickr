@@ -31,8 +31,9 @@ CREATE TABLE fs_lineup (
 CREATE INDEX fs_lineup_league_week_idx ON fs_lineup (league_id, season, week);
 
 -- The started set. slot_index disambiguates repeated slots (e.g. two bench
--- spots, or a roster with two Growth slots). is_short is copied from the roster
--- entry at set/lock time: Defense holds a short, every long slot holds a long.
+-- spots, or a roster with two Growth slots). is_short is derived from the slot
+-- at set/lock time: Defense is a short, every long slot a long (placing an owned
+-- stock in Defense converts it to a short for the week).
 CREATE TABLE fs_lineup_slot (
   lineup_id  UUID     NOT NULL REFERENCES fs_lineup(id) ON DELETE CASCADE,
   slot       TEXT     NOT NULL CHECK (slot IN

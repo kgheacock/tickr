@@ -5,9 +5,39 @@
  */
 import { useState } from 'react';
 import { NavLink, Outlet, useOutletContext, useParams } from 'react-router-dom';
+import { Paper, Rule, Subhead, Tabs } from '../../components';
 import { DEFAULT_SEASON, DEFAULT_WEEK, managerLabel } from './api';
 import { useLeague, type LeagueContext } from './useLeague';
 import styles from './FantasyLayout.module.css';
+
+/** Roman numerals for the week label, to match the landing masthead's
+ *  "Est. MMXXVI" treatment. Weeks are small positive integers. */
+function toRoman(n: number): string {
+  const table: [number, string][] = [
+    [1000, 'M'],
+    [900, 'CM'],
+    [500, 'D'],
+    [400, 'CD'],
+    [100, 'C'],
+    [90, 'XC'],
+    [50, 'L'],
+    [40, 'XL'],
+    [10, 'X'],
+    [9, 'IX'],
+    [5, 'V'],
+    [4, 'IV'],
+    [1, 'I'],
+  ];
+  let remaining = Math.max(0, Math.floor(n));
+  let out = '';
+  for (const [value, symbol] of table) {
+    while (remaining >= value) {
+      out += symbol;
+      remaining -= value;
+    }
+  }
+  return out;
+}
 
 export function FantasyLayout() {
   const { id = '' } = useParams();
@@ -18,81 +48,43 @@ export function FantasyLayout() {
 
   if (ctx.error) {
     return (
-      <div className={styles.shell}>
+      <Paper width="960px">
         <p className={styles.error}>
           Couldn&rsquo;t load this league. It may not exist, or you&rsquo;re not
           a member.
         </p>
-      </div>
+      </Paper>
     );
   }
 
   return (
-    <div className={styles.shell}>
+    <Paper width="960px">
       <header className={styles.header}>
-        <div className={styles.titleRow}>
-          <NavLink to="/leagues" className={styles.back}>
-            ← Leagues
+        <div className={styles.masthead}>
+          <NavLink to="/" className={styles.back}>
+            ← Home
           </NavLink>
-          <span
-            className={`${styles.live} ${ctx.connected ? styles.liveOn : styles.liveOff}`}
-            title={ctx.connected ? 'Live' : 'Reconnecting…'}
-          >
-            {ctx.connected ? '● Live' : '○ Offline'}
-          </span>
-        </div>
-        <h1 className={styles.name}>{ctx.league?.name ?? 'League'}</h1>
-        <p className={styles.meta}>
-          {ctx.league ? (
-            <>
-              {ctx.league.members.length}/{ctx.league.size} managers ·{' '}
-              <span className={styles.status}>{ctx.league.status}</span> · Week{' '}
-              {ctx.week}
-            </>
-          ) : (
-            'Loading…'
+          <h1 className={styles.name}>{ctx.league?.name ?? 'League'}</h1>
+          {ctx.league && (
+            <Subhead className={styles.week}>Week {toRoman(ctx.week)}</Subhead>
           )}
-        </p>
-        <nav className={styles.nav}>
-          <NavLink
-            to={`/leagues/${id}`}
-            end
-            className={({ isActive }) =>
-              isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab
-            }
-          >
-            Dashboard
-          </NavLink>
-          <NavLink
-            to={`/leagues/${id}/team`}
-            className={({ isActive }) =>
-              isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab
-            }
-          >
-            My Team
-          </NavLink>
-          <NavLink
-            to={`/leagues/${id}/matchup`}
-            className={({ isActive }) =>
-              isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab
-            }
-          >
-            Matchup
-          </NavLink>
-          <NavLink
-            to={`/leagues/${id}/standings`}
-            className={({ isActive }) =>
-              isActive ? `${styles.tab} ${styles.tabActive}` : styles.tab
-            }
-          >
-            Standings
-          </NavLink>
-        </nav>
+        </div>
+        <Tabs
+          className={styles.nav}
+          items={[
+            { to: `/leagues/${id}`, label: 'Dashboard', end: true },
+            { to: `/leagues/${id}/team`, label: 'My Team' },
+            { to: `/leagues/${id}/players`, label: 'Waiver Wire' },
+            { to: `/leagues/${id}/matchup`, label: 'Matchup' },
+            { to: `/leagues/${id}/standings`, label: 'Standings' },
+          ]}
+        />
       </header>
+      <Rule weight="heavy" className={styles.headRule} />
       <main className={styles.body}>
         <Outlet context={ctx} />
       </main>
-    </div>
+    </Paper>
   );
 }
 
