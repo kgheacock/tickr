@@ -612,6 +612,7 @@ components:
         - backfillRemaining
         - fantasy
         - worstLag
+        - jobs
       properties:
         lastEodUpdateAt:
           type: ['string', 'null']
@@ -652,6 +653,84 @@ components:
             lagSec:
               type: integer
               description: Seconds between the freshness reference and latestBarAt (>= 0)
+        jobs:
+          type: array
+          description: >-
+            Per-job run status for the scheduled worker jobs, in registry order.
+            One entry per known job, including jobs that have never run (e.g.
+            external-data jobs under TICKR_DISABLE_REMOTE_JOBS).
+          items:
+            $ref: '#/components/schemas/JobStatus'
+
+    JobStatus:
+      type: object
+      description: Last-run status of one scheduled worker job (admin /admin/jobs viewer)
+      required:
+        - name
+        - cadence
+        - cron
+        - description
+        - remote
+        - running
+        - lastStartAt
+        - lastFinishAt
+        - lastOutcome
+        - lastDurationMs
+        - lastError
+        - lastSkipAt
+        - runs
+        - fails
+        - skips
+      properties:
+        name:
+          type: string
+          description: Stable job identifier (kebab-case); distinct per job even when two jobs share a lock
+        cadence:
+          type: string
+          description: Human-readable schedule (e.g. "Fri 21:35 UTC")
+        cron:
+          type: string
+          description: Cron expression(s) the job is scheduled on, for reference
+        description:
+          type: string
+          description: What the job does
+        remote:
+          type: boolean
+          description: >-
+            True for jobs that reach an external data API; these are skipped
+            entirely under TICKR_DISABLE_REMOTE_JOBS, so "never ran" in dev is
+            expected rather than a fault.
+        running:
+          type: boolean
+          description: True while a run is in flight (per-job marker with a TTL crash-net)
+        lastStartAt:
+          type: ['string', 'null']
+          description: ISO timestamp the job last started, or null if it has never run
+        lastFinishAt:
+          type: ['string', 'null']
+          description: ISO timestamp the last actual execution finished, or null
+        lastOutcome:
+          type: ['string', 'null']
+          enum: [ok, error, null]
+          description: Outcome of the last actual execution (never a busy-skip), or null
+        lastDurationMs:
+          type: ['integer', 'null']
+          description: Duration of the last execution in ms, or null
+        lastError:
+          type: ['string', 'null']
+          description: Truncated error from the last failed execution; null/empty after a success
+        lastSkipAt:
+          type: ['string', 'null']
+          description: ISO timestamp a firing was last skipped because the prior run still held the lock
+        runs:
+          type: integer
+          description: Lifetime count of actual executions
+        fails:
+          type: integer
+          description: Lifetime count of executions that threw
+        skips:
+          type: integer
+          description: Lifetime count of busy-skips (lock already held)
 
     # --- Fantasy Street: leagues & membership (item 01) ---
 

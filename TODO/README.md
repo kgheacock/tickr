@@ -52,6 +52,7 @@ of each file as you go.
 | 28 | [Harden audit ticker-transition awareness](28-audit-transition-hardening.md) | 19, 25 | pending |
 | 29 | [Admin logs: backfill status → worst price-bar lag](29-admin-logs-worst-lag.md) | 10, 23 | [in review](https://github.com/kgheacock/tickr/pull/78) |
 | 30 | [Finnhub early weekly-close capture](30-finnhub-weekly-close.md) | 05, 13, 26 | [in review](https://github.com/kgheacock/tickr/pull/83) |
+| 31 | [Admin jobs viewer (web)](31-admin-jobs-viewer.md) | 10, 21, 29 | [in review](https://github.com/kgheacock/tickr/pull/87) |
 | 31 | [Index-gate audit freshness for deindexed symbols](31-audit-deindexed-freshness.md) | 19, 25, 28 | [in review](https://github.com/kgheacock/tickr/pull/89) |
 | 32 | [Report root package.json version in `/health`](32-health-version.md) | 12 | [in review](https://github.com/kgheacock/tickr/pull/90) |
 

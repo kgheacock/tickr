@@ -12,6 +12,7 @@ import { closePool } from '../../src/db/pool.js';
 import { getRedis } from '../../src/redis.js';
 import { createSession } from '../../src/auth/session.js';
 import { recordEodRun } from '../../src/metrics/redis.js';
+import { recordJobResult, JOB_DEFS } from '../../src/jobs/status.js';
 import { registerAdminOpsRoute } from '../../src/routes/admin/ops.js';
 
 const SESSION_SIGNING_KEY = 'test-ops-signing-key-32bytes!!!!';
@@ -103,6 +104,12 @@ describe('GET /admin/ops', () => {
 
   it('returns the OpsResponse shape for an admin', async () => {
     await recordEodRun(getRedis(), 1234, 42);
+    // Seed one job's status so we can assert it survives the HTTP route (Fastify
+    // would strip response fields not in a response schema — /admin/ops has none).
+    await recordJobResult(getRedis(), 'classifier', {
+      ok: true,
+      durationMs: 321,
+    });
     const token = await sessionFor(ADMIN_ID);
     const res = await app.inject({
       method: 'GET',
@@ -117,6 +124,12 @@ describe('GET /admin/ops', () => {
     expect(body.marketData429sLast24h).toEqual({ massive: 0 });
     expect(body.jobQueueDepth).toBe(0);
     expect(body.backfillRemaining).toBe(0);
+    // jobs[] is the data source for the /admin/jobs viewer: one entry per
+    // registered job, with the seeded outcome flowing through.
+    expect(body.jobs).toHaveLength(JOB_DEFS.length);
+    const classifier = body.jobs.find((j) => j.name === 'classifier');
+    expect(classifier?.lastOutcome).toBe('ok');
+    expect(classifier?.lastDurationMs).toBe(321);
   });
 
   describe('worstLag', () => {

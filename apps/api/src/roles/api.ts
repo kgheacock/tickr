@@ -20,6 +20,7 @@ import { registerEtfsRoutes } from '../routes/etfs.js';
 import { registerStrategyRoutes } from '../routes/strategies.js';
 import { registerAdminOpsRoute } from '../routes/admin/ops.js';
 import { registerAdminLogsRoutes } from '../routes/admin/logs.js';
+import { registerAdminJobsRoute } from '../routes/admin/jobs.js';
 import { registerLeaguesRoutes } from '../routes/leagues/index.js';
 import { getRedis } from '../redis.js';
 import { attachWsGateway } from '../ws/server.js';
@@ -130,6 +131,7 @@ export async function runApi(): Promise<void> {
       await registerStrategyRoutes(api);
       await registerAdminOpsRoute(api);
       await registerAdminLogsRoutes(api);
+      await registerAdminJobsRoute(api);
       await registerLeaguesRoutes(api);
     },
     { prefix: '/api/v1' },

@@ -5,6 +5,13 @@ import { runIntradayUpdate } from './intraday-update.js';
 import { runCloseCapture } from './close-capture.js';
 import { runMetadataRefresh } from './refresh-metadata.js';
 import { tryAcquireLock, releaseLock, isLockHeld } from './locks.js';
+import {
+  JOB_LOCKS,
+  recordJobStart,
+  recordJobResult,
+  recordJobSkip,
+  type JobName,
+} from './status.js';
 import { seedUniverse } from '../db/seed-universe.js';
 import {
   isRegularSession,
@@ -30,15 +37,18 @@ const LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes (default crash net)
 // firing acquire the lock and start a *second* concurrent run, multiplying spend
 // against the shared rate bucket.
 const LONG_LOCK_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const BACKFILL_LOCK = 'massive:job:backfill';
-const SESSION_UPDATE_LOCK = 'massive:job:session-update';
-const UNIVERSE_REFRESH_LOCK = 'massive:job:universe-refresh';
-const CLOSE_CAPTURE_LOCK = 'finnhub:job:close-capture';
-const CLASSIFY_LOCK = 'fs:job:classify';
-const LINEUP_LOCK_LOCK = 'fs:job:lineup-lock';
-const SCORING_LOCK = 'fs:job:scoring';
-const WAIVER_LOCK = 'fs:job:waivers';
-const LINEUP_REMINDER_LOCK = 'fs:job:lineup-reminder';
+// Lock keys come from the job registry (jobs/status.ts) so the scheduler and the
+// status layer share one definition. Aliased to the local names the job bodies
+// already use.
+const BACKFILL_LOCK = JOB_LOCKS.backfill;
+const SESSION_UPDATE_LOCK = JOB_LOCKS.sessionUpdate;
+const UNIVERSE_REFRESH_LOCK = JOB_LOCKS.universeRefresh;
+const CLOSE_CAPTURE_LOCK = JOB_LOCKS.closeCapture;
+const CLASSIFY_LOCK = JOB_LOCKS.classify;
+const LINEUP_LOCK_LOCK = JOB_LOCKS.lineupLock;
+const SCORING_LOCK = JOB_LOCKS.scoring;
+const WAIVER_LOCK = JOB_LOCKS.waivers;
+const LINEUP_REMINDER_LOCK = JOB_LOCKS.lineupReminder;
 
 // The scoring crons fire at ~21:35 UTC, well clear of the midnight boundary, so
 // the ET calendar date is stable when picking the week's Friday (currentFriday).
@@ -64,23 +74,65 @@ function log(
   baseLog[level](extra ?? {}, msg);
 }
 
-async function withLock(
-  redis: Redis,
-  key: string,
-  fn: () => Promise<void>,
-  ttlMs: number = LOCK_TTL_MS,
+interface JobLockOpts {
+  /** Status key from the job registry (jobs/status.ts) — distinct per job even
+   *  when two jobs share a lock key, so status is attributed correctly. */
+  name: JobName;
+  /** Redis lock key serializing this job's firings. */
+  key: string;
+  /** Lock + running-marker TTL crash-net (default LOCK_TTL_MS). */
+  ttlMs?: number;
   // The intraday sweep fires every 5 min but a sweep holds the lock for ~100 min,
   // so most firings are expected skips — log those at debug to avoid warn spam.
-  quietSkip = false,
+  quietSkip?: boolean;
+}
+
+/**
+ * Run `fn` with its run status recorded (start/finish/outcome/duration/error)
+ * under the registry `name`. The single instrumentation seam — withLock and the
+ * lock-less alert check both go through here. All status writes are best-effort
+ * (`.catch`): a Redis hiccup in the observability path must never break the job
+ * it's observing.
+ */
+async function recordedRun(
+  redis: Redis,
+  name: JobName,
+  fn: () => Promise<unknown>,
+  ttlMs?: number,
 ): Promise<void> {
+  await recordJobStart(redis, name, ttlMs).catch(() => undefined);
+  const startedAt = Date.now();
+  try {
+    await fn();
+    await recordJobResult(redis, name, {
+      ok: true,
+      durationMs: Date.now() - startedAt,
+    }).catch(() => undefined);
+  } catch (err) {
+    await recordJobResult(redis, name, {
+      ok: false,
+      durationMs: Date.now() - startedAt,
+      error: err instanceof Error ? (err.stack ?? err.message) : String(err),
+    }).catch(() => undefined);
+    throw err;
+  }
+}
+
+async function withLock(
+  redis: Redis,
+  opts: JobLockOpts,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const { name, key, ttlMs = LOCK_TTL_MS, quietSkip = false } = opts;
   const owner = await tryAcquireLock(redis, key, ttlMs);
   if (!owner) {
     if (quietSkip) baseLog.debug({ key }, 'lock held — skipping firing (busy)');
     else log('warn', 'lock held — skipping firing', { key });
+    await recordJobSkip(redis, name).catch(() => undefined);
     return;
   }
   try {
-    await fn();
+    await recordedRun(redis, name, fn, ttlMs);
   } finally {
     await releaseLock(redis, key, owner);
   }
@@ -116,7 +168,7 @@ export function registerScheduledJobs(redis: Redis): void {
     }
     void withLock(
       redis,
-      BACKFILL_LOCK,
+      { name: 'backfill', key: BACKFILL_LOCK, ttlMs: LONG_LOCK_TTL_MS },
       async () => {
         // Saturday only: the weekend catch-up sweep (below) is the first Massive
         // job that fires in the same off-hours window as this backfill, and both
@@ -137,7 +189,6 @@ export function registerScheduledJobs(redis: Redis): void {
         }
         await runBackfill(redis);
       },
-      LONG_LOCK_TTL_MS,
     ).catch((err: unknown) => {
       log('error', 'backfill failed', { err: String(err), trigger });
     });
@@ -163,10 +214,13 @@ export function registerScheduledJobs(redis: Redis): void {
       if (!isRegularSession(new Date())) return;
       void withLock(
         redis,
-        SESSION_UPDATE_LOCK,
+        {
+          name: 'intraday-sweep',
+          key: SESSION_UPDATE_LOCK,
+          ttlMs: LONG_LOCK_TTL_MS,
+          quietSkip: true,
+        },
         () => runIntradayUpdate(redis),
-        LONG_LOCK_TTL_MS,
-        true,
       ).catch((err: unknown) => {
         log('error', 'intraday sweep failed', { err: String(err) });
       });
@@ -192,9 +246,12 @@ export function registerScheduledJobs(redis: Redis): void {
     cron.schedule('0 30 13 * * 6', () => {
       void withLock(
         redis,
-        SESSION_UPDATE_LOCK,
+        {
+          name: 'saturday-catchup',
+          key: SESSION_UPDATE_LOCK,
+          ttlMs: LONG_LOCK_TTL_MS,
+        },
         () => runIntradayUpdate(redis),
-        LONG_LOCK_TTL_MS,
       ).catch((err: unknown) => {
         log('error', 'Saturday catch-up sweep failed', { err: String(err) });
       });
@@ -209,12 +266,15 @@ export function registerScheduledJobs(redis: Redis): void {
     cron.schedule('0 0 0 * * 1,3,6', () => {
       void withLock(
         redis,
-        UNIVERSE_REFRESH_LOCK,
+        {
+          name: 'universe-refresh',
+          key: UNIVERSE_REFRESH_LOCK,
+          ttlMs: LONG_LOCK_TTL_MS,
+        },
         async () => {
           await seedUniverse();
           await runMetadataRefresh(redis);
         },
-        LONG_LOCK_TTL_MS,
       ).catch((err: unknown) => {
         log('error', 'universe refresh failed', { err: String(err) });
       });
@@ -245,8 +305,10 @@ export function registerScheduledJobs(redis: Redis): void {
         });
         return;
       }
-      void withLock(redis, CLOSE_CAPTURE_LOCK, () =>
-        runCloseCapture(redis),
+      void withLock(
+        redis,
+        { name: 'close-capture', key: CLOSE_CAPTURE_LOCK },
+        () => runCloseCapture(redis),
       ).catch((err: unknown) => {
         log('error', 'close capture failed', { err: String(err) });
       });
@@ -256,19 +318,25 @@ export function registerScheduledJobs(redis: Redis): void {
   // Alerts: every 5 minutes, check for stuck states (EOD lag, backfill stuck,
   // Massive 429 burst) and fire once per window (item 10).
   cron.schedule('0 */5 * * * *', () => {
-    void runAlertCheck(redis).catch((err: unknown) => {
-      log('error', 'alert check failed', { err: String(err) });
-    });
+    void recordedRun(redis, 'alert-check', () => runAlertCheck(redis)).catch(
+      (err: unknown) => {
+        log('error', 'alert check failed', { err: String(err) });
+      },
+    );
   });
 
   // Fantasy Street player classifier (FS-02): weekly, Sunday 06:00 UTC. Reads
   // price_bar and recomputes fs_player_classification. Idempotent and cheap;
   // also runnable on demand via runClassifier(pool).
   cron.schedule('0 0 6 * * 0', () => {
-    void withLock(redis, CLASSIFY_LOCK, async () => {
-      const n = await runClassifier(pool);
-      log('info', 'classifier run complete', { symbols: n });
-    }).catch((err: unknown) => {
+    void withLock(
+      redis,
+      { name: 'classifier', key: CLASSIFY_LOCK },
+      async () => {
+        const n = await runClassifier(pool);
+        log('info', 'classifier run complete', { symbols: n });
+      },
+    ).catch((err: unknown) => {
       log('error', 'classifier failed', { err: String(err) });
     });
   });
@@ -280,14 +348,18 @@ export function registerScheduledJobs(redis: Redis): void {
     const now = new Date();
     if (!isFirstTradingDayOfWeek(now)) return;
 
-    void withLock(redis, LINEUP_LOCK_LOCK, async () => {
-      const result = await lockLineups(
-        pool,
-        { week: currentWeek(), now },
-        redis,
-      );
-      log('info', 'lineup lock complete', result);
-    }).catch((err: unknown) => {
+    void withLock(
+      redis,
+      { name: 'lineup-lock', key: LINEUP_LOCK_LOCK },
+      async () => {
+        const result = await lockLineups(
+          pool,
+          { week: currentWeek(), now },
+          redis,
+        );
+        log('info', 'lineup lock complete', result);
+      },
+    ).catch((err: unknown) => {
       log('error', 'lineup lock failed', { err: String(err) });
     });
   });
@@ -301,14 +373,18 @@ export function registerScheduledJobs(redis: Redis): void {
   // morning nudge keeps reminding until the real open locks. Targets
   // currentWeek() (MVP = 1), matching the lock/scoring crons.
   const fireLineupReminders = (trigger: string): void => {
-    void withLock(redis, LINEUP_REMINDER_LOCK, async () => {
-      const result = await runLineupReminders(
-        pool,
-        { week: currentWeek() },
-        redis,
-      );
-      log('info', 'lineup reminders complete', { ...result, trigger });
-    }).catch((err: unknown) => {
+    void withLock(
+      redis,
+      { name: 'lineup-reminders', key: LINEUP_REMINDER_LOCK },
+      async () => {
+        const result = await runLineupReminders(
+          pool,
+          { week: currentWeek() },
+          redis,
+        );
+        log('info', 'lineup reminders complete', { ...result, trigger });
+      },
+    ).catch((err: unknown) => {
       log('error', 'lineup reminders failed', { err: String(err), trigger });
     });
   };
@@ -334,14 +410,18 @@ export function registerScheduledJobs(redis: Redis): void {
     const baselineAt = nyseRegularCloseAnchor(
       new Date(friday.getTime() - 7 * DAY_MS),
     );
-    void withLock(redis, SCORING_LOCK, async () => {
-      const result = await runWeeklyScoring(
-        pool,
-        { week: currentWeek(), weekEnd, baselineAt },
-        redis,
-      );
-      log('info', 'weekly settle complete', result);
-    }).catch((err: unknown) => {
+    void withLock(
+      redis,
+      { name: 'weekly-settle', key: SCORING_LOCK },
+      async () => {
+        const result = await runWeeklyScoring(
+          pool,
+          { week: currentWeek(), weekEnd, baselineAt },
+          redis,
+        );
+        log('info', 'weekly settle complete', result);
+      },
+    ).catch((err: unknown) => {
       log('error', 'weekly settle failed', { err: String(err) });
     });
   });
@@ -359,19 +439,23 @@ export function registerScheduledJobs(redis: Redis): void {
       });
       return;
     }
-    void withLock(redis, SCORING_LOCK, async () => {
-      const result = await runWeeklyScoring(
-        pool,
-        {
-          week: currentWeek(),
-          weekEnd: currentFriday(now),
-          provisional: true,
-          asOf: now,
-        },
-        redis,
-      );
-      log('info', 'provisional scoring complete', result);
-    }).catch((err: unknown) => {
+    void withLock(
+      redis,
+      { name: 'provisional-scoring', key: SCORING_LOCK },
+      async () => {
+        const result = await runWeeklyScoring(
+          pool,
+          {
+            week: currentWeek(),
+            weekEnd: currentFriday(now),
+            provisional: true,
+            asOf: now,
+          },
+          redis,
+        );
+        log('info', 'provisional scoring complete', result);
+      },
+    ).catch((err: unknown) => {
       log('error', 'provisional scoring failed', { err: String(err) });
     });
   });
@@ -382,7 +466,7 @@ export function registerScheduledJobs(redis: Redis): void {
   // gets its queued add/drop claims resolved before Monday's lineup lock. A
   // mid-week firing is a no-op: runWaivers skips any league still locked.
   cron.schedule('0 45 21 * * 5', () => {
-    void withLock(redis, WAIVER_LOCK, async () => {
+    void withLock(redis, { name: 'waivers', key: WAIVER_LOCK }, async () => {
       const result = await runWaivers(pool, {}, redis);
       log('info', 'waiver run complete', result);
     }).catch((err: unknown) => {
