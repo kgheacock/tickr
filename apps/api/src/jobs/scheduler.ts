@@ -221,19 +221,30 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   }
 
-  // Early weekly-close capture: Friday 21:30 UTC (item 30). Massive's free tier
+  // Daily early close capture: every trading day at 21:30 UTC (~17:30 ET, after
+  // the 16:00 close; item 30, extended from Friday-only). Massive's free tier
   // doesn't serve the current day and the intraday sweep never runs on weekends,
-  // so Friday's close wouldn't reach price_bar until Monday. This sweeps the
-  // playable corpus through Finnhub /quote (where `c` has frozen at the official
-  // close by 21:00 UTC) into the provisional session_close store so the Fantasy
-  // Street Friday scorer (FS-05) can settle the week Friday evening. NOT
-  // skipped on a holiday Friday: mostRecentSessionDate walks back to the prior
-  // trading day, capturing the close the scorer still needs (and that Massive
-  // won't deliver until Monday). The ~9-min sweep runs under its own lock; the
-  // FS-05 settle must read session_close *after* this completes (see FS-05).
-  // Gated off in dev with the other external-data jobs — it hits the Finnhub API.
+  // so a session's close wouldn't reach price_bar until the next trading day
+  // (Friday's not until Monday). This sweeps the playable corpus through Finnhub
+  // /quote (where `c` has frozen at the official close by 21:00 UTC) into the
+  // provisional session_close store, giving every trading day's close hours-to-
+  // days before Massive's 15-min bars backfill it. session_close and price_bar
+  // stay two PARALLEL stores (joinable later, never merged here): Massive remains
+  // the authoritative 15-min source for price_bar; this only fills session_close.
+  // Skipped on NYSE holidays: there is no fresh close, and because the prior
+  // session was already captured the day it closed, mostRecentSessionDate would
+  // otherwise just re-sweep an already-stored close for ~9 min of Finnhub budget.
+  // The sweep runs under its own lock. Gated off in dev with the other
+  // external-data jobs — it hits the Finnhub API.
   if (!remoteJobsDisabled) {
-    cron.schedule('0 30 21 * * 5', () => {
+    cron.schedule('0 30 21 * * 1-5', () => {
+      const now = new Date();
+      if (isNyseHoliday(now)) {
+        log('info', 'holiday — skipping close capture', {
+          date: now.toISOString().slice(0, 10),
+        });
+        return;
+      }
       void withLock(redis, CLOSE_CAPTURE_LOCK, () =>
         runCloseCapture(redis),
       ).catch((err: unknown) => {
@@ -383,6 +394,6 @@ export function registerScheduledJobs(redis: Redis): void {
     'info',
     remoteJobsDisabled
       ? 'scheduler registered (external-data jobs disabled via TICKR_DISABLE_REMOTE_JOBS — alerts + classifier + lineup-lock + scoring + waivers + lineup-reminders only)'
-      : 'scheduler registered (off-hours backfill, intraday live tail, Saturday catch-up sweep, M/W/Sat universe refresh + metadata, Friday close capture, alerts + classifier + lineup-lock + scoring + waivers + lineup-reminders)',
+      : 'scheduler registered (off-hours backfill, intraday live tail, Saturday catch-up sweep, M/W/Sat universe refresh + metadata, daily close capture, alerts + classifier + lineup-lock + scoring + waivers + lineup-reminders)',
   );
 }

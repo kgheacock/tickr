@@ -382,6 +382,12 @@ export async function runAudit(
   const retiredSymbols = symbolRows
     .filter((r) => r.removed_at !== null)
     .map((r) => r.symbol);
+  // Same set as a lookup, for the freshness/coverage checks below: a symbol
+  // retired from the index is no longer ingested, so its coverage naturally
+  // stops advancing. Those checks (COVERAGE_GAP, COVERAGE_REGRESSION) are gated
+  // on index membership; integrity checks (OHLC/duplicate/no-session-bars) are
+  // not, since a retired symbol's retained history is still served.
+  const retired = new Set(retiredSymbols);
   for (const { symbol } of symbolRows) {
     audits.set(symbol, makeAudit());
   }
@@ -447,10 +453,27 @@ export async function runAudit(
     const presentDates = symbolDates.get(symbol) ?? new Set<string>();
 
     if (presentDates.size === 0) {
-      addError(audits, symbol, {
-        code: CODE.NO_BARS,
-        detail: { expectedStart: new Date(startMs).toISOString().slice(0, 10) },
-      });
+      // NO_BARS is a freshness signal too, so it follows the same index gate:
+      // a retired symbol whose bars have aged entirely out of the lookback
+      // window has no live data to expect — warn, don't block. (Today every
+      // retired symbol still has recent bars, so this only guards the future
+      // case of one aging out before it's marked data_status='incomplete'.)
+      if (retired.has(symbol)) {
+        addWarning(audits, symbol, {
+          code: CODE.NO_BARS,
+          detail: {
+            expectedStart: new Date(startMs).toISOString().slice(0, 10),
+            deindexed: true,
+          },
+        });
+      } else {
+        addError(audits, symbol, {
+          code: CODE.NO_BARS,
+          detail: {
+            expectedStart: new Date(startMs).toISOString().slice(0, 10),
+          },
+        });
+      }
       continue;
     }
 
@@ -464,6 +487,19 @@ export async function runAudit(
       // live symbol — error. See the GapPosition doc above.
       if (gap.position === 'leading') {
         addWarning(audits, symbol, { code: CODE.COVERAGE_GAP, detail: gap });
+        continue;
+      }
+      // A symbol retired from the index (removed_at set) is no longer ingested,
+      // so a trailing/internal gap is expected churn — not an ingestion stall on
+      // a live name. Coverage is a freshness signal, gated on index membership:
+      // warn, don't block the deploy. (This is the symbol that OWNS the gap; an
+      // active successor with a retired *predecessor* is handled below and stays
+      // subject to the error path.)
+      if (retired.has(symbol)) {
+        addWarning(audits, symbol, {
+          code: CODE.COVERAGE_GAP,
+          detail: { ...gap, deindexed: true },
+        });
         continue;
       }
       // ...unless a retired predecessor covers the gap window: a ticker
@@ -542,6 +578,13 @@ export async function runAudit(
 
     for (const { symbol } of symbolRows) {
       if (!playable.has(symbol)) continue;
+      // Retired-from-index symbols stop being ingested, so their covered/expected
+      // ratio decays as the rolling window slides past their last bar — expected,
+      // not data loss. Same index-gated freshness principle as COVERAGE_GAP above:
+      // skip the regression check (which would otherwise re-block the deploy a few
+      // weeks after deindex). Their mark is also not raised, so it stays a faithful
+      // record of their last live coverage should they ever re-index.
+      if (retired.has(symbol)) continue;
       const presentDates = symbolDates.get(symbol);
       // Zero-bar symbols are already reported as NO_BARS; nothing to watermark.
       if (!presentDates || presentDates.size === 0) continue;

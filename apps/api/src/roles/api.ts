@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
@@ -30,6 +32,27 @@ import { registerMetrics } from '../metrics/middleware.js';
 
 const PORT = Number(process.env['PORT'] ?? 3000);
 const HOST = '0.0.0.0';
+
+// Version reported by GET /api/v1/health. Read once at module load (not per
+// request) from the workspace-root package.json, which the prod image bakes in
+// at /app/package.json (see apps/api/Dockerfile) — four levels up from this
+// source file. We extract only the `version` string and never echo the rest of
+// the manifest (scripts, deps) onto this unauthenticated probe. Falls back to
+// 'unknown' if the file is missing, matching the /meta endpoint's tone, so a
+// read failure degrades the field instead of failing server boot.
+function readRootVersion(): string {
+  try {
+    const path = fileURLToPath(
+      new URL('../../../../package.json', import.meta.url),
+    );
+    const version = JSON.parse(readFileSync(path, 'utf-8'))['version'];
+    return typeof version === 'string' ? version : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+const VERSION = readRootVersion();
 
 export async function runApi(): Promise<void> {
   await runMigrations();
@@ -69,7 +92,7 @@ export async function runApi(): Promise<void> {
   // All API routes under /api/v1
   await fastify.register(
     async (api) => {
-      api.get('/health', async () => ({ ok: true }));
+      api.get('/health', async () => ({ ok: true, version: VERSION }));
 
       // Reports the commit SHA this image was deployed at. scripts/deploy.sh
       // exports TICKR_IMAGE_TAG=<deployed SHA> before `up`, and prod compose

@@ -593,6 +593,107 @@ describe("EXCLUDED — data_status = 'incomplete'", () => {
   });
 });
 
+// ─── COVERAGE_GAP — deindexed (retired from the index) ────────────────────────
+
+describe('COVERAGE_GAP — deindexed symbol', () => {
+  const dailyConfig = (): AuditConfig =>
+    weekConfig({ gapThreshold: 3, timespan: 'day', multiplier: 1 });
+
+  // The crux: `removed_at` means "no longer in the index," so the symbol stops
+  // being ingested and its coverage naturally stops advancing. A trailing gap on
+  // a retired symbol is expected churn, not an ingestion stall → warning. A gap
+  // on a still-indexed symbol stays a deploy-blocking error. ("Errors only when
+  // the stock is indexed and has gaps.")
+  it('downgrades a retired symbol’s gap to a warning, but keeps an indexed symbol’s gap an error', async () => {
+    // OGN: deindexed (removed_at set). Present Mon only → trailing gap Tue–Fri.
+    await seedSymbol('OGN', true, null, new Date(T0 + 4 * DAY_MS));
+    await insertBar('OGN', tradingDay(0));
+    // LIVE: still indexed (removed_at null), same shape → real ingestion stall.
+    await seedSymbol('LIVE');
+    await insertBar('LIVE', tradingDay(0));
+
+    const report = await runAudit(pool, dailyConfig());
+
+    const ognGap = report.symbols['OGN']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect(ognGap?.severity).toBe('warning');
+    expect((ognGap?.detail as { deindexed?: boolean }).deindexed).toBe(true);
+    expect(report.symbols['OGN']?.status).toBe('warning');
+
+    const liveGap = report.symbols['LIVE']?.issues.find(
+      (i) => i.code === CODE.COVERAGE_GAP,
+    );
+    expect(liveGap?.severity).toBe('error');
+
+    // Only the indexed symbol counts toward the deploy gate.
+    expect(report.summary.symbolsWithErrors).toBe(1);
+  });
+
+  // Index-gating is scoped to freshness/coverage only: integrity problems in a
+  // retired symbol's retained (still-served) history must still error.
+  it('still flags integrity violations (OHLC) on a retired symbol', async () => {
+    await seedSymbol('PARA', true, null, new Date(T0 + 4 * DAY_MS));
+    // Full daily coverage (no gap), but an extra bar has low > open = corruption.
+    // Use a distinct intraday ts (15:00 UTC, same day 2) so it doesn't collide
+    // with the noon coverage bar under price_bar's (symbol, ts) ON CONFLICT.
+    for (let d = 0; d <= 4; d++) await insertBar('PARA', tradingDay(d));
+    await insertBar('PARA', new Date(T0 + 2 * DAY_MS + 3 * 3600_000), {
+      open: 10000,
+      high: 10200,
+      low: 10100,
+      close: 10050,
+    });
+
+    const report = await runAudit(pool, dailyConfig());
+    expect(report.errorCounts[CODE.OHLC_VIOLATION]).toBe(1);
+    expect(report.symbols['PARA']?.status).toBe('error');
+  });
+
+  // NO_BARS is freshness too: a retired symbol whose bars have aged entirely out
+  // of the lookback window has no live data to expect, so it must warn (not the
+  // blocking error a still-indexed zero-bar symbol gets — see the NO_BARS suite).
+  it('downgrades NO_BARS to a warning for a retired symbol', async () => {
+    await seedSymbol('RETIRED', true, null, new Date(T0 + 4 * DAY_MS));
+    // No bars at all in the window.
+    const report = await runAudit(pool, dailyConfig());
+    const issue = report.symbols['RETIRED']?.issues.find(
+      (i) => i.code === CODE.NO_BARS,
+    );
+    expect(issue?.severity).toBe('warning');
+    expect((issue?.detail as { deindexed?: boolean }).deindexed).toBe(true);
+    expect(report.symbols['RETIRED']?.status).toBe('warning');
+    expect(report.summary.symbolsWithErrors).toBe(0);
+  });
+
+  // The real-world scenario (the 2026-06-11 S&P deindex): a symbol that was
+  // indexed and fully covered — so it carries a watermark — is then retired and
+  // its ingestion stops. Its coverage ratio would decay below the mark as the
+  // window slides, but a retired symbol must NOT trip COVERAGE_REGRESSION (it
+  // would re-block the deploy weeks after deindex). The now-trailing gap is a
+  // warning, not an error.
+  it('does not regress (or error) once a covered symbol is retired', async () => {
+    await seedSymbol('ZION'); // indexed
+    for (let d = 0; d <= 4; d++) await insertBar('ZION', tradingDay(d));
+    const first = await runAudit(pool, dailyConfig()); // mark = 1.0 while indexed
+    expect(first.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(0);
+
+    // Retire it and lose most coverage (ingestion stopped at deindex).
+    await client.query(
+      `UPDATE universe_symbol SET removed_at = $1 WHERE symbol = 'ZION'`,
+      [new Date(T0 + 4 * DAY_MS).toISOString()],
+    );
+    await client.query(
+      `DELETE FROM price_bar WHERE symbol = 'ZION' AND ts >= $1`,
+      [tradingDay(1).toISOString()],
+    );
+
+    const second = await runAudit(pool, dailyConfig());
+    expect(second.errorCounts[CODE.COVERAGE_REGRESSION]).toBe(0);
+    expect(second.summary.symbolsWithErrors).toBe(0);
+  });
+});
+
 // ─── INTRADAY_GAP ─────────────────────────────────────────────────────────────
 
 describe('INTRADAY_GAP — no_session_bars (daily-only data)', () => {
