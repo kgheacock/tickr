@@ -125,7 +125,8 @@ describe('FS-14 instant-play auto-draft', () => {
     // 6 default slots + 2 bench = 8 rounds × 4 managers = 32 picks.
     await seedUniverse(40);
     const owner = await seedCommissioner();
-    // A human ("email") seat must not block the draft — it's bot-held for now.
+    // A human ("email") seat with no account yet must not block the draft — it's
+    // seated as a pre-created real manager and drafted like every other seat.
     const leagueId = await createFullLeague(owner, [
       { isBot: true },
       { isBot: true },

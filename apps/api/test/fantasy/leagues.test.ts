@@ -14,6 +14,7 @@ import {
   listLeagues,
   updateLeague,
 } from '../../src/fantasy/leagues.js';
+import { upsertUserAndIdentity } from '../../src/auth/upsert.js';
 
 const migrationsDir = fileURLToPath(
   new URL('../../migrations', import.meta.url),
@@ -112,8 +113,10 @@ describe('FS-01 leagues & membership', () => {
   });
 
   // FS-14 create flow: a seat list derives capacity, sets the commissioner's
-  // team name, mints bot seats, and labels human seats as invites.
-  it('creates a league from a seat list (team name, bots, labelled invites)', async () => {
+  // team name, mints bot seats, and seats invited humans as real managers.
+  // An invitee with no account yet is pre-created as an unclaimed account and
+  // seated the same way — a fully-drafted team waiting for their first sign-in.
+  it('creates a league from a seat list (team name, bots, pre-created invitee)', async () => {
     const owner = await seedUser('owner');
     const view = await createLeague(
       {
@@ -131,9 +134,9 @@ describe('FS-01 leagues & membership', () => {
       pool,
     );
 
-    // size = 1 commissioner + 3 seats. For instant play every seat is filled by
-    // an auto-manager up front (commissioner + 3 bots), so the league is full
-    // with no open slots — the human seat is bot-held until claim-on-join lands.
+    // size = 1 commissioner + 3 seats. For instant play every seat is filled up
+    // front (commissioner + 2 bots + the invitee's pre-created seat), so the
+    // league is full with no open slots.
     expect(view.size).toBe(4);
     expect(view.members).toHaveLength(4);
     expect(view.openSlots).toBe(0);
@@ -141,8 +144,36 @@ describe('FS-01 leagues & membership', () => {
       'The Dip Buyers',
     );
 
-    // The human seat still records a labelled invite (delivery is stubbed for
-    // now) so a future claim-on-join can hand its team to the real manager.
+    // The unclaimed invitee was pre-created as a real account (email set, no
+    // identity) and seated as a manager — not a bot. Only the two explicit
+    // bot seats are auto-managers.
+    const { rows: invitee } = await pool.query<{
+      id: string;
+      role: string;
+      display_name: string;
+    }>(
+      `SELECT u.id, m.role, u.display_name
+         FROM app_user u
+         JOIN fs_league_member m ON m.user_id = u.id AND m.league_id = $2
+        WHERE lower(u.email) = $1`,
+      ['friend@example.com', view.id],
+    );
+    expect(invitee).toHaveLength(1);
+    expect(invitee[0]!.role).toBe('manager');
+    expect(invitee[0]!.display_name).toBe('friend');
+    const noIdentity = await pool.query(
+      `SELECT 1 FROM identity WHERE user_id = $1`,
+      [invitee[0]!.id],
+    );
+    expect(noIdentity.rows).toHaveLength(0);
+    const botCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM fs_bot_member WHERE league_id = $1`,
+      [view.id],
+    );
+    expect(botCount.rows[0]!.count).toBe('2');
+
+    // A labelled invite is still recorded as the pending email send-list
+    // (delivery is stubbed for now).
     const { rows } = await pool.query<{ email: string | null }>(
       'SELECT email FROM fs_invite WHERE league_id = $1',
       [view.id],
@@ -150,10 +181,111 @@ describe('FS-01 leagues & membership', () => {
     expect(rows.map((r) => r.email)).toEqual(['friend@example.com']);
   });
 
+  // FS-14 claim-on-sign-in: the pre-created invitee account is bound to the real
+  // identity on first sign-in via the verified-email merge — same userId, still a
+  // manager — so the fully-drafted league is waiting for them with no join step.
+  it('binds a pre-created invitee to their identity on first sign-in', async () => {
+    const owner = await seedUser('owner');
+    const view = await createLeague(
+      {
+        name: 'Waiting',
+        teamName: 'The Dip Buyers',
+        seasonLengthWeeks: 52,
+        joinPolicy: 'invite',
+        members: [
+          { isBot: true },
+          { isBot: true },
+          { isBot: false, email: 'invitee@example.com' },
+        ],
+      },
+      owner,
+      pool,
+    );
+
+    const { rows: before } = await pool.query<{ id: string }>(
+      `SELECT id FROM app_user WHERE lower(email) = $1`,
+      ['invitee@example.com'],
+    );
+    expect(before).toHaveLength(1);
+    const preCreatedId = before[0]!.id;
+
+    // First sign-in with that verified email merges onto the pre-created row.
+    const client = await pool.connect();
+    let result;
+    try {
+      result = await upsertUserAndIdentity(client, {
+        provider: 'google',
+        providerSubject: 'google-sub-123',
+        email: 'invitee@example.com',
+        emailVerified: true,
+        displayName: 'Invitee Real Name',
+        role: 'player',
+      });
+    } finally {
+      client.release();
+    }
+
+    // Same account (merge, not a fresh insert) and they're already a manager.
+    expect(result.userId).toBe(preCreatedId);
+    expect(result.isNew).toBe(false);
+    const role = await pool.query<{ role: string }>(
+      `SELECT role FROM fs_league_member WHERE league_id = $1 AND user_id = $2`,
+      [view.id, preCreatedId],
+    );
+    expect(role.rows[0]?.role).toBe('manager');
+    // Exactly one account for that email — no duplicate was minted.
+    const { rows: after } = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM app_user WHERE lower(email) = $1`,
+      ['invitee@example.com'],
+    );
+    expect(after[0]!.count).toBe('1');
+  });
+
+  // One seat per invited address: inviting the same email twice seats them once
+  // and backfills the duplicate with a bot, so the league still fills exactly.
+  it('seats a repeated invitee email once, backfilling the duplicate with a bot', async () => {
+    const owner = await seedUser('owner');
+    const view = await createLeague(
+      {
+        name: 'Dupes',
+        seasonLengthWeeks: 52,
+        joinPolicy: 'invite',
+        members: [
+          { isBot: false, email: 'dupe@example.com' },
+          { isBot: false, email: 'Dupe@Example.com' },
+          { isBot: true },
+        ],
+      },
+      owner,
+      pool,
+    );
+
+    expect(view.members).toHaveLength(4);
+    expect(view.openSlots).toBe(0);
+    // One pre-created account for the address.
+    const { rows: accounts } = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM app_user WHERE lower(email) = $1`,
+      ['dupe@example.com'],
+    );
+    expect(accounts[0]!.count).toBe('1');
+    // One labelled invite, not two.
+    const { rows: invites } = await pool.query(
+      `SELECT 1 FROM fs_invite WHERE league_id = $1`,
+      [view.id],
+    );
+    expect(invites).toHaveLength(1);
+    // The duplicate seat is backfilled by a bot (explicit bot + 1 backfill = 2).
+    const botCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM fs_bot_member WHERE league_id = $1`,
+      [view.id],
+    );
+    expect(botCount.rows[0]!.count).toBe('2');
+  });
+
   // FS-14 auto-join: a human seat whose email already has a tickr account is
   // joined as a real manager up front (not bot-held) so the league surfaces on
-  // their homepage immediately — no claim step. The unclaimed case still falls
-  // back to the bot + labelled invite above.
+  // their homepage immediately — and, unlike the pre-created unclaimed case
+  // above, records no labelled invite, since they're already in.
   it('auto-joins an invited human who already has an account (no invite, real member)', async () => {
     const owner = await seedUser('owner');
     const { rows: friendRows } = await pool.query<{ id: string }>(

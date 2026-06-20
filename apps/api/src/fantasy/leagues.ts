@@ -312,12 +312,14 @@ export async function createLeague(
   }
   // Every seat is filled up front so the league is full and can be auto-drafted
   // the instant it's created (FS-14 instant play — the default). A human
-  // ("email") seat resolves one of two ways inside the transaction below: if the
-  // invitee already has a tickr account they're auto-joined as a real manager;
-  // otherwise the seat is held by an auto-manager and a labelled invite is
-  // recorded so a future claim-on-join can hand the bot-held team to the real
-  // manager. Bot seats are always auto-managers. Validate + normalize invitee
-  // emails before we touch the DB.
+  // ("email") seat always becomes a real manager inside the transaction below:
+  // if the invitee already has a tickr account they're seated on it; otherwise
+  // we pre-create an unclaimed account (email set, no identity) and seat that, so
+  // a fully-drafted team is waiting for them when they first sign in. That sign-in
+  // binds their Google/dev identity to the pre-created row via the verified-email
+  // merge in upsertUserAndIdentity — there is no separate claim step. Bot seats
+  // are always auto-managers. Validate + normalize invitee emails before we touch
+  // the DB.
   const seatCount = members?.length ?? 0;
   const humanEmails: string[] = [];
   for (const m of members ?? []) {
@@ -361,37 +363,58 @@ export async function createLeague(
        VALUES ($1, $2, 'commissioner', $3)`,
       [league.id, userId, teamName],
     );
-    // Resolve each invited human to an existing account. Those with one are
-    // auto-joined as managers right now; those without fall back to a bot-held
-    // seat + labelled invite (claim-on-join for the unclaimed case is still a
-    // TODO — see below and TODO/fantasy-street/14-polish.md). Bot seats are
-    // always auto-managers. Every seat yields exactly one member, so the league
-    // ends up full (commissioner + seatCount) and instant-play auto-draft runs.
+    // Resolve each invited human to a real manager seat. An invitee with an
+    // existing account is seated on it; one without is pre-created here as an
+    // unclaimed account (email set, no identity) and seated the same way, with a
+    // labelled invite recorded as the pending email send-list (delivery itself is
+    // still a TODO — see TODO/fantasy-street/14-polish.md). A self-invite or an
+    // address that resolves to an already-seated user backfills with an
+    // auto-manager instead, keeping the league full. Every seat yields exactly one
+    // member, so the league ends up full (commissioner + seatCount) and
+    // instant-play auto-draft runs.
     let botCount = seatCount - humanEmails.length; // explicit bot seats
     const joinUserIds: string[] = [];
     const inviteEmails: string[] = [];
     const seen = new Set<string>([userId]); // commissioner is already a member
+    const seenEmails = new Set<string>(); // one seat per invited address
     for (const email of humanEmails) {
+      if (seenEmails.has(email)) {
+        // The same address invited twice: one seat per person, so backfill the
+        // duplicate with an auto-manager rather than seating them twice.
+        botCount++;
+        continue;
+      }
+      seenEmails.add(email);
       const { rows: userRows } = await client.query<{ id: string }>(
         `SELECT id FROM app_user WHERE lower(email) = $1 LIMIT 1`,
         [email],
       );
-      const existingId = userRows[0]?.id;
-      if (existingId && !seen.has(existingId)) {
-        // Existing account → join them straight into the league.
-        seen.add(existingId);
-        joinUserIds.push(existingId);
-      } else if (existingId) {
-        // Self-invite or a duplicate address: the account is already a member,
-        // so backfill the seat with an auto-manager to keep the league full.
-        botCount++;
-      } else {
-        // No account yet: hold the seat with a bot and record a labelled invite.
-        // NOTE: invite email *delivery* and the claim-on-join handover from the
-        // bot to the real manager (incl. minting an unclaimed account so the
-        // invitee auto-joins on first sign-in) are not wired yet.
-        botCount++;
+      let memberId = userRows[0]?.id;
+      if (!memberId) {
+        // No account yet: pre-create an unclaimed one (email set, no identity)
+        // and seat it as a real manager, so the fully-drafted team is waiting for
+        // the invitee when they first sign in — that sign-in claims this row via
+        // the verified-email merge in upsertUserAndIdentity. The display name is
+        // the email's local part so the commissioner can recognise the seat
+        // pre-claim; the merge does not overwrite it on sign-in. Record a labelled
+        // invite too, as the pending email send-list.
+        const displayName = email.split('@')[0] || 'Player';
+        const { rows: created } = await client.query<{ id: string }>(
+          `INSERT INTO app_user (id, display_name, email, role)
+           VALUES (gen_random_uuid(), $1, $2, 'player') RETURNING id`,
+          [displayName, email],
+        );
+        memberId = created[0]!.id;
         inviteEmails.push(email);
+      }
+      if (!seen.has(memberId)) {
+        // Existing or freshly minted account → seat them as a real manager.
+        seen.add(memberId);
+        joinUserIds.push(memberId);
+      } else {
+        // Self-invite or an address that resolves to an already-seated user:
+        // backfill the seat with an auto-manager to keep the league full.
+        botCount++;
       }
     }
     if (botCount > 0) {

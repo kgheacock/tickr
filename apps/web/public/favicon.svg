@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="tickr">
+  <!-- Newsprint tile: cream paper framed by a hairline editorial rule -->
+  <rect x="1.1" y="1.1" width="29.8" height="29.8" rx="4" fill="#fbfaf5" stroke="#15130f" stroke-width="1.4"/>
+  <!-- Scotch-serif lowercase 't', drawn as outlines so it renders identically everywhere -->
+  <g fill="#15130f">
+    <!-- crossbar with bracketed serif ends -->
+    <path d="M10.2 11.4 H21.8 V13.7 H10.2 Z"/>
+    <!-- stem: sheared pen-top, descends into a right-turning foot -->
+    <path d="M14.0 8.4
+             C14.0 7.9 14.4 7.6 14.9 7.6
+             H17.1
+             C17.6 7.6 18.0 7.9 18.0 8.4
+             V20.4
+             C18.0 22.0 18.9 22.7 20.2 22.4
+             C21.0 22.2 21.6 21.7 22.0 20.9
+             L23.4 21.6
+             C22.6 23.6 20.9 24.7 18.7 24.6
+             C15.9 24.5 14.0 22.7 14.0 19.9
+             Z"/>
+  </g>
+</svg>

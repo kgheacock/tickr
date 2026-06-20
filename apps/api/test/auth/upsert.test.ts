@@ -133,6 +133,32 @@ describe('upsertUserAndIdentity', () => {
     ]);
   });
 
+  it('AU1: merges case-insensitively (provider sends a different email case)', async () => {
+    // A pre-created invitee account is stored force-lowercased (createLeague).
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO app_user (id, display_name, email, role)
+       VALUES (gen_random_uuid(), 'invitee', $1, 'player') RETURNING id`,
+      ['invitee@example.com'],
+    );
+    const preCreatedId = rows[0]!.id;
+
+    // First sign-in arrives with a mixed-case email → must still merge.
+    const { userId, isNew } = await upsertUserAndIdentity(client, {
+      provider: 'google',
+      providerSubject: 'g-sub-case',
+      email: 'Invitee@Example.com',
+      emailVerified: true,
+      displayName: 'Invitee Real Name',
+    });
+
+    expect(isNew).toBe(false);
+    expect(userId).toBe(preCreatedId);
+    const count = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM app_user WHERE lower(email) = 'invitee@example.com'`,
+    );
+    expect(Number(count.rows[0]!.count)).toBe(1);
+  });
+
   it('AU1: does NOT merge when email is unverified', async () => {
     await upsertUserAndIdentity(client, {
       provider: 'google',

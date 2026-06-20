@@ -4,16 +4,21 @@
  * Drives the real web UI in headless Chromium against a running dev stack
  * (default http://localhost:5173 — start it with `pnpm dev`). It:
  *
- *   1. Creates 4 accounts via the dev-login backdoor (`?login=true`): one admin
- *      and three regular players, each `test_<uuid>@gmail.com`, each in its own
+ *   1. Creates 3 accounts via the dev-login backdoor (`?login=true`): one admin
+ *      and two regular players, each `test_<uuid>@gmail.com`, each in its own
  *      browser context so their sessions don't collide. The regulars are
- *      created first so their accounts exist when the admin invites them.
- *   2. The admin opens the "Start a League" modal and creates a league,
- *      inviting all three regular accounts by email.
+ *      created first so their accounts exist when the admin invites them. A
+ *      fourth invitee email is held back and never signed in beforehand.
+ *   2. The admin opens the "Start a League" modal and creates a league, inviting
+ *      the two existing regulars plus the never-signed-in pending email.
  *   3. Each regular loads their homepage and verifies the league is listed —
  *      invited humans with an existing account are auto-joined as managers (see
  *      createLeague in apps/api/src/fantasy/leagues.ts).
- *   4. Teardown: the admin deletes the league from the homepage.
+ *   4. The pending invitee signs in for the first time and verifies the league is
+ *      already waiting on their homepage — the create flow pre-created an
+ *      unclaimed account for the unknown email and seated it as a real manager,
+ *      and first sign-in claims it via the verified-email merge (no join step).
+ *   5. Teardown: the admin deletes the league from the homepage.
  *
  * Only the `playwright` library is a dependency (no `@playwright/test` runner),
  * so assertions are plain throws and the process exits non-zero on the first
@@ -69,6 +74,20 @@ async function signIn(
   await page
     .getByRole('button', { name: 'Sign out' })
     .waitFor({ state: 'visible', timeout: TIMEOUT });
+
+  // The session now lives in the cookie. Clear the persisted dev-login marker so
+  // a later full-page navigation (e.g. reloading the homepage before deleting a
+  // league) doesn't re-fire POST /auth/dev-login on mount, which would mint a
+  // fresh session + CSRF token and race it out from under an in-flight mutation
+  // (the delete then 403s "Invalid CSRF token"). With the marker cleared the
+  // reload simply re-reads /me off the existing cookie.
+  await page.evaluate(() => {
+    try {
+      sessionStorage.removeItem('tickr_dev_login');
+    } catch {
+      // sessionStorage unavailable — nothing to clear
+    }
+  });
   return { email, context, page };
 }
 
@@ -110,28 +129,34 @@ async function main(): Promise<void> {
   try {
     const leagueName = `E2E Auto-Join ${randomUUID().slice(0, 8)}`;
 
-    // 1) Four accounts. Regulars FIRST so their accounts exist at invite time
-    //    (auto-join resolves invitees against the registered user base).
-    console.log('1) creating 3 regular accounts + 1 admin via dev-login…');
+    // 1) Three accounts. Regulars FIRST so their accounts exist at invite time
+    //    (auto-join resolves invitees against the registered user base). A fourth
+    //    invitee — `pendingEmail` — is deliberately NEVER signed in beforehand,
+    //    so at invite time it has no account: the create flow pre-creates an
+    //    unclaimed account for it and seats it as a real manager (step 4).
+    console.log('1) creating 2 regular accounts + 1 admin via dev-login…');
     const regulars: Account[] = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 2; i++) {
       const account = await signIn(browser, freshEmail(), false);
       regulars.push(account);
       accounts.push(account);
     }
     const admin = await signIn(browser, freshEmail(), true);
     accounts.push(admin);
+    const pendingEmail = freshEmail();
 
-    // 2) Admin creates the league, inviting all three regulars.
-    console.log(`2) admin creating "${leagueName}" inviting 3 regulars…`);
-    const leagueId = await createLeague(
-      admin.page,
-      leagueName,
-      regulars.map((r) => r.email),
+    // 2) Admin creates the league, inviting the two existing regulars plus the
+    //    never-signed-in pendingEmail.
+    console.log(
+      `2) admin creating "${leagueName}" inviting 2 regulars + 1 pending invitee…`,
     );
+    const leagueId = await createLeague(admin.page, leagueName, [
+      ...regulars.map((r) => r.email),
+      pendingEmail,
+    ]);
     console.log(`   league created: ${leagueId}`);
 
-    // 3) Each regular loads their homepage and sees the league listed.
+    // 3) Each existing regular loads their homepage and sees the league listed.
     console.log('3) verifying the league is listed on each regular homepage…');
     for (const regular of regulars) {
       await regular.page.goto(`${BASE_URL}/`);
@@ -141,12 +166,26 @@ async function main(): Promise<void> {
       console.log(`   ✓ ${regular.email} sees "${leagueName}"`);
     }
 
-    // 4) Teardown: admin deletes the league from the homepage. Set KEEP_LEAGUE=1
+    // 4) The pending invitee signs in for the FIRST time. Their dev-login binds a
+    //    fresh identity to the account pre-created at invite time (the verified-
+    //    email merge), so the fully-drafted league is already waiting on their
+    //    homepage — no join step, no invite link to click.
+    console.log(
+      `4) pending invitee ${pendingEmail} signing in for the first time…`,
+    );
+    const pending = await signIn(browser, pendingEmail, false);
+    accounts.push(pending);
+    await pending.page
+      .getByRole('link', { name: leagueName })
+      .waitFor({ state: 'visible', timeout: TIMEOUT });
+    console.log(`   ✓ ${pendingEmail} sees "${leagueName}" waiting on sign-in`);
+
+    // 5) Teardown: admin deletes the league from the homepage. Set KEEP_LEAGUE=1
     //    to skip this and leave the league + accounts in place for inspection.
     if (process.env.KEEP_LEAGUE) {
-      console.log('4) KEEP_LEAGUE set — skipping delete, leaving the league.');
+      console.log('5) KEEP_LEAGUE set — skipping delete, leaving the league.');
     } else {
-      console.log('4) admin deleting the league…');
+      console.log('5) admin deleting the league…');
       await admin.page.goto(`${BASE_URL}/`);
       await admin.page
         .getByRole('button', { name: `Delete ${leagueName}` })
@@ -165,13 +204,14 @@ async function main(): Promise<void> {
     }
 
     console.log(
-      `\nPASS — create → invite → auto-join${process.env.KEEP_LEAGUE ? '' : ' → delete'} all verified.`,
+      `\nPASS — create → invite → auto-join → claim-on-sign-in${process.env.KEEP_LEAGUE ? '' : ' → delete'} all verified.`,
     );
     console.log('\n--- Summary ---');
     console.log(`league:  ${leagueName} (${leagueId})`);
     console.log(`admin:   ${admin.email}`);
-    console.log('invited:');
+    console.log('invited (existing accounts):');
     for (const regular of regulars) console.log(`  - ${regular.email}`);
+    console.log(`invited (pending, signed in after): ${pending.email}`);
   } finally {
     for (const account of accounts) await account.context.close();
     await browser.close();
