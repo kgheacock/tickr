@@ -8,7 +8,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MeResponse } from '@tickr/shared-types';
 import { client, ApiClientError } from '../api/client';
-import { devLoginRequested, devLoginEmail } from './devLogin';
+import { devLoginRequested, devLoginEmail, devLoginAdmin } from './devLogin';
 import { authLog } from './log';
 
 interface AuthState {
@@ -71,9 +71,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     devLoginAttempted.current = true;
     void (async () => {
       const email = devLoginEmail();
-      authLog('dev login requested → POST /auth/dev-login', { email });
+      const admin = devLoginAdmin();
+      authLog('dev login requested → POST /auth/dev-login', { email, admin });
       try {
-        await client.devLogin(email);
+        await client.devLogin(email, admin);
         authLog('dev login established → refetch /me');
         await queryClient.invalidateQueries({ queryKey: ['me'] });
       } catch (err) {

@@ -3,8 +3,8 @@
  *
  * A bot is an ordinary league member: a reserved `app_user` with no identity
  * rows, added as an `fs_league_member` and flagged in `fs_bot_member`. Every
- * league code path (draft order, ownership, scoring, matchups, standings) treats
- * it like any manager — the only difference is a bot never acts interactively,
+ * league code path (draft order, ownership, scoring, weekly ranking) treats it
+ * like any manager — the only difference is a bot never acts interactively,
  * so the existing auto paths always fire for it: the FS-03 draft clock picks for
  * it instantly (see draftClock.arm), and the FS-04 Monday lock auto-fills its
  * lineup (lock.ts already iterates every member, bots included).

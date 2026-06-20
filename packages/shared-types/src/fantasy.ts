@@ -51,13 +51,8 @@ export type SetLineupRequest = Schemas['SetLineupRequest'];
 export type ScoreBreakdownItem = Schemas['ScoreBreakdownItem'];
 export type WeeklyScore = Schemas['WeeklyScore'];
 export type LeagueScoresResponse = Schemas['LeagueScoresResponse'];
-
-// --- Matchups, schedule & standings (item 06) ---
-export type Matchup = Schemas['Matchup'];
-export type ScheduleResponse = Schemas['ScheduleResponse'];
-export type MatchupsResponse = Schemas['MatchupsResponse'];
-export type Standing = Schemas['Standing'];
-export type StandingsResponse = Schemas['StandingsResponse'];
+export type SeasonWinsEntry = Schemas['SeasonWinsEntry'];
+export type SeasonWinsResponse = Schemas['SeasonWinsResponse'];
 
 // --- Waivers & trades (item 07) ---
 export type WaiverClaim = Schemas['WaiverClaim'];

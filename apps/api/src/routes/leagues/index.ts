@@ -9,11 +9,10 @@
  *   …/bots                     auto-managers / bots (item 10)
  *   …/draft                    live snake draft (item 03)
  *   …/lineup                   weekly starting lineup (item 04)
- *   …/scores                   weekly scoring & shorting (item 05)
- *   …/schedule|matchups|standings  head-to-head schedule & standings (item 06)
+ *   …/scores                   weekly scoring, shorting & ranking (item 05)
  *   …/waivers|trades               mid-season add/drop & trades (item 07)
  *   …/roster                       immediate free-agent buy/sell (off the wire)
- *   …/seasons                      season lifecycle, playoffs & history (item 08)
+ *   …/seasons                      season lifecycle & history (item 08)
  *   …/notifications                reminders & recaps feed (item 11)
  *   …/settings|members|admin       commissioner & admin tools (item 12)
  */
@@ -29,7 +28,6 @@ import { registerBotRoutes } from './bots.js';
 import { registerDraftRoutes } from './draft.js';
 import { registerLineupRoutes } from './lineup.js';
 import { registerScoreRoutes } from './scores.js';
-import { registerMatchupRoutes } from './matchups.js';
 import { registerWaiverRoutes } from './waivers.js';
 import { registerRosterRoutes } from './roster.js';
 import { registerTradeRoutes } from './trades.js';
@@ -51,7 +49,6 @@ export async function registerLeaguesRoutes(
   registerDraftRoutes(fastify);
   registerLineupRoutes(fastify);
   registerScoreRoutes(fastify);
-  registerMatchupRoutes(fastify);
   registerWaiverRoutes(fastify);
   registerRosterRoutes(fastify);
   registerTradeRoutes(fastify);

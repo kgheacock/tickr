@@ -29,6 +29,8 @@ interface ModalProps {
   masthead?: ReactNode;
   /** Optional eyebrow above the title (e.g. a section name). */
   kicker?: string;
+  /** Extra class merged onto the masthead header — e.g. to tint the band. */
+  headerClassName?: string;
   /**
    * Override the sheet's max width (a CSS length). Defaults to 540px — wide
    * enough for forms; content-heavy reports can request more. The viewport
@@ -46,6 +48,7 @@ export function Modal({
   title,
   masthead,
   kicker,
+  headerClassName,
   width,
   hideClose = false,
   children,
@@ -90,7 +93,11 @@ export function Modal({
           </button>
         )}
         {title || masthead ? (
-          <header className={styles.header}>
+          <header
+            className={[styles.header, headerClassName]
+              .filter(Boolean)
+              .join(' ')}
+          >
             {kicker ? (
               <Kicker className={styles.kicker}>{kicker}</Kicker>
             ) : null}

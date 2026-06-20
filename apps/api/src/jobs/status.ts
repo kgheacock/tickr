@@ -136,7 +136,7 @@ export const JOB_DEFS = [
     lockKey: JOB_LOCKS.scoring,
     cron: '0 35 21 * * 5',
     cadence: 'Fri 21:35 UTC',
-    description: 'Settle the scoring week and rebuild standings',
+    description: 'Settle the scoring week and close out the season',
     remote: false,
   },
   {

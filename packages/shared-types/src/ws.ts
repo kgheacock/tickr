@@ -5,7 +5,7 @@ export type WsTopic =
   | { kind: 'universe' } // corpus membership / backfill state changes
   | { kind: 'prices'; symbols: string[] } // new bars for the named symbols
   | { kind: 'draft'; leagueId: string } // live draft board + clock for a league
-  | { kind: 'matchup'; leagueId: string; week: number } // live weekly scores
+  | { kind: 'scores'; leagueId: string; week: number } // live weekly scores + ranking
   // The signed-in user's own notification feed (FS-11). No params — the gateway
   // keys it to the connection's authenticated user, so one manager can never
   // follow another's feed; an unsubscribe targets the same implicit topic.
@@ -41,9 +41,10 @@ export type WsServerMessage =
   // --- Live weekly scoring (item 05) ---
   // Provisional (in-week) or final (Friday-settled) per-manager scores for a
   // league week, pushed as the week's prices move. `provisional` flags whether
-  // the totals are best-effort (latest close) or the settled Friday result.
+  // the totals are best-effort (latest close) or the settled Friday result. The
+  // weekly ranking is derived from these scores (ordered high→low).
   | {
-      type: 'matchup.updated';
+      type: 'scores.updated';
       leagueId: string;
       season: number;
       week: number;

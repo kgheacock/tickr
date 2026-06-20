@@ -13,33 +13,6 @@
   color: var(--color-text-muted);
 }
 
-/* Masthead row inside the modal header: logo on the left, ticker over company
-   name on the right — the same identity layout as a waiver-wire StockCell. */
-.masthead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.titleText {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.ticker {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-xl);
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-.companyName {
-  font-family: var(--font-serif);
-  font-size: var(--font-size-lg);
-  color: var(--color-text-muted);
-}
-
 .meta {
   display: flex;
   align-items: center;
@@ -67,6 +40,38 @@
 .heldTag {
   color: var(--color-text-muted);
   border: 1px solid var(--color-border);
+}
+
+/* Short (Defense) report: the masthead band gets the same light-red wash as the
+   roster row so the inverted scoring is flagged the moment the report opens. The
+   header sits inside the sheet's padding, so the band pulls out to the sheet
+   edges (negative margins matching the sheet's clamp) and tucks under the top
+   edge, reading as a full coloured masthead rather than an inset rectangle. Only
+   sets properties Modal's `.header` leaves untouched, so it can't lose a
+   cross-module cascade race over margin-bottom / padding-bottom / padding-right. */
+.shortHeader {
+  --sheet-pad: clamp(var(--space-6), 7vw, var(--space-12));
+  margin-top: calc(-1 * var(--sheet-pad));
+  margin-left: calc(-1 * var(--sheet-pad));
+  margin-right: calc(-1 * var(--sheet-pad));
+  padding-top: var(--sheet-pad);
+  padding-left: var(--sheet-pad);
+  background: rgba(165, 39, 20, 0.08);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+/* Report header row: the stock identity masthead on the left, the buy/sell
+   action button anchored to the right. The masthead may grow with a long
+   company name, so let it shrink and keep the button flush-right. */
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.headerRow > :first-child {
+  min-width: 0;
 }
 
 .chips {
@@ -159,12 +164,10 @@
   text-align: center;
 }
 
-.pos {
-  color: var(--color-success);
-}
-
-.neg {
-  color: var(--color-danger);
+/* Placement of the shared <Badge> on the in-flight week row (it isn't settled,
+   so its points can still move) — spacing only; the pill styling is the Badge's. */
+.inProgress {
+  margin-left: var(--space-2);
 }
 
 .footnote {

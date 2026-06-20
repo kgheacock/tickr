@@ -1,0 +1,23 @@
+/* Confirm copy + action row for the sell dialog. Its own copy of these rules
+   (rather than a parent's) so extracting the modal didn't disturb the roster
+   and inventory views that still style their own action areas. */
+.confirmBody {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  margin: 0 0 var(--space-4);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.warn {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+  margin: var(--space-2) 0 0;
+}

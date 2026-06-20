@@ -91,8 +91,8 @@ async function seedLeague(): Promise<{
   // FS-08: the season-1 row the lineup/score NOT NULL season_id FK resolves to.
   await pool.query(
     `INSERT INTO fs_season
-       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
-     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       (league_id, season_number, status, regular_weeks, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, now()
        FROM fs_league WHERE id = $1`,
     [leagueId],
   );
@@ -113,20 +113,24 @@ async function own(
   );
 }
 
-/** Set a manager's standings rank (drives reverse-standings waiver priority). */
-async function setRank(
+/**
+ * Give a manager a cumulative weekly total. Waiver priority is worst-first, and
+ * "worst" is now the lowest cumulative weekly points (no standings), so a smaller
+ * total claims earlier.
+ */
+async function setPoints(
   leagueId: string,
   userId: string,
-  rank: number,
-  pointsFor = 0,
+  totalPoints: number,
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO fs_standings
-       (league_id, season, user_id, points_for, rank)
-     VALUES ($1, 1, $2, $3, $4)
-     ON CONFLICT (league_id, season, user_id)
-     DO UPDATE SET rank = EXCLUDED.rank, points_for = EXCLUDED.points_for`,
-    [leagueId, userId, pointsFor, rank],
+    `INSERT INTO fs_weekly_score
+       (league_id, user_id, season, week, total_points, season_id)
+     VALUES ($1, $2, 1, 1, $3,
+             (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = 1))
+     ON CONFLICT (league_id, user_id, season, week)
+     DO UPDATE SET total_points = EXCLUDED.total_points`,
+    [leagueId, userId, totalPoints],
   );
 }
 
@@ -155,7 +159,6 @@ beforeEach(async () => {
   await pool.query('DELETE FROM fs_waiver_order');
   await pool.query('DELETE FROM fs_weekly_score');
   await pool.query('DELETE FROM fs_lineup');
-  await pool.query('DELETE FROM fs_standings');
   await pool.query('DELETE FROM fs_roster_entry');
   await pool.query('DELETE FROM fs_league_member');
   await pool.query('DELETE FROM fs_league');
@@ -209,9 +212,9 @@ describe('submitWaiverClaim', () => {
 describe('runWaivers', () => {
   it('awards a contested add to the worst-ranked claimant, demotes the winner', async () => {
     const { leagueId, a, b } = await seedLeague();
-    // A is rank 1 (best), B rank 2 (worst) → reverse standings favors B.
-    await setRank(leagueId, a, 1, 100);
-    await setRank(leagueId, b, 2, 50);
+    // A leads on cumulative points, B trails → worst-first favors B.
+    await setPoints(leagueId, a, 100);
+    await setPoints(leagueId, b, 50);
     await own(leagueId, a, 'DA');
     await own(leagueId, b, 'DB');
     await seedSymbol('STAR');
@@ -247,8 +250,8 @@ describe('runWaivers', () => {
 
   it('rolls priority within a run: a win demotes the same manager for later groups', async () => {
     const { leagueId, a, b } = await seedLeague();
-    await setRank(leagueId, a, 1, 100); // best → claims last
-    await setRank(leagueId, b, 2, 50); // worst → claims first
+    await setPoints(leagueId, a, 100); // most points → claims last
+    await setPoints(leagueId, b, 50); // fewest points → claims first
     await own(leagueId, a, 'DA1');
     await own(leagueId, a, 'DA2');
     await own(leagueId, b, 'DB1');

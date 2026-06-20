@@ -310,20 +310,31 @@ export function nyseRegularCloseAnchor(d: Date): Date {
   return new Date(closeUtc.getTime() - 1);
 }
 
-// Fixed UTC-5 (ET standard) offset, matching the rest of this module. The FS
-// scoring crons fire mid-day UTC, well clear of the midnight boundary, so the ET
-// calendar date is stable when picking the week's Friday.
-const ET_OFFSET_MS = 5 * 60 * 60 * 1000;
-
 /**
- * The Friday of `now`'s week (ET) — today on Friday, the coming Friday Mon–Thu.
- * The FS weekly settle anchors on this Friday; the lineup-lock, provisional and
- * dispute-rescore paths all resolve the scoring week off the same calendar
- * mapping. Lifted here (next to nyseRegularCloseAnchor) so there's one copy.
+ * The Friday of `now`'s week (ET) — today on Friday, the coming Friday Mon–Thu —
+ * returned at `now`'s time-of-day. The FS weekly settle anchors on this Friday;
+ * the lineup-lock, provisional and dispute-rescore paths all resolve the scoring
+ * week off the same calendar mapping. Lifted here (next to nyseRegularCloseAnchor)
+ * so there's one copy.
+ *
+ * The weekday MUST come from the real America/New_York calendar date (via etParts,
+ * DST-correct), not a fixed-offset shift of `now`'s UTC date: the settle cron fires
+ * mid-day UTC, but the provisional/matchups/detail readers call this at arbitrary
+ * request times — including the 00:00–05:00 UTC window just past ET midnight, where
+ * the old fixed-UTC-5 weekday read a day behind `now` and the result landed a day
+ * late (a non-trading Saturday). That shifted the player-detail "previous scoring"
+ * anchors onto Saturdays, where the close walk-back picked the prior day's
+ * after-hours print instead of the 16:00 ET close.
+ *
+ * Only the weekday derivation changed; the returned instant keeps `now`'s
+ * time-of-day, so the `weekEnd − 7d` baseline the provisional path relies on still
+ * lands on the prior week — unchanged from the previously-correct cron-time path.
  */
 export function currentFriday(now: Date): Date {
-  const et = new Date(now.getTime() - ET_OFFSET_MS);
-  const dow = et.getUTCDay(); // 0 = Sun … 5 = Fri … 6 = Sat
+  const { year, month, day } = etParts(now);
+  // Weekday of now's ET calendar date; noon UTC is a DST-safe probe (matches
+  // isEtTradingDay) that never crosses a day boundary under the offset shift.
+  const dow = new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
   const daysUntilFriday = (5 - dow + 7) % 7;
   return new Date(now.getTime() + daysUntilFriday * DAY_MS);
 }

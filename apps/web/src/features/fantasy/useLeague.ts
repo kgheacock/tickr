@@ -1,21 +1,18 @@
 /**
  * League context hook (item 09 step 2). Centralizes the REST reads built in
- * items 01–08 and the live `matchup` topic so every FS page renders off one
+ * items 01–08 and the live `scores` topic so every FS page renders off one
  * source. It is the app's first WebSocket consumer, so it also owns the socket
- * lifecycle: connect on mount, subscribe to the league's matchup topic for the
+ * lifecycle: connect on mount, subscribe to the league's scores topic for the
  * active week, and tear the subscription + handler down on unmount.
  *
- * Live following: the scoring path pushes `matchup.updated` (provisional in-week
- * totals, then the Friday-settled final). We overlay those onto the REST
- * matchups so the scoreboard moves without a reload (item 09 step 7). The TODO's
- * speculative `score.updated`/`lineup.locked`/`waiver.processed` messages don't
- * exist server-side (see shared-types/ws.ts) — `matchup.updated` is the wire.
+ * Live following: the scoring path pushes `scores.updated` (provisional in-week
+ * totals, then the Friday-settled final). We derive the weekly ranking from
+ * those scores so the board moves without a reload (item 09 step 7).
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   LeagueMember,
-  Matchup,
   RosterTransactionRequest,
   SetLineupSlot,
   WeeklyScore,
@@ -23,7 +20,7 @@ import type {
 import { client } from '../../api/client';
 import { socket } from '../../api/socket';
 import { useAuth } from '../../auth/AuthProvider';
-import { applyLiveScores, fantasyKeys } from './api';
+import { fantasyKeys, rankScores, type RankedManager } from './api';
 
 export interface UseLeagueOptions {
   week: number;
@@ -47,19 +44,15 @@ export function useLeague(leagueId: string, opts: UseLeagueOptions) {
     queryKey: fantasyKeys.scores(leagueId, week, season),
     queryFn: () => client.getScores(leagueId, week, season),
   });
-  const matchups = useQuery({
-    queryKey: fantasyKeys.matchups(leagueId, week, season),
-    queryFn: () => client.getMatchups(leagueId, week, season),
-  });
-  const standings = useQuery({
-    queryKey: fantasyKeys.standings(leagueId, season),
-    queryFn: () => client.getStandings(leagueId, season),
-  });
 
-  // Latest live totals from the matchup topic; null until the first push.
-  const [liveScores, setLiveScores] = useState<WeeklyScore[] | null>(null);
+  // Latest live push from the scores topic; null until the first push. Carries
+  // the provisional flag (in-week best-effort vs Friday-settled final).
+  const [live, setLive] = useState<{
+    scores: WeeklyScore[];
+    provisional: boolean;
+  } | null>(null);
   // Reset the live overlay whenever the watched week changes.
-  useEffect(() => setLiveScores(null), [leagueId, week, season]);
+  useEffect(() => setLive(null), [leagueId, week, season]);
 
   // Socket lifecycle — connect once, (re)subscribe to the active week's topic,
   // and update the overlay on each matching push. Cleanup unsubscribes and
@@ -67,11 +60,11 @@ export function useLeague(leagueId: string, opts: UseLeagueOptions) {
   const [connected, setConnected] = useState(socket.connected);
   useEffect(() => {
     socket.connect();
-    const topic = { kind: 'matchup' as const, leagueId, week };
+    const topic = { kind: 'scores' as const, leagueId, week };
     socket.subscribe(topic);
-    const off = socket.on('matchup.updated', (msg) => {
+    const off = socket.on('scores.updated', (msg) => {
       if (msg.leagueId !== leagueId || msg.week !== week) return;
-      setLiveScores(msg.scores);
+      setLive({ scores: msg.scores, provisional: msg.provisional });
     });
     const poll = setInterval(() => setConnected(socket.connected), 1_000);
     setConnected(socket.connected);
@@ -89,16 +82,15 @@ export function useLeague(leagueId: string, opts: UseLeagueOptions) {
   }, [league.data]);
 
   // Live overlay precedence: a WS push wins; otherwise the REST week's scores
-  // (already provisional from the server) keep the board current. Used for both
-  // the scoreboard points and the per-slot breakdowns in the matchup view.
-  const weeklyScores = liveScores ?? scores.data?.scores ?? [];
-  const liveMatchups = useMemo<Matchup[]>(() => {
-    const base = matchups.data?.matchups ?? [];
-    return weeklyScores.length > 0 ? applyLiveScores(base, weeklyScores) : base;
-  }, [matchups.data, weeklyScores]);
+  // (already provisional from the server) keep the board current. The weekly
+  // ranking is derived from these scores — there is no stored standings.
+  const weeklyScores = live?.scores ?? scores.data?.scores ?? [];
+  const ranking = useMemo<RankedManager[]>(
+    () => rankScores(weeklyScores),
+    [weeklyScores],
+  );
 
-  const provisional =
-    liveScores != null || (matchups.data?.provisional ?? false);
+  const provisional = live?.provisional ?? false;
 
   const invalidateWeek = () =>
     Promise.all([
@@ -157,22 +149,22 @@ export function useLeague(leagueId: string, opts: UseLeagueOptions) {
     onSuccess: invalidateRoster,
   });
 
+  // Rename a team. The server returns the refreshed league view; seeding it into
+  // the league query updates `members`, which feeds both the masthead wordmark
+  // and the standings tape (via managerLabel) without a refetch.
+  const renameTeam = useMutation({
+    mutationFn: (vars: { userId: string; teamName: string }) =>
+      client.renameTeam(leagueId, vars.userId, vars.teamName),
+    onSuccess: (view) => {
+      queryClient.setQueryData(fantasyKeys.league(leagueId), view);
+    },
+  });
+
   const myUserId = user?.id ?? null;
-  const myMatchup = useMemo(
+  const myRank = useMemo(
     () =>
-      myUserId
-        ? (liveMatchups.find(
-            (m) => m.homeUserId === myUserId || m.awayUserId === myUserId,
-          ) ?? null)
-        : null,
-    [liveMatchups, myUserId],
-  );
-  const myStanding = useMemo(
-    () =>
-      myUserId
-        ? (standings.data?.standings.find((s) => s.userId === myUserId) ?? null)
-        : null,
-    [standings.data, myUserId],
+      myUserId ? (ranking.find((r) => r.userId === myUserId) ?? null) : null,
+    [ranking, myUserId],
   );
 
   return {
@@ -186,13 +178,12 @@ export function useLeague(leagueId: string, opts: UseLeagueOptions) {
     members,
     lineup: lineup.data ?? null,
     scores: weeklyScores,
-    matchups: liveMatchups,
-    standings: standings.data?.standings ?? [],
-    myMatchup,
-    myStanding,
-    isLoading: league.isLoading || matchups.isLoading || standings.isLoading,
-    error: league.error ?? matchups.error ?? standings.error ?? null,
+    ranking,
+    myRank,
+    isLoading: league.isLoading || scores.isLoading,
+    error: league.error ?? scores.error ?? null,
     refetchWeek: invalidateWeek,
+    renameTeam,
     setLineup,
     autofill,
     buyPlayer,

@@ -1,7 +1,7 @@
 /**
  * Stock inventory — the league's "waiver wire" board. A filterable, paginated
  * listing of every stock: symbol, specialization, who holds it (or Available), and
- * the points it scored last completed week. Each row opens the stock report
+ * the points it has scored so far this week. Each row opens the stock report
  * (price chart + previous scoring); unowned rows carry a Buy button for an
  * immediate free-agent add (paired with a drop when the roster is full), gated
  * by the lineup lock like every real-time roster mutation.
@@ -12,13 +12,16 @@ import type { PlayerInventoryItem } from '@tickr/shared-types';
 import { ApiClientError, client } from '../../api/client';
 import { useLeagueContext } from './FantasyLayout';
 import type { LeagueContext } from './useLeague';
-import { SLOT_LABELS, SPECIALIZATIONS } from './api';
-import { fmtPoints } from './points';
+import { SPECIALIZATIONS } from './api';
+import { SignedNumber } from './SignedNumber';
 import { PlayerDetailModal } from './PlayerDetailModal';
+import { SellModal } from './SellModal';
 import { StockCell, SpecChips } from './StockCell';
+import { StockMasthead } from './StockMasthead';
+import { SlotSelect } from './SlotSelect';
+import { StockSelect } from './StockSelect';
 import {
   Input,
-  Select,
   Checkbox,
   Button,
   Modal,
@@ -58,7 +61,16 @@ export function InventoryView() {
   const [sort, setSort] = useState<SortState>({ key: 'lastWk', dir: 'desc' });
   const [selected, setSelected] = useState<string | null>(null);
   // The unowned stock pending a buy confirmation; null when no prompt is open.
-  const [buyTarget, setBuyTarget] = useState<string | null>(null);
+  // Carries the name so the dialog masthead can show the company line.
+  const [buyTarget, setBuyTarget] = useState<{
+    symbol: string;
+    name: string | null;
+  } | null>(null);
+  // The owned stock pending a sell confirmation, reached from the stock report.
+  const [sellTarget, setSellTarget] = useState<{
+    symbol: string;
+    name: string | null;
+  } | null>(null);
 
   // The caller's roster powers the "is my team full?" check and the drop-picker
   // a full-roster buy needs. Shares LineupEditor's query key, so it's deduped.
@@ -129,18 +141,14 @@ export function InventoryView() {
           onChange={(e) => onFilter(() => setQ(e.target.value))}
           aria-label="Search ticker"
         />
-        <Select
+        <SlotSelect
+          className={styles.specFilter}
           value={group}
-          onChange={(e) => onFilter(() => setGroup(e.target.value))}
+          options={['', ...SPECIALIZATIONS]}
+          onChange={(g) => onFilter(() => setGroup(g))}
+          labels={{ '': 'All specializations' }}
           aria-label="Filter by specialization"
-        >
-          <option value="">All specializations</option>
-          {SPECIALIZATIONS.map((g) => (
-            <option key={g} value={g}>
-              {SLOT_LABELS[g] ?? g}
-            </option>
-          ))}
-        </Select>
+        />
         <Checkbox
           className={styles.toggle}
           label="Available only"
@@ -163,7 +171,7 @@ export function InventoryView() {
               onSort={onSort}
               className={styles.num}
             >
-              Last wk
+              This wk
             </SortHeader>
             {!locked && <th className={styles.buyCol} aria-label="Buy" />}
           </tr>
@@ -211,16 +219,8 @@ export function InventoryView() {
                 <SpecChips groups={item.groups} />
               </td>
               <td>{ownerCell(item)}</td>
-              <td
-                className={`${styles.num} ${
-                  item.lastWeekPoints == null
-                    ? ''
-                    : item.lastWeekPoints >= 0
-                      ? styles.pos
-                      : styles.neg
-                }`}
-              >
-                {fmtPoints(item.lastWeekPoints)}
+              <td className={styles.num}>
+                <SignedNumber value={item.currentWeekPoints} />
               </td>
               {!locked && (
                 <td className={styles.buyCol}>
@@ -231,7 +231,7 @@ export function InventoryView() {
                       // The row opens the stock report; keep the click on Buy.
                       onClick={(e) => {
                         e.stopPropagation();
-                        setBuyTarget(item.symbol);
+                        setBuyTarget({ symbol: item.symbol, name: item.name });
                       }}
                       aria-label={`Buy ${item.symbol}`}
                     >
@@ -274,19 +274,39 @@ export function InventoryView() {
 
       {selected && (
         <PlayerDetailModal
-          leagueId={leagueId}
+          ctx={ctx}
           symbol={selected}
           onClose={() => setSelected(null)}
+          // The report hands the trade to a confirm dialog, closing itself
+          // first so the warning stands alone.
+          onRequestBuy={(symbol, name) => {
+            setSelected(null);
+            setBuyTarget({ symbol, name });
+          }}
+          onRequestSell={(symbol, name) => {
+            setSelected(null);
+            setSellTarget({ symbol, name });
+          }}
         />
       )}
 
       {buyTarget && (
         <BuyModal
           ctx={ctx}
-          symbol={buyTarget}
+          symbol={buyTarget.symbol}
+          name={buyTarget.name}
           roster={rosterItems}
           full={rosterCap > 0 && rosterItems.length >= rosterCap}
           onClose={() => setBuyTarget(null)}
+        />
+      )}
+
+      {sellTarget && (
+        <SellModal
+          ctx={ctx}
+          symbol={sellTarget.symbol}
+          name={sellTarget.name}
+          onClose={() => setSellTarget(null)}
         />
       )}
     </div>
@@ -301,12 +321,14 @@ export function InventoryView() {
 function BuyModal({
   ctx,
   symbol,
+  name,
   roster,
   full,
   onClose,
 }: {
   ctx: LeagueContext;
   symbol: string;
+  name: string | null;
   roster: PlayerInventoryItem[];
   full: boolean;
   onClose: () => void;
@@ -344,7 +366,12 @@ function BuyModal({
   };
 
   return (
-    <Modal onClose={close} kicker="Transaction" title={`Buy ${symbol}`}>
+    <Modal
+      onClose={close}
+      kicker="Buy"
+      label={`Buy ${symbol}`}
+      masthead={<StockMasthead symbol={symbol} name={name} />}
+    >
       <p className={styles.confirmBody}>
         {full ? (
           <>
@@ -359,18 +386,12 @@ function BuyModal({
       </p>
       {full && (
         <Field label="Drop to make room">
-          <Select
+          <StockSelect
             value={dropSymbol}
-            onChange={(e) => setDropSymbol(e.target.value)}
+            options={roster}
+            onChange={setDropSymbol}
             aria-label="Drop to make room"
-          >
-            {roster.map((r) => (
-              <option key={r.symbol} value={r.symbol}>
-                {r.symbol}
-                {r.name ? ` — ${r.name}` : ''}
-              </option>
-            ))}
-          </Select>
+          />
         </Field>
       )}
       {err && <p className={styles.warn}>{err}</p>}

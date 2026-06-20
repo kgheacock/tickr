@@ -1,10 +1,12 @@
 /**
- * SlotSelect — a custom listbox for picking which roster slot a stock fills.
+ * SlotSelect — a custom listbox for picking a coloured category: a roster slot in
+ * the lineup editor, or a specialization in the waiver-wire filter.
  *
- * A native <select> can only hold plain text, so the lineup editor couldn't show
- * a slot's coloured CategoryChip in the closed control or its options. This is a
- * thin WAI-ARIA listbox (button trigger + popup) that renders each slot as its
- * spot-ink chip (Bench, which has no group colour, stays a plain muted label).
+ * A native <select> can only hold plain text, so neither could show a category's
+ * coloured CategoryChip in the closed control or its options. This is a thin
+ * WAI-ARIA listbox (button trigger + popup) that renders each option as its
+ * spot-ink chip; a value with no group colour (Bench, or the filter's "All")
+ * stays a plain muted label.
  *
  * Focus model: the trigger opens the popup and focus moves into the list, which
  * owns arrow / Home / End / Enter / Space / Escape and printable type-ahead via
@@ -17,19 +19,23 @@ import { CategoryChip } from '../../components';
 import styles from './SlotSelect.module.css';
 
 interface SlotSelectProps {
-  /** Currently-selected slot key (e.g. 'anchor', 'defense', 'bench'). */
+  /** Currently-selected option key (e.g. 'anchor', 'bench', or '' for "All"). */
   value: string;
-  /** Ordered slot keys to offer, including 'bench'. */
+  /** Ordered option keys to offer. */
   options: string[];
   onChange: (slot: string) => void;
+  /** Label overrides keyed by option value, taking precedence over SLOT_LABELS.
+   *  Lets non-slot callers name a neutral option — e.g. the waiver-wire filter's
+   *  '' → "All specializations". */
+  labels?: Record<string, string>;
   className?: string;
   'aria-label'?: string;
 }
 
-/** A slot rendered as its coloured chip, or a plain label for the colourless
- *  Bench. Shared by the trigger (closed state) and every option. */
-function SlotTag({ slot }: { slot: string }) {
-  const label = SLOT_LABELS[slot] ?? slot;
+/** An option rendered as its coloured chip, or a plain label for a colourless
+ *  value (Bench, or the filter's "All"). Shared by the trigger (closed state)
+ *  and every option. */
+function SlotTag({ slot, label }: { slot: string; label: string }) {
   return isPlayerGroup(slot) ? (
     <CategoryChip group={slot} noTooltip>
       {label}
@@ -43,9 +49,14 @@ export function SlotSelect({
   value,
   options,
   onChange,
+  labels,
   className,
   'aria-label': ariaLabel,
 }: SlotSelectProps) {
+  // Resolve an option's display text: caller override, then the slot map, then
+  // the raw key. Shared by the chips and the type-ahead so both stay in step.
+  const labelOf = (slot: string) => labels?.[slot] ?? SLOT_LABELS[slot] ?? slot;
+
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -130,7 +141,7 @@ export function SlotSelect({
           t.at = now;
           const q = t.buf.toLowerCase();
           const idx = options.findIndex((o) =>
-            (SLOT_LABELS[o] ?? o).toLowerCase().startsWith(q),
+            labelOf(o).toLowerCase().startsWith(q),
           );
           if (idx >= 0) setActive(idx);
         }
@@ -156,7 +167,7 @@ export function SlotSelect({
         onClick={() => (open ? close() : openList())}
         onKeyDown={onTriggerKey}
       >
-        <SlotTag slot={value} />
+        <SlotTag slot={value} label={labelOf(value)} />
       </button>
       {open && (
         <ul
@@ -177,7 +188,7 @@ export function SlotSelect({
               onMouseEnter={() => setActive(i)}
               onClick={() => pick(slot)}
             >
-              <SlotTag slot={slot} />
+              <SlotTag slot={slot} label={labelOf(slot)} />
               {slot === value && (
                 <span className={styles.check} aria-hidden>
                   ✓

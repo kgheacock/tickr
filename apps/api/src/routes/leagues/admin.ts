@@ -1,6 +1,7 @@
 /**
  * Fantasy Street item 12 — commissioner & admin tool routes, mounted under
  * /api/v1.
+ *   DELETE /leagues/:id                          delete a league (platform admin)
  *   PATCH  /leagues/:id/settings                 mid-season-safe settings
  *   DELETE /leagues/:id/members/:userId          remove a pre-draft member
  *   PATCH  /leagues/:id/members/:userId          rename team / transfer role
@@ -19,12 +20,15 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { pool } from '../../db/pool.js';
 import { getRedis } from '../../redis.js';
-import { requireAuth, requireCsrf } from '../../auth/middleware.js';
+import {
+  requireAuth,
+  requireAdmin,
+  requireCsrf,
+} from '../../auth/middleware.js';
 import { requireCommissioner } from '../../fantasy/guards.js';
 import {
   publishScoreUpdated,
-  publishMatchupUpdated,
-  publishSeasonChampion,
+  publishScoresUpdated,
 } from '../../events/publisher.js';
 import {
   updateMidSeasonSettings,
@@ -110,6 +114,34 @@ export function registerAdminToolRoutes(fastify: FastifyInstance): void {
     },
   );
 
+  // --- Delete league (platform admin) ---------------------------------------
+  // A platform-admin-only wrecking ball: every fs_* table that references
+  // fs_league(id) is ON DELETE CASCADE, so one DELETE purges the league and all
+  // its data (members, invites, rosters, draft, scores, season, audit, …).
+  // requireAdmin runs sessionMiddleware (via requireAuth) before requireCsrf
+  // reads req.session, so CSRF still validates. No per-league audit row — it
+  // would cascade away with the league it records.
+  fastify.delete<{ Params: { id: string } }>(
+    '/leagues/:id',
+    { preHandler: [requireAdmin, requireCsrf] },
+    async (req, reply) => {
+      const { rowCount } = await pool.query(
+        `DELETE FROM fs_league WHERE id = $1`,
+        [req.params.id],
+      );
+      if (!rowCount) {
+        return reply.code(404).send({
+          error: { code: 'NOT_FOUND', message: 'League not found' },
+        });
+      }
+      req.log.info(
+        { leagueId: req.params.id, actor: req.userId },
+        'league deleted by admin',
+      );
+      return reply.code(204).send();
+    },
+  );
+
   // --- Member management ----------------------------------------------------
   fastify.delete<{ Params: { id: string; userId: string } }>(
     '/leagues/:id/members/:userId',
@@ -185,7 +217,7 @@ export function registerAdminToolRoutes(fastify: FastifyInstance): void {
           season: result.season,
           week: result.week,
         });
-        await publishMatchupUpdated(
+        await publishScoresUpdated(
           redis,
           req.params.id,
           result.season,
@@ -193,13 +225,6 @@ export function registerAdminToolRoutes(fastify: FastifyInstance): void {
           result.scores,
           false,
         );
-        if (result.settle.championUserId) {
-          await publishSeasonChampion(redis, {
-            leagueId: req.params.id,
-            season: result.season,
-            championUserId: result.settle.championUserId,
-          });
-        }
         return result;
       } catch (err) {
         return sendFantasyError(reply, err);
@@ -214,7 +239,6 @@ export function registerAdminToolRoutes(fastify: FastifyInstance): void {
     async (req, reply) => {
       const parsed = advanceSchema.safeParse(req.body ?? {});
       if (!parsed.success) return badRequest(reply, parsed.error.message);
-      const redis = getRedis();
       try {
         const result = await forceAdvance(pool, req.params.id, req.userId!, {
           ...(parsed.data.week !== undefined ? { week: parsed.data.week } : {}),
@@ -225,13 +249,6 @@ export function registerAdminToolRoutes(fastify: FastifyInstance): void {
             ? { reason: parsed.data.reason }
             : {}),
         });
-        if (result.settle.championUserId) {
-          await publishSeasonChampion(redis, {
-            leagueId: req.params.id,
-            season: result.season,
-            championUserId: result.settle.championUserId,
-          });
-        }
         return result;
       } catch (err) {
         return sendFantasyError(reply, err);

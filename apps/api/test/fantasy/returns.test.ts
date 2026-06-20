@@ -5,6 +5,7 @@ import { runner } from 'node-pg-migrate';
 import pg from 'pg';
 import { fileURLToPath } from 'node:url';
 import { weeklyReturn } from '../../src/fantasy/returns.js';
+import { nyseRegularCloseAnchor } from '../../src/market/holidays.js';
 
 pg.types.setTypeParser(20, Number);
 
@@ -58,7 +59,22 @@ async function seedBar(symbol: string, ts: Date, close: number): Promise<void> {
   );
 }
 
+/** Insert an official session_close (cents) for an ET session date ('YYYY-MM-DD'). */
+async function seedSessionClose(
+  symbol: string,
+  sessionDate: string,
+  close: number,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO session_close (symbol, session_date, close)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (symbol, session_date) DO UPDATE SET close = EXCLUDED.close`,
+    [symbol, sessionDate, close],
+  );
+}
+
 beforeEach(async () => {
+  await pool.query('DELETE FROM session_close');
   await pool.query('DELETE FROM price_bar');
   await pool.query('DELETE FROM universe_symbol');
 });
@@ -117,5 +133,67 @@ describe('weeklyReturn', () => {
     const r = await weeklyReturn(pool, 'LIVE', WEEK_END, asOf);
     expect(r.thisClose).toBe(10_500);
     expect(r.returnPct).toBeCloseTo(5, 10);
+  });
+});
+
+// Real 16:00-ET regular-close anchors (1ms before 16:00) — the instants the
+// settle and players routes actually pass, so these tests exercise the real
+// DATE↔ts mapping in closes.ts rather than a hand-rolled timestamp.
+const FRI_ANCHOR = nyseRegularCloseAnchor(new Date('2026-06-12T12:00:00Z'));
+const PRIOR_ANCHOR = nyseRegularCloseAnchor(new Date('2026-06-05T12:00:00Z'));
+
+describe('weeklyReturn — merged session_close / price_bar', () => {
+  it('prefers session_close and keys it to the anchor session, not the prior day', async () => {
+    await seedSymbol('MRG');
+    // Massive hasn't landed Friday's bar yet — only Thursday is in price_bar.
+    await seedBar('MRG', new Date('2026-06-11T20:00:00Z'), 11_000); // Thu
+    // Official Friday + prior-Friday closes are in session_close.
+    await seedSessionClose('MRG', '2026-06-12', 9_600);
+    await seedSessionClose('MRG', '2026-06-05', 10_000);
+    const r = await weeklyReturn(
+      pool,
+      'MRG',
+      FRI_ANCHOR,
+      FRI_ANCHOR,
+      PRIOR_ANCHOR,
+    );
+    // 9_600 (Friday session_close), NOT 11_000 — proves session_close wins AND
+    // the anchor's ET date resolves to Friday rather than walking to Thursday.
+    expect(r.thisClose).toBe(9_600);
+    expect(r.lastClose).toBe(10_000);
+    expect(r.returnPct).toBeCloseTo(-4, 10);
+  });
+
+  it('falls back to price_bar for an endpoint session_close lacks', async () => {
+    await seedSymbol('GAP');
+    await seedSessionClose('GAP', '2026-06-12', 9_600); // this-week only
+    // No session_close for the prior week — baseline comes from price_bar.
+    await seedBar('GAP', new Date('2026-06-05T19:00:00Z'), 10_000);
+    const r = await weeklyReturn(
+      pool,
+      'GAP',
+      FRI_ANCHOR,
+      FRI_ANCHOR,
+      PRIOR_ANCHOR,
+    );
+    expect(r.thisClose).toBe(9_600); // session_close
+    expect(r.lastClose).toBe(10_000); // price_bar fallback
+    expect(r.returnPct).toBeCloseTo(-4, 10);
+  });
+
+  it('is byte-identical to the price_bar-only path when session_close is empty', async () => {
+    await seedSymbol('PUR');
+    await seedBar('PUR', new Date('2026-06-05T19:00:00Z'), 10_000);
+    await seedBar('PUR', new Date('2026-06-12T19:00:00Z'), 9_600);
+    const r = await weeklyReturn(
+      pool,
+      'PUR',
+      FRI_ANCHOR,
+      FRI_ANCHOR,
+      PRIOR_ANCHOR,
+    );
+    expect(r.thisClose).toBe(9_600);
+    expect(r.lastClose).toBe(10_000);
+    expect(r.returnPct).toBeCloseTo(-4, 10);
   });
 });

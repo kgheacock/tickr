@@ -10,6 +10,7 @@ import { registerCallbackRoutes } from '../routes/auth/callback.js';
 import { registerLogoutRoute } from '../routes/auth/logout.js';
 import { registerDevLoginRoute } from '../routes/auth/dev-login.js';
 import { registerMeRoute } from '../routes/me.js';
+import { registerUsersRoutes } from '../routes/users.js';
 import { registerAdminUniverseRoutes } from '../routes/admin/universe.js';
 import { registerUniverseRoute } from '../routes/universe.js';
 import { registerBrandingRoutes } from '../routes/branding.js';
@@ -78,11 +79,19 @@ export async function runApi(): Promise<void> {
 
   // Redis-backed so per-IP limits hold across api instances. Default per-IP
   // cap is 60 req/min; per-route caps (auth start, admin) tighten this.
+  //
+  // Dev escape hatch: the dev compose overlay sets TICKR_DISABLE_RATE_LIMIT=1 so
+  // local + e2e traffic (many rapid dev-logins from one IP) isn't throttled. It
+  // keeps the plugin registered — so every per-route `config.rateLimit` stays
+  // valid — but allow-lists every request, bypassing both global and per-route
+  // limits. Like TICKR_DEV_AUTH, prod never sets it and deploy.sh refuses it.
+  const disableRateLimit = process.env['TICKR_DISABLE_RATE_LIMIT'] === '1';
   await fastify.register(rateLimit, {
     global: true,
     max: 60,
     timeWindow: '1 minute',
     redis: getRedis(),
+    ...(disableRateLimit ? { allowList: () => true } : {}),
   });
 
   await fastify.register(cookie, {
@@ -121,6 +130,7 @@ export async function runApi(): Promise<void> {
         await registerDevLoginRoute(api);
       }
       await registerMeRoute(api);
+      registerUsersRoutes(api);
       await registerAdminUniverseRoutes(api);
       await registerUniverseRoute(api);
       await registerBrandingRoutes(api);

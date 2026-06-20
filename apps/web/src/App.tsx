@@ -8,8 +8,6 @@ import { FantasyLayout } from './features/fantasy/FantasyLayout';
 import { Dashboard } from './features/fantasy/Dashboard';
 import { TeamView } from './features/fantasy/TeamView';
 import { InventoryView } from './features/fantasy/InventoryView';
-import { MatchupView } from './features/fantasy/MatchupView';
-import { StandingsView } from './features/fantasy/StandingsView';
 import styles from './App.module.css';
 
 export function App() {
@@ -38,8 +36,6 @@ export function App() {
             <Route index element={<Dashboard />} />
             <Route path="team" element={<TeamView />} />
             <Route path="players" element={<InventoryView />} />
-            <Route path="matchup" element={<MatchupView />} />
-            <Route path="standings" element={<StandingsView />} />
           </Route>
         </Routes>
       </div>

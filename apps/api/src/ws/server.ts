@@ -177,12 +177,12 @@ export function attachWsGateway(
         return;
       }
     }
-    if (topic.kind === 'matchup') {
-      // Live scores are league-private — only members may follow the matchup.
+    if (topic.kind === 'scores') {
+      // Live scores are league-private — only members may follow them.
       if (!(await isLeagueMember(topic.leagueId, conn.userId))) {
         sendError(conn.socket, {
           code: 'FORBIDDEN',
-          message: 'League membership required to follow this matchup',
+          message: 'League membership required to follow these scores',
         });
         return;
       }

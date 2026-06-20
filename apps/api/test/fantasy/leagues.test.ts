@@ -150,6 +150,53 @@ describe('FS-01 leagues & membership', () => {
     expect(rows.map((r) => r.email)).toEqual(['friend@example.com']);
   });
 
+  // FS-14 auto-join: a human seat whose email already has a tickr account is
+  // joined as a real manager up front (not bot-held) so the league surfaces on
+  // their homepage immediately — no claim step. The unclaimed case still falls
+  // back to the bot + labelled invite above.
+  it('auto-joins an invited human who already has an account (no invite, real member)', async () => {
+    const owner = await seedUser('owner');
+    const { rows: friendRows } = await pool.query<{ id: string }>(
+      `INSERT INTO app_user (id, display_name, email)
+       VALUES (gen_random_uuid(), 'Friend', $1) RETURNING id`,
+      ['friend@example.com'],
+    );
+    const friend = friendRows[0]!.id;
+
+    const view = await createLeague(
+      {
+        name: 'Auto-join',
+        teamName: 'The Dip Buyers',
+        seasonLengthWeeks: 52,
+        joinPolicy: 'invite',
+        members: [
+          { isBot: true },
+          { isBot: true },
+          // Case-insensitive match against the stored email.
+          { isBot: false, email: 'Friend@Example.com' },
+        ],
+      },
+      owner,
+      pool,
+    );
+
+    expect(view.members).toHaveLength(4);
+    expect(view.openSlots).toBe(0);
+    // The invitee is a real manager, not a bot-held seat.
+    expect(view.members.find((m) => m.userId === friend)?.role).toBe('manager');
+    const botCount = await pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM fs_bot_member WHERE league_id = $1`,
+      [view.id],
+    );
+    expect(botCount.rows[0]!.count).toBe('2');
+    // No labelled invite — they're already in, nothing to claim later.
+    const { rows: invites } = await pool.query(
+      'SELECT 1 FROM fs_invite WHERE league_id = $1',
+      [view.id],
+    );
+    expect(invites).toHaveLength(0);
+  });
+
   it('rejects a seat list outside the 4–12 capacity', async () => {
     const owner = await seedUser('owner');
     expect(

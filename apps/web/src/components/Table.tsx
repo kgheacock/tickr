@@ -70,8 +70,10 @@ export function nextSort(current: SortState | null, key: string): SortState {
   return { key, dir: 'asc' };
 }
 
-export interface SortHeaderProps
-  extends Omit<ThHTMLAttributes<HTMLTableCellElement>, 'onClick'> {
+export interface SortHeaderProps extends Omit<
+  ThHTMLAttributes<HTMLTableCellElement>,
+  'onClick'
+> {
   /** This column's sort key, matched against the active `sort`. */
   sortKey: string;
   /** The table's current sort, or null when unsorted. */
@@ -97,15 +99,13 @@ export function SortHeader({
 }: SortHeaderProps) {
   const active = sort?.key === sortKey ? sort.dir : null;
   const ariaSort =
-    active === 'asc'
-      ? 'ascending'
-      : active === 'desc'
-        ? 'descending'
-        : 'none';
+    active === 'asc' ? 'ascending' : active === 'desc' ? 'descending' : 'none';
   return (
     <th
       aria-sort={ariaSort}
-      className={className ? `${styles.sortHead} ${className}` : styles.sortHead}
+      className={
+        className ? `${styles.sortHead} ${className}` : styles.sortHead
+      }
       {...rest}
     >
       <button

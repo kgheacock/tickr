@@ -246,7 +246,7 @@ export async function loadWeeklyScore(
   return rows[0] ? toWeeklyScore(rows[0]) : null;
 }
 
-/** Every manager's settled score for a league week (standings/matchup source). */
+/** Every manager's settled score for a league week — the weekly ranking source. */
 export async function loadLeagueScores(
   db: Pool | PoolClient,
   leagueId: string,
@@ -262,4 +262,28 @@ export async function loadLeagueScores(
     [leagueId, season, week],
   );
   return rows.map(toWeeklyScore);
+}
+
+/**
+ * The weekly ranking: a userId → 1-based rank map over a league week's scores.
+ * Pure (the weekly ranking is always derived from the scores, never stored).
+ * Uses standard competition ranking — managers with equal totals share a rank
+ * and the next rank skips accordingly (e.g. 1, 2, 2, 4). The input need not be
+ * pre-sorted; it is ranked by total_points DESC.
+ */
+export function rankScores(scores: WeeklyScore[]): Map<string, number> {
+  const ordered = [...scores].sort(
+    (a, b) => b.totalPoints - a.totalPoints || (a.userId < b.userId ? -1 : 1),
+  );
+  const ranks = new Map<string, number>();
+  let prevPoints: number | null = null;
+  let prevRank = 0;
+  ordered.forEach((s, i) => {
+    const rank =
+      prevPoints !== null && s.totalPoints === prevPoints ? prevRank : i + 1;
+    ranks.set(s.userId, rank);
+    prevPoints = s.totalPoints;
+    prevRank = rank;
+  });
+  return ranks;
 }

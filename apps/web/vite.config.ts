@@ -8,6 +8,12 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: ['local.tickr.keithheacock.com'],
+    // The e2e/ folder holds standalone Playwright scripts that drive the running
+    // dev server — they aren't part of the app bundle. Ignore them in the
+    // watcher so editing/adding a test file doesn't reload the app mid-run.
+    watch: {
+      ignored: ['**/e2e/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:3000',

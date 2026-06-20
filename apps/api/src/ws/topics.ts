@@ -22,10 +22,10 @@ export function topicKey(topic: WsTopic): TopicKey {
       // One topic per league draft; the leagueId is part of the key so boards
       // for different leagues stay isolated.
       return `draft:${topic.leagueId}`;
-    case 'matchup':
+    case 'scores':
       // One topic per league week of live scores (FS-05); week is in the key so
       // following one week never leaks another.
-      return `matchup:${topic.leagueId}:${topic.week}`;
+      return `scores:${topic.leagueId}:${topic.week}`;
     case 'notifications':
       // Per-user (FS-11): the gateway keys this off the connection's
       // authenticated user via notifyTopicKey, never off the topic alone (which
@@ -51,8 +51,8 @@ export function draftChannel(leagueId: string): string {
   return `ws:draft:${leagueId}`;
 }
 
-export function matchupChannel(leagueId: string, week: number): string {
-  return `ws:matchup:${leagueId}:${week}`;
+export function scoresChannel(leagueId: string, week: number): string {
+  return `ws:scores:${leagueId}:${week}`;
 }
 
 /** Per-user notification channel (FS-11): `ws:notify:{userId}`. */
@@ -74,9 +74,9 @@ export function channelToTopicKey(channel: string): TopicKey | null {
   if (channel.startsWith('ws:draft:')) {
     return `draft:${channel.slice('ws:draft:'.length)}`;
   }
-  // ws:matchup:{leagueId}:{week} → matchup:{leagueId}:{week}
-  if (channel.startsWith('ws:matchup:')) {
-    return `matchup:${channel.slice('ws:matchup:'.length)}`;
+  // ws:scores:{leagueId}:{week} → scores:{leagueId}:{week}
+  if (channel.startsWith('ws:scores:')) {
+    return `scores:${channel.slice('ws:scores:'.length)}`;
   }
   // ws:notify:{userId} → notify:{userId} (FS-11, per-user feed)
   if (channel.startsWith('ws:notify:')) {

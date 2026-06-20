@@ -1,0 +1,10 @@
+/* The "short" tag beside a Defense (short) holding's ticker — uppercase
+   danger-ink, matching the roster row's flag. */
+.tag {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-danger);
+}

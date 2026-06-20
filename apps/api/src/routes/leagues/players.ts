@@ -20,8 +20,9 @@ import type { Pool } from 'pg';
 import { pool } from '../../db/pool.js';
 import { requireLeagueMember } from '../../fantasy/guards.js';
 import { slotsFor } from '../../fantasy/eligibility.js';
+import { mergedCloseSql, mergedDailySeriesSql } from '../../fantasy/closes.js';
 import {
-  lastCompletedWeek,
+  currentWeek,
   recentCompletedWeeks,
   returnPctFrom,
   weeklyReturn,
@@ -32,6 +33,8 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 /** Weeks of per-stock scoring surfaced in the detail "previous scoring" panel. */
 const SCORING_HISTORY_WEEKS = 8;
+/** Completed weeks spanned by the trailing 3-month scoring summary (~13 weeks). */
+const SCORING_SUMMARY_WEEKS = 13;
 
 /** "Points last week" for a stock, long basis (r); null when no return. */
 function lastWeekPoints(returnPct: number | null): number | null {
@@ -141,9 +144,13 @@ export async function listPlayers(
   );
   const total = Number(countRows[0]!.count);
 
-  // "Points last week" is the most-recently-completed week's return, valued
-  // off the same regular-close anchors the Friday settle uses (returns.ts).
-  const { weekEnd, baselineAt } = lastCompletedWeek(opts.now ?? new Date());
+  // "Points this week" is the in-flight week's return so far: the move from last
+  // Friday's regular close (baseline) to the latest available close (asOf = now),
+  // matching the provisional scorer's weeklyReturn(asOf = now) — so the column
+  // agrees with the team's in-progress total (score.ts) and the detail view's
+  // provisional scoringHistory[0].
+  const now = opts.now ?? new Date();
+  const { baselineAt } = currentWeek(now);
   const n = params.length;
   const sort: InventorySort = opts.sort === 'lastWk' ? 'lastWk' : 'symbol';
   const dir = opts.dir === 'desc' ? 'DESC' : 'ASC';
@@ -165,12 +172,8 @@ export async function listPlayers(
                   (re.symbol IS NOT NULL) AS owned,
                   lm.team_name AS owner_team,
                   re.is_short AS is_short,
-                  (SELECT close FROM price_bar
-                    WHERE symbol = us.symbol AND ts <= $${n + 1}
-                    ORDER BY ts DESC LIMIT 1) AS base_close,
-                  (SELECT close FROM price_bar
-                    WHERE symbol = us.symbol AND ts <= $${n + 2}
-                    ORDER BY ts DESC LIMIT 1) AS this_close
+                  ${mergedCloseSql('us.symbol', `$${n + 1}`)} AS base_close,
+                  ${mergedCloseSql('us.symbol', `$${n + 2}`)} AS this_close
              ${fromSql}
          )
          SELECT * FROM scored
@@ -189,24 +192,16 @@ export async function listPlayers(
             ORDER BY us.symbol ${dir}
             LIMIT $${n + 1} OFFSET $${n + 2}
          )
-         SELECT page.*, base.close AS base_close, cur.close AS this_close
+         SELECT page.*,
+                ${mergedCloseSql('page.symbol', `$${n + 3}`)} AS base_close,
+                ${mergedCloseSql('page.symbol', `$${n + 4}`)} AS this_close
            FROM page
-           LEFT JOIN LATERAL (
-             SELECT close FROM price_bar
-              WHERE symbol = page.symbol AND ts <= $${n + 3}
-              ORDER BY ts DESC LIMIT 1
-           ) base ON true
-           LEFT JOIN LATERAL (
-             SELECT close FROM price_bar
-              WHERE symbol = page.symbol AND ts <= $${n + 4}
-              ORDER BY ts DESC LIMIT 1
-           ) cur ON true
           ORDER BY page.symbol ${dir}`;
 
   const queryParams =
     sort === 'lastWk'
-      ? [...params, baselineAt, weekEnd, limit, offset]
-      : [...params, limit, offset, baselineAt, weekEnd];
+      ? [...params, baselineAt, now, limit, offset]
+      : [...params, limit, offset, baselineAt, now];
 
   const { rows } = await db.query<
     OwnershipCols & {
@@ -228,7 +223,7 @@ export async function listPlayers(
         name: r.name ?? null,
         groups: r.groups ?? [],
         recentReturnPct: metricsOf(r.metrics).ret3mPct,
-        lastWeekPoints: lastWeekPoints(returnPctFrom(base, cur)),
+        currentWeekPoints: lastWeekPoints(returnPctFrom(base, cur)),
         ownership: ownershipOf(r),
       };
     }),
@@ -279,34 +274,75 @@ export async function getPlayerDetail(
   if (head.length === 0) return null;
   const h = head[0]!;
 
+  // The detail-view price chart: the merged DAILY series (closes.ts) over a
+  // ~3-month window — 15-min price_bar collapsed to one regular-session bar per
+  // ET trading day, with the close overlaid by the official session_close so the
+  // chart's latest close matches the scored close. OHL is null only for a
+  // session_close-only day (not yet in price_bar); coalesced to close below.
   const { rows: bars } = await db.query<{
     ts: Date;
-    open: number;
-    high: number;
-    low: number;
+    open: number | null;
+    high: number | null;
+    low: number | null;
     close: number;
     volume: number | null;
-  }>(
-    `SELECT ts, open, high, low, close, volume
-       FROM price_bar
-      WHERE symbol = $1 AND ts >= $2::timestamptz - interval '3 months'
-      ORDER BY ts ASC`,
-    [sym, now.toISOString()],
-  );
+  }>(mergedDailySeriesSql('$1', "($2::timestamptz - interval '3 months')"), [
+    sym,
+    now.toISOString(),
+  ]);
 
-  // Previous scoring: the per-week long-basis points for the last several
-  // completed weeks (most recent first). The newest entry shares its anchors
-  // with the inventory's lastWeekPoints, so the two columns agree (returns.ts).
+  // Previous scoring: the per-week long-basis points, most recent first. The
+  // in-flight entry below ([0], provisional) shares its anchors with the
+  // inventory's currentWeekPoints, so the two surfaces agree (returns.ts). The
+  // week's Monday is the Friday anchor back four days — the chart labels weeks by
+  // their close, but the ledger reads as "week starting".
+  const weekRow = (
+    w: { weekEnd: Date },
+    r: { returnPct: number | null },
+    provisional: boolean,
+  ) => ({
+    weekStart: new Date(w.weekEnd.getTime() - 4 * 86_400_000).toISOString(),
+    weekEnd: w.weekEnd.toISOString(),
+    returnPct: r.returnPct == null ? null : Math.round(r.returnPct * 100) / 100,
+    points: lastWeekPoints(r.returnPct),
+    provisional,
+  });
+
   const scoringHistory = [];
-  for (const w of recentCompletedWeeks(now, SCORING_HISTORY_WEEKS)) {
+  // The in-flight week first, valued "so far" off the latest available close
+  // (asOf = now), flagged provisional so the UI can mark it as still open.
+  const cur = currentWeek(now);
+  const curR = await weeklyReturn(db, sym, cur.weekEnd, now, cur.baselineAt);
+  scoringHistory.push(weekRow(cur, curR, true));
+
+  // Walk the trailing ~3 months of completed weeks once: the first
+  // SCORING_HISTORY_WEEKS feed the detail table, the whole span feeds the
+  // 3-month scoring summary below.
+  const completedPoints: number[] = [];
+  const completed = recentCompletedWeeks(now, SCORING_SUMMARY_WEEKS);
+  for (let i = 0; i < completed.length; i++) {
+    const w = completed[i]!;
     const r = await weeklyReturn(db, sym, w.weekEnd, w.weekEnd, w.baselineAt);
-    scoringHistory.push({
-      weekEnd: w.weekEnd.toISOString(),
-      returnPct:
-        r.returnPct == null ? null : Math.round(r.returnPct * 100) / 100,
-      points: lastWeekPoints(r.returnPct),
-    });
+    const pts = lastWeekPoints(r.returnPct);
+    if (pts != null) completedPoints.push(pts);
+    if (i < SCORING_HISTORY_WEEKS) scoringHistory.push(weekRow(w, r, false));
   }
+
+  // 3-month scoring summary: total long-basis points and the share of scored
+  // weeks that finished positive. Weeks with no resolvable price data are dropped.
+  const scoring3mo = {
+    totalPoints: completedPoints.length
+      ? Math.round(completedPoints.reduce((a, b) => a + b, 0) * 100) / 100
+      : null,
+    pctPositive: completedPoints.length
+      ? Math.round(
+          (completedPoints.filter((p) => p > 0).length /
+            completedPoints.length) *
+            100,
+        )
+      : null,
+    weeks: completedPoints.length,
+  };
 
   const metrics = metricsOf(h.metrics);
   return {
@@ -318,14 +354,20 @@ export async function getPlayerDetail(
     metrics,
     ownership: ownershipOf(h),
     scoringHistory,
-    prices: bars.map((b) => ({
-      ts: b.ts.toISOString(),
-      open: b.open,
-      high: b.high,
-      low: b.low,
-      close: b.close,
-      volume: b.volume,
-    })),
+    scoring3mo,
+    prices: bars.map((b) => {
+      // A session_close-only day has no intraday OHL; collapse the candle to the
+      // close so PriceBar's non-null open/high/low hold.
+      const close = b.close;
+      return {
+        ts: b.ts.toISOString(),
+        open: b.open ?? close,
+        high: b.high ?? close,
+        low: b.low ?? close,
+        close,
+        volume: b.volume,
+      };
+    }),
   };
 }
 

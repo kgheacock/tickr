@@ -20,11 +20,7 @@ import type {
   WeeklyScore,
   RecapPayload,
 } from '@tickr/shared-types';
-import {
-  buildRecap,
-  generateLeagueRecaps,
-  type RecapMatchup,
-} from '../../src/fantasy/recap.js';
+import { buildRecap, generateLeagueRecaps } from '../../src/fantasy/recap.js';
 import { RECAP_READY_CHANNEL } from '../../src/events/publisher.js';
 
 pg.types.setTypeParser(20, Number);
@@ -63,19 +59,11 @@ describe('buildRecap (pure)', () => {
   const theirs = score('B', 50, [50]);
   const all = [mine, theirs]; // sorted high → low
 
-  it('reports a win with opponent score and biggest mover/blowup', () => {
-    const m: RecapMatchup = {
-      homeUserId: 'A',
-      awayUserId: 'B',
-      homePoints: 100,
-      awayPoints: 50,
-      winnerUserId: 'A',
-    };
-    const r = buildRecap('A', 1, 1, mine, m, all);
-    expect(r.result).toBe('win');
+  it('reports the weekly placement with biggest mover/blowup', () => {
+    const r = buildRecap('A', 1, 1, mine, 1, 2, all);
+    expect(r.rank).toBe(1);
+    expect(r.fieldSize).toBe(2);
     expect(r.myScore).toBe(100);
-    expect(r.oppScore).toBe(50);
-    expect(r.oppUserId).toBe('B');
     // Mover = top slot (+120), blowup = most-negative (-20).
     expect(r.biggestMover).toMatchObject({ symbol: 'S0', points: 120 });
     expect(r.biggestBlowup).toMatchObject({ symbol: 'S1', points: -20 });
@@ -83,52 +71,19 @@ describe('buildRecap (pure)', () => {
     expect(r.leagueLow).toEqual({ userId: 'B', totalPoints: 50 });
   });
 
-  it('reports a loss from the away side', () => {
-    const m: RecapMatchup = {
-      homeUserId: 'A',
-      awayUserId: 'B',
-      homePoints: 100,
-      awayPoints: 50,
-      winnerUserId: 'A',
-    };
-    const r = buildRecap('B', 1, 1, theirs, m, all);
-    expect(r.result).toBe('loss');
-    expect(r.oppUserId).toBe('A');
-    expect(r.oppScore).toBe(100);
-  });
-
-  it('reports a tie when no winner is recorded', () => {
-    const m: RecapMatchup = {
-      homeUserId: 'A',
-      awayUserId: 'B',
-      homePoints: 100,
-      awayPoints: 100,
-      winnerUserId: null,
-    };
-    const r = buildRecap('A', 1, 1, mine, m, all);
-    expect(r.result).toBe('tie');
-  });
-
-  it('reports a bye (no opponent) with null opponent fields', () => {
-    const m: RecapMatchup = {
-      homeUserId: 'A',
-      awayUserId: null,
-      homePoints: 100,
-      awayPoints: null,
-      winnerUserId: null,
-    };
-    const r = buildRecap('A', 1, 1, mine, m, all);
-    expect(r.result).toBe('bye');
-    expect(r.oppUserId).toBeNull();
-    expect(r.oppScore).toBeNull();
+  it('reports a lower placement for the trailing manager', () => {
+    const r = buildRecap('B', 1, 1, theirs, 2, 2, all);
+    expect(r.rank).toBe(2);
+    expect(r.fieldSize).toBe(2);
+    expect(r.myScore).toBe(50);
   });
 
   it('yields null mover/blowup for a manager who started nothing', () => {
     const empty = score('A', 0, []);
-    const r = buildRecap('A', 1, 1, empty, null, [empty]);
+    const r = buildRecap('A', 1, 1, empty, 1, 1, [empty]);
     expect(r.biggestMover).toBeNull();
     expect(r.biggestBlowup).toBeNull();
-    expect(r.result).toBe('bye'); // null matchup → bye
+    expect(r.rank).toBe(1);
   });
 });
 
@@ -233,29 +188,11 @@ async function activeLeague(): Promise<{
   );
   await pool.query(
     `INSERT INTO fs_season
-       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
-     VALUES ($1, 1, 'regular', 12, 2, now())`,
+       (league_id, season_number, status, regular_weeks, started_at)
+     VALUES ($1, 1, 'regular', 12, now())`,
     [leagueId],
   );
   return { leagueId, a, b };
-}
-
-async function settledMatchup(
-  leagueId: string,
-  home: string,
-  away: string,
-  homePts: number,
-  awayPts: number,
-  winner: string | null,
-): Promise<void> {
-  await pool.query(
-    `INSERT INTO fs_matchup
-       (league_id, season, week, home_user_id, away_user_id,
-        home_points, away_points, winner_user_id, status, season_id)
-     VALUES ($1, 1, 1, $2, $3, $4, $5, $6, 'final',
-             (SELECT id FROM fs_season WHERE league_id = $1 AND season_number = 1))`,
-    [leagueId, home, away, homePts, awayPts, winner],
-  );
 }
 
 async function recapPayload(userId: string): Promise<RecapPayload> {
@@ -269,7 +206,6 @@ async function recapPayload(userId: string): Promise<RecapPayload> {
 
 beforeEach(async () => {
   await pool.query('DELETE FROM fs_notification');
-  await pool.query('DELETE FROM fs_matchup');
   await pool.query('DELETE FROM fs_weekly_score');
   await pool.query('DELETE FROM fs_league_member');
   await pool.query('DELETE FROM fs_season');
@@ -278,27 +214,26 @@ beforeEach(async () => {
 });
 
 describe('generateLeagueRecaps', () => {
-  it('writes a recap per manager from the settled scores + matchup', async () => {
+  it('writes a recap per manager with the weekly ranking', async () => {
     const { leagueId, a, b } = await activeLeague();
     await seedScore(leagueId, a, 100, [120, -20]); // mover +120, blowup -20
     await seedScore(leagueId, b, 50, [50]);
-    await settledMatchup(leagueId, a, b, 100, 50, a);
 
     const { redis, published } = stubRedis();
     const count = await generateLeagueRecaps(pool, leagueId, 1, 1, redis);
 
     expect(count).toBe(2);
     const ra = await recapPayload(a);
-    expect(ra.result).toBe('win');
-    expect(ra.oppUserId).toBe(b);
+    expect(ra.rank).toBe(1);
+    expect(ra.fieldSize).toBe(2);
     expect(ra.biggestMover).toMatchObject({ points: 120 });
     expect(ra.biggestBlowup).toMatchObject({ points: -20 });
     expect(ra.leagueHigh).toEqual({ userId: a, totalPoints: 100 });
     expect(ra.leagueLow).toEqual({ userId: b, totalPoints: 50 });
 
     const rb = await recapPayload(b);
-    expect(rb.result).toBe('loss');
-    expect(rb.oppUserId).toBe(a);
+    expect(rb.rank).toBe(2);
+    expect(rb.fieldSize).toBe(2);
 
     // Each manager got a live push, plus the league-level recap.ready signal.
     expect(published.filter((p) => p.type === 'notification')).toHaveLength(2);
@@ -313,7 +248,6 @@ describe('generateLeagueRecaps', () => {
     const { leagueId, a, b } = await activeLeague();
     await seedScore(leagueId, a, 100, [120, -20]);
     await seedScore(leagueId, b, 50, [50]);
-    await settledMatchup(leagueId, a, b, 100, 50, a);
     await generateLeagueRecaps(pool, leagueId, 1, 1);
 
     // Manager reads their recap.
@@ -323,14 +257,10 @@ describe('generateLeagueRecaps', () => {
       [a],
     );
 
-    // A dispute re-scores: B now wins. Re-settle the score + matchup, regenerate.
+    // A dispute re-scores: A now trails B, so A drops to rank 2.
     await pool.query(
       `UPDATE fs_weekly_score SET total_points = 30 WHERE user_id = $1`,
       [a],
-    );
-    await pool.query(
-      `UPDATE fs_matchup SET home_points = 30, winner_user_id = $1`,
-      [b],
     );
     await generateLeagueRecaps(pool, leagueId, 1, 1);
 
@@ -340,9 +270,9 @@ describe('generateLeagueRecaps', () => {
     );
     expect(rows[0]!.n).toBe(2);
 
-    // A's recap was regenerated (now a loss) and re-surfaced as unread.
+    // A's recap was regenerated (now 2nd) and re-surfaced as unread.
     const ra = await recapPayload(a);
-    expect(ra.result).toBe('loss');
+    expect(ra.rank).toBe(2);
     const { rows: readRows } = await pool.query<{ read_at: Date | null }>(
       `SELECT read_at FROM fs_notification WHERE user_id = $1 AND kind = 'recap'`,
       [a],

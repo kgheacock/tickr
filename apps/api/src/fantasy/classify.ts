@@ -1,9 +1,13 @@
 /**
  * Fantasy Street item 02 — player (stock) classifier.
  *
- * Reads price_bar for every backfilled symbol, computes trailing returns and
+ * Reads the merged DAILY close series (session_close over price_bar, see
+ * closes.ts) for every backfilled symbol, computes trailing returns and
  * volatility, and assigns each stock to the slot families (groups) it qualifies
- * for, upserting fs_player_classification. Pure price-derived classification —
+ * for, upserting fs_player_classification. The series is one bar per ET trading
+ * day, so the BARS_3M/BARS_12M windows below are real calendar windows; reading
+ * raw price_bar here would feed ~15-min intraday bars into day-count windows.
+ * Pure price-derived classification —
  * there is NO fundamentals feed, so sector / market-cap tier (which would
  * sharpen Anchor and Value) is an OPEN DATA ITEM; Value is a price-only proxy
  * (lowest trailing 12m return among non-Growth) until that lands.
@@ -14,6 +18,7 @@
  */
 import type { Pool } from 'pg';
 import type { PlayerGroup } from '@tickr/shared-types';
+import { mergedDailySeriesSql } from './closes.js';
 
 // Trailing windows, in trading-day bar counts (~21 bars/month).
 const BARS_3M = 63;
@@ -162,10 +167,9 @@ export async function runClassifier(pool: Pool): Promise<number> {
 
   const metrics: SymbolMetrics[] = [];
   for (const { symbol } of symRows) {
-    const { rows } = await pool.query<BarRow>(
-      `SELECT close, volume FROM price_bar WHERE symbol = $1 ORDER BY ts ASC`,
-      [symbol],
-    );
+    const { rows } = await pool.query<BarRow>(mergedDailySeriesSql('$1'), [
+      symbol,
+    ]);
     metrics.push(metricsFor(symbol, rows));
   }
 

@@ -18,6 +18,12 @@
   min-width: 160px;
 }
 
+/* The custom specialization listbox sizes to its chip otherwise, so each pick
+   would resize the control; a fixed min-width holds the bar steady. */
+.specFilter {
+  min-width: 200px;
+}
+
 /* Base styling comes from <Checkbox>; only the muted tone differs here. */
 .toggle {
   color: var(--color-text-muted);
@@ -45,14 +51,6 @@
    (0,2,0) beats it, centring the header over the column. */
 .view .num {
   text-align: center;
-}
-
-.pos {
-  color: var(--color-success);
-}
-
-.neg {
-  color: var(--color-danger);
 }
 
 .empty {

@@ -88,7 +88,6 @@ describe('ensureSeason', () => {
       season_number: 1,
       status: 'regular',
       regular_weeks: 6,
-      playoff_seeds: 4,
     });
     expect(first.started_at).not.toBeNull();
 
@@ -119,15 +118,11 @@ describe('assertSeasonWritable', () => {
 });
 
 describe('startNewSeason', () => {
-  async function archiveSeason(
-    leagueId: string,
-    champion: string,
-  ): Promise<void> {
+  async function archiveSeason(leagueId: string): Promise<void> {
     await pool.query(
-      `UPDATE fs_season SET status = 'archived', champion_user_id = $2,
-              ended_at = now()
+      `UPDATE fs_season SET status = 'archived', ended_at = now()
         WHERE league_id = $1 AND season_number = 1`,
-      [leagueId, champion],
+      [leagueId],
     );
     await pool.query(`UPDATE fs_league SET status = 'archived' WHERE id = $1`, [
       leagueId,
@@ -162,7 +157,7 @@ describe('startNewSeason', () => {
       `INSERT INTO fs_draft (league_id, status) VALUES ($1, 'complete')`,
       [leagueId],
     );
-    await archiveSeason(leagueId, commissioner);
+    await archiveSeason(leagueId);
 
     const next = await startNewSeason(pool, leagueId);
     expect(next.season_number).toBe(2);
@@ -197,10 +192,7 @@ describe('startNewSeason', () => {
     const seasons = await listSeasons(pool, leagueId);
     expect(seasons.map((s) => s.season_number)).toEqual([2, 1]);
     const archived = await loadSeason(pool, leagueId, 1);
-    expect(archived).toMatchObject({
-      status: 'archived',
-      champion_user_id: commissioner,
-    });
+    expect(archived).toMatchObject({ status: 'archived' });
 
     // ensureSeason on the re-draft activates season 2 (not a third season).
     const activated = await ensureSeason(pool, leagueId);

@@ -1,0 +1,22 @@
+/* Confirm copy + action row for the delete-league dialog, mirroring SellModal's
+   destructive-confirm treatment. */
+.confirmBody {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  margin: 0 0 var(--space-4);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.warn {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+  margin: var(--space-2) 0 0;
+}

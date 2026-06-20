@@ -5,8 +5,10 @@ import { useAuth } from '../auth/AuthProvider';
 import { client } from '../api/client';
 import { fantasyKeys } from '../features/fantasy/api';
 import { CreateLeagueModal } from '../features/fantasy/CreateLeagueModal';
+import { DeleteLeagueModal } from '../features/fantasy/DeleteLeagueModal';
 import {
   Button,
+  IconButton,
   Paper,
   Masthead,
   Rule,
@@ -51,6 +53,10 @@ const EDITION_DATE = new Date().toLocaleDateString('en-US', {
 export function LandingPage() {
   const { user, isLoading } = useAuth();
   const [creating, setCreating] = useState(false);
+  // The league an admin is about to delete (drives the confirm modal), or null.
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(
+    null,
+  );
 
   // Leagues the signed-in user belongs to, shown as quick links into each
   // dashboard. Gated on `user`: `/` also renders for logged-out visitors, and an
@@ -87,7 +93,7 @@ export function LandingPage() {
                   (see the stylesheet) — the classic newspaper lede treatment. */}
               Fantasy football where the players are stocks. Draft the S&amp;P
               500 with your league — one owner per ticker — field a weekly
-              lineup, and go head-to-head into the playoffs.
+              lineup, and win the week.
             </p>
           </article>
 
@@ -102,23 +108,50 @@ export function LandingPage() {
                   <nav className={styles.leagueList} aria-label="My leagues">
                     <p className={styles.columnHead}>My Leagues</p>
                     {leagues.map((league) => (
-                      <Link
-                        key={league.id}
-                        to={`/leagues/${league.id}`}
-                        className={styles.leagueItem}
-                      >
-                        {league.name}
-                      </Link>
+                      <div key={league.id} className={styles.leagueRow}>
+                        <Link
+                          to={`/leagues/${league.id}`}
+                          className={styles.leagueItem}
+                        >
+                          {league.name}
+                        </Link>
+                        {/* Admins can scrap a league from here; the confirm
+                            modal guards the irreversible delete. */}
+                        {user.role === 'admin' ? (
+                          <IconButton
+                            tone="danger"
+                            size="sm"
+                            aria-label={`Delete ${league.name}`}
+                            title={`Delete ${league.name}`}
+                            onClick={() =>
+                              setDeleting({ id: league.id, name: league.name })
+                            }
+                          >
+                            <TrashIcon />
+                          </IconButton>
+                        ) : null}
+                      </div>
                     ))}
                   </nav>
                 ) : null}
-                {/* Create opens a modal in place — no navigation to a list. */}
-                <Button
-                  className={styles.createCta}
-                  onClick={() => setCreating(true)}
-                >
-                  Start a League
-                </Button>
+                {/* Create opens a modal in place — no navigation to a list.
+                    tickr is invite-only, so only admins mint leagues; everyone
+                    else reaches their leagues through the list above. */}
+                {user.role === 'admin' ? (
+                  <Button
+                    className={styles.createCta}
+                    onClick={() => setCreating(true)}
+                  >
+                    Start a League
+                  </Button>
+                ) : leagues.length === 0 ? (
+                  // No CTA for non-admins; a quiet note so the column doesn't
+                  // read as broken until an invite lands them in a league.
+                  <p className={styles.beta}>
+                    Your leagues will appear here once you&rsquo;re invited to
+                    one.
+                  </p>
+                ) : null}
               </>
             ) : (
               <>
@@ -160,7 +193,39 @@ export function LandingPage() {
       {creating ? (
         <CreateLeagueModal onClose={() => setCreating(false)} />
       ) : null}
+
+      {deleting ? (
+        <DeleteLeagueModal
+          leagueId={deleting.id}
+          leagueName={deleting.name}
+          onClose={() => setDeleting(null)}
+        />
+      ) : null}
     </>
+  );
+}
+
+// Monotone trashcan — inherits `currentColor`, so IconButton's `danger` tone
+// paints it red. Lid + can + two tines, the conventional delete glyph.
+function TrashIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M2.5 4h11" />
+      <path d="M6 4V2.75A.75.75 0 0 1 6.75 2h2.5a.75.75 0 0 1 .75.75V4" />
+      <path d="M12.5 4l-.6 8.4a1 1 0 0 1-1 .93H5.1a1 1 0 0 1-1-.93L3.5 4" />
+      <path d="M6.5 7v3.5M9.5 7v3.5" />
+    </svg>
   );
 }
 

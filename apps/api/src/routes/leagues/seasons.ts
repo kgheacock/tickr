@@ -2,21 +2,19 @@
  * Fantasy Street item 08 — season lifecycle & history routes, mounted under
  * /api/v1.
  *   GET  /leagues/:id/seasons       past + current seasons, newest first
- *   GET  /leagues/:id/seasons/:n    one season's final standings + bracket
+ *   GET  /leagues/:id/seasons/:n    one season's lifecycle row
  *   POST /leagues/:id/seasons       open the next season (commissioner)
  *
- * Reads are member-gated and archived seasons are immutable (history is
- * read-only); the POST is the only mutation and re-opens an archived league for
- * a re-draft via fantasy/season.ts. Bracket + standings reads reuse fs_matchup /
- * fs_standings written by settle.ts and playoffs.ts.
+ * The game is weekly-ranking-only, so a season carries no standings or playoff
+ * bracket — it is purely a re-draft container. Reads are member-gated and
+ * archived seasons are immutable (history is read-only); the POST is the only
+ * mutation and re-opens an archived league for a re-draft via fantasy/season.ts.
  */
 import type { FastifyInstance } from 'fastify';
 import type {
   Season,
   SeasonsResponse,
   SeasonDetail,
-  Matchup,
-  Standing,
 } from '@tickr/shared-types';
 import { pool } from '../../db/pool.js';
 import {
@@ -39,38 +37,8 @@ function toSeason(r: SeasonRow): Season {
     seasonNumber: r.season_number,
     status: r.status,
     regularWeeks: r.regular_weeks,
-    playoffSeeds: r.playoff_seeds,
-    championUserId: r.champion_user_id,
     startedAt: r.started_at ? r.started_at.toISOString() : null,
     endedAt: r.ended_at ? r.ended_at.toISOString() : null,
-  };
-}
-
-interface MatchupRow {
-  id: string;
-  league_id: string;
-  season: number;
-  week: number;
-  home_user_id: string;
-  away_user_id: string | null;
-  home_points: number | null;
-  away_points: number | null;
-  winner_user_id: string | null;
-  status: 'scheduled' | 'final';
-}
-
-function toMatchup(r: MatchupRow): Matchup {
-  return {
-    id: r.id,
-    leagueId: r.league_id,
-    season: r.season,
-    week: r.week,
-    homeUserId: r.home_user_id,
-    awayUserId: r.away_user_id,
-    homePoints: r.home_points,
-    awayPoints: r.away_points,
-    winnerUserId: r.winner_user_id,
-    status: r.status,
   };
 }
 
@@ -108,48 +76,7 @@ export function registerSeasonRoutes(fastify: FastifyInstance): void {
             error: { code: 'NOT_FOUND', message: 'Season not found' },
           });
         }
-        const { rows: standings } = await pool.query<{
-          user_id: string;
-          wins: number;
-          losses: number;
-          ties: number;
-          points_for: number;
-          points_against: number;
-          rank: number;
-        }>(
-          `SELECT user_id, wins, losses, ties,
-                  points_for::float8 AS points_for,
-                  points_against::float8 AS points_against, rank
-             FROM fs_standings
-            WHERE league_id = $1 AND season = $2
-            ORDER BY rank`,
-          [req.params.id, n],
-        );
-        const { rows: matchups } = await pool.query<MatchupRow>(
-          `SELECT id, league_id, season, week, home_user_id, away_user_id,
-                  home_points::float8 AS home_points,
-                  away_points::float8 AS away_points,
-                  winner_user_id, status
-             FROM fs_matchup
-            WHERE league_id = $1 AND season = $2 AND is_playoff = true
-            ORDER BY round, week, home_user_id`,
-          [req.params.id, n],
-        );
-        return {
-          season: toSeason(season),
-          standings: standings.map(
-            (r): Standing => ({
-              userId: r.user_id,
-              wins: r.wins,
-              losses: r.losses,
-              ties: r.ties,
-              pointsFor: r.points_for,
-              pointsAgainst: r.points_against,
-              rank: r.rank,
-            }),
-          ),
-          playoffMatchups: matchups.map(toMatchup),
-        } satisfies SeasonDetail;
+        return { season: toSeason(season) } satisfies SeasonDetail;
       } catch (err) {
         return sendFantasyError(reply, err);
       }

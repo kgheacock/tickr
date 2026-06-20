@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { pool } from '../../db/pool.js';
-import { requireAuth, requireCsrf } from '../../auth/middleware.js';
+import { requireAdmin, requireCsrf } from '../../auth/middleware.js';
 import { createLeague, getLeagueView } from '../../fantasy/leagues.js';
 import { autoDraftFullLeague } from '../../fantasy/autoDraftLeague.js';
 import { sendFantasyError } from './_shared.js';
@@ -28,9 +28,12 @@ const createSchema = z.object({
 });
 
 export function registerCreateLeagueRoute(fastify: FastifyInstance): void {
+  // Admin-only: tickr is invite-only, so leagues are minted by an admin who
+  // seeds the roster with invitees. requireAdmin runs sessionMiddleware (via
+  // requireAuth) before requireCsrf reads req.session, so CSRF still validates.
   fastify.post(
     '/leagues',
-    { preHandler: [requireAuth, requireCsrf] },
+    { preHandler: [requireAdmin, requireCsrf] },
     async (req, reply) => {
       const parsed = createSchema.safeParse(req.body);
       if (!parsed.success) {

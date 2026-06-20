@@ -49,9 +49,25 @@
 
 .seat {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto 1fr auto auto auto;
   align-items: center;
   gap: var(--space-3);
+}
+
+/* Existence-check slot between the email field and the bot toggle. Holds a
+   fixed width so toggling the warning in/out never reflows the row. */
+.seatStatus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+}
+
+.warnIcon {
+  font-size: 14px;
+  line-height: 1;
+  color: #b8860b;
+  cursor: help;
 }
 
 .seatNum {

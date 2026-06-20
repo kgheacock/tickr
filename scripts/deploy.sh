@@ -43,6 +43,13 @@ if grep -Eq '^[[:space:]]*TICKR_DISABLE_REMOTE_JOBS[[:space:]]*=[[:space:]]*[^[:
   die "TICKR_DISABLE_REMOTE_JOBS is set in $SECRETS — this dev-only flag halts all data ingestion and must never be enabled in production; remove it before deploying"
 fi
 
+# Refuse to deploy with the dev-only rate-limit kill switch enabled.
+# TICKR_DISABLE_RATE_LIMIT bypasses the inbound per-IP limiter (see
+# apps/api/src/roles/api.ts); in prod it would remove the abuse/DoS guard.
+if grep -Eq '^[[:space:]]*TICKR_DISABLE_RATE_LIMIT[[:space:]]*=[[:space:]]*[^[:space:]]' "$SECRETS"; then
+  die "TICKR_DISABLE_RATE_LIMIT is set in $SECRETS — this dev-only flag disables inbound rate limiting and must never be enabled in production; remove it before deploying"
+fi
+
 log "fetching origin/main..."
 git fetch --quiet origin main
 

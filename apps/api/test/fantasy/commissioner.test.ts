@@ -18,7 +18,6 @@ import {
   fantasyHealth,
 } from '../../src/fantasy/admin.js';
 import { listAudit } from '../../src/fantasy/audit.js';
-import { generateSchedule } from '../../src/fantasy/schedule.js';
 import { loadWeeklyScore } from '../../src/fantasy/score.js';
 import { getLineup } from '../../src/fantasy/lineup.js';
 
@@ -120,8 +119,8 @@ async function addMember(
 async function seedSeason(leagueId: string): Promise<void> {
   await pool.query(
     `INSERT INTO fs_season
-       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
-     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       (league_id, season_number, status, regular_weeks, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, now()
        FROM fs_league WHERE id = $1`,
     [leagueId],
   );
@@ -178,7 +177,7 @@ async function seedWildcardLineup(
 
 beforeEach(async () => {
   await pool.query(
-    `TRUNCATE fs_audit_log, fs_weekly_score, fs_standings, fs_matchup,
+    `TRUNCATE fs_audit_log, fs_weekly_score,
               fs_lineup_slot, fs_lineup, fs_roster_entry, fs_bot_member,
               fs_draft, fs_season, fs_league_member, fs_league,
               price_bar, universe_symbol, app_user RESTART IDENTITY CASCADE`,
@@ -273,6 +272,24 @@ describe('member management', () => {
     );
   });
 
+  it('lets a manager rename their own team', async () => {
+    const { leagueId } = await seedLeague();
+    const member = await addMember(leagueId);
+    const view = await renameTeam(pool, leagueId, member, 'Otters', member);
+    expect(view.members.find((m) => m.userId === member)?.teamName).toBe(
+      'Otters',
+    );
+  });
+
+  it('forbids a manager from renaming another team', async () => {
+    const { leagueId } = await seedLeague();
+    const a = await addMember(leagueId);
+    const b = await addMember(leagueId);
+    await expect(
+      renameTeam(pool, leagueId, b, 'Hijacked', a),
+    ).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
   it('transfers the commissioner role and flips authority', async () => {
     const { leagueId, commissioner } = await seedLeague({ status: 'active' });
     const heir = await addMember(leagueId);
@@ -319,7 +336,7 @@ describe('member management', () => {
 
 // --- DoD 3: dispute re-score ------------------------------------------------
 
-/** A 2-manager active league with a week-1 schedule, lineups, and price bars. */
+/** A 2-manager active league with week-1 lineups and price bars. */
 async function seedScoredLeague(): Promise<{
   leagueId: string;
   commissioner: string;
@@ -331,7 +348,6 @@ async function seedScoredLeague(): Promise<{
   });
   const manager = await addMember(leagueId);
   await seedSeason(leagueId);
-  await generateSchedule(pool, leagueId, 1);
   await seedSymbolBars('AAA', 10_000, 11_000); // +10% → +10
   await seedSymbolBars('BBB', 10_000, 10_500); // +5%  → +5
   await rosterEntry(leagueId, commissioner, 'AAA');
@@ -342,7 +358,7 @@ async function seedScoredLeague(): Promise<{
 }
 
 describe('dispute re-score', () => {
-  it('re-runs scoring, re-settles the matchup, ranks standings, and records the reason', async () => {
+  it('re-runs scoring, leaves the season open mid-run, and records the reason', async () => {
     const { leagueId, commissioner, manager } = await seedScoredLeague();
 
     const result = await rescoreWeek(pool, leagueId, 1, commissioner, {
@@ -359,23 +375,8 @@ describe('dispute re-score', () => {
       (await loadWeeklyScore(pool, leagueId, manager, 1))!.totalPoints,
     ).toBe(5);
 
-    // FS-06: the matchup settled to final with the higher scorer as winner.
-    const { rows: mu } = await pool.query<{
-      status: string;
-      winner_user_id: string;
-    }>(`SELECT status, winner_user_id FROM fs_matchup WHERE league_id = $1`, [
-      leagueId,
-    ]);
-    expect(mu[0]!.status).toBe('final');
-    expect(mu[0]!.winner_user_id).toBe(commissioner);
-
-    // Standings re-ranked: the winner is rank 1.
-    const { rows: st } = await pool.query<{ user_id: string; rank: number }>(
-      `SELECT user_id, rank FROM fs_standings WHERE league_id = $1 ORDER BY rank`,
-      [leagueId],
-    );
-    expect(st[0]!.user_id).toBe(commissioner);
-    expect(st[0]!.rank).toBe(1);
+    // Week 1 of a 2-week season — not the last week, so nothing archives.
+    expect(result.close.archived).toBe(false);
 
     // Audited with the commissioner and their reason.
     const audit = await listAudit(pool, leagueId);
@@ -418,52 +419,51 @@ describe('dispute re-score', () => {
 // --- DoD 4: force-advance ---------------------------------------------------
 
 describe('force-advance', () => {
-  it('closes a stuck week off whatever scores exist and audits it', async () => {
+  it('closes a mid-season week without archiving and audits it', async () => {
     const { leagueId, commissioner } = await seedLeague({
       status: 'active',
       seasonLengthWeeks: 2,
     });
     await addMember(leagueId);
     await seedSeason(leagueId);
-    await generateSchedule(pool, leagueId, 1);
 
     const result = await forceAdvance(pool, leagueId, commissioner, {
       week: 1,
       reason: 'feed never settled',
     });
-    expect(result.settle.settled).toBeGreaterThan(0);
-    expect(result.settle.enteredPlayoffs).toBe(false);
-
-    // The week-1 matchup is now final (0–0, a tie with no scores). Later weeks
-    // stay scheduled — force-advance only closes the target week.
+    // Week 1 of a 2-week season — closing it leaves the season open.
+    expect(result.close.archived).toBe(false);
     const { rows } = await pool.query<{ status: string }>(
-      `SELECT status FROM fs_matchup WHERE league_id = $1 AND week = 1`,
+      `SELECT status FROM fs_season WHERE league_id = $1`,
       [leagueId],
     );
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((r) => r.status === 'final')).toBe(true);
+    expect(rows[0]!.status).toBe('regular');
     const audit = await listAudit(pool, leagueId);
     expect(audit[0]?.action).toBe('season.advance');
   });
 
-  it('forces the regular→playoffs transition on the final regular week', async () => {
+  it('archives the season on the final week', async () => {
     const { leagueId, commissioner } = await seedLeague({
       status: 'active',
       seasonLengthWeeks: 1,
     });
     await addMember(leagueId);
     await seedSeason(leagueId);
-    await generateSchedule(pool, leagueId, 1);
 
     const result = await forceAdvance(pool, leagueId, commissioner, {
       week: 1,
     });
-    expect(result.settle.enteredPlayoffs).toBe(true);
+    expect(result.close.archived).toBe(true);
     const { rows } = await pool.query<{ status: string }>(
       `SELECT status FROM fs_season WHERE league_id = $1`,
       [leagueId],
     );
-    expect(rows[0]!.status).toBe('playoffs');
+    expect(rows[0]!.status).toBe('archived');
+    const { rows: lg } = await pool.query<{ status: string }>(
+      `SELECT status FROM fs_league WHERE id = $1`,
+      [leagueId],
+    );
+    expect(lg[0]!.status).toBe('archived');
   });
 });
 

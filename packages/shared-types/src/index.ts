@@ -36,11 +36,8 @@ export type {
   ScoreBreakdownItem,
   WeeklyScore,
   LeagueScoresResponse,
-  Matchup,
-  ScheduleResponse,
-  MatchupsResponse,
-  Standing,
-  StandingsResponse,
+  SeasonWinsEntry,
+  SeasonWinsResponse,
   WaiverClaim,
   WaiverOrderEntry,
   SubmitWaiverRequest,
@@ -81,6 +78,7 @@ export type Identity = components['schemas']['Identity'];
 // --- Response types ---
 export type ApiError = components['schemas']['ApiError'];
 export type MeResponse = components['schemas']['MeResponse'];
+export type UserExistsResponse = components['schemas']['UserExistsResponse'];
 export type UniverseItem = components['schemas']['UniverseItem'];
 export type UniverseResponse = components['schemas']['UniverseResponse'];
 export type SymbolMetadata = components['schemas']['SymbolMetadata'];

@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/exists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether a registered tickr user has the given email (admin only) */
+        get: operations["checkUserExists"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/universe": {
         parameters: {
             query?: never;
@@ -354,6 +371,10 @@ export interface components {
             csrfToken: string;
             /** @description Fantasy Street leagues the user is a member of, for client routing */
             leagues: components["schemas"]["LeagueMembership"][];
+        };
+        UserExistsResponse: {
+            /** @description Whether a registered tickr user has the given email */
+            exists: boolean;
         };
         UniverseItem: {
             symbol: string;
@@ -717,7 +738,7 @@ export interface components {
             /** @enum {string} */
             joinPolicy: "invite" | "open";
             /** @enum {string} */
-            status: "forming" | "drafting" | "active" | "playoffs" | "archived";
+            status: "forming" | "drafting" | "active" | "archived";
             /** Format: date-time */
             createdAt: string;
             members: components["schemas"]["LeagueMember"][];
@@ -732,7 +753,7 @@ export interface components {
             /** @enum {string} */
             joinPolicy: "invite" | "open";
             /** @enum {string} */
-            status: "forming" | "drafting" | "active" | "playoffs" | "archived";
+            status: "forming" | "drafting" | "active" | "archived";
             memberCount: number;
             openSlots: number;
             /** Format: date-time */
@@ -751,7 +772,7 @@ export interface components {
             /** @enum {string} */
             role: "commissioner" | "manager";
             /** @enum {string} */
-            status: "forming" | "drafting" | "active" | "playoffs" | "archived";
+            status: "forming" | "drafting" | "active" | "archived";
         };
         Invite: {
             token: string;
@@ -832,12 +853,17 @@ export interface components {
             groups: components["schemas"]["PlayerGroup"][];
             /** @description Trailing ~3-month return, surfaced for scouting */
             recentReturnPct: number | null;
-            /** @description Fantasy points the stock scored last completed week (long basis, return); null when no price data resolves the week */
-            lastWeekPoints: number | null;
+            /** @description Fantasy points the stock has scored so far this in-flight week (long basis, return valued off the latest close); null when no price data resolves the week */
+            currentWeekPoints: number | null;
             ownership: components["schemas"]["PlayerOwnership"];
         };
-        /** @description One completed week's long-basis fantasy points for a stock */
+        /** @description One week's long-basis fantasy points for a stock. The first entry is the in-flight week (provisional = true), valued so far off the latest close. */
         PlayerWeekScore: {
+            /**
+             * Format: date-time
+             * @description The week's Monday (the Friday-close anchor minus four days)
+             */
+            weekStart: string;
             /**
              * Format: date-time
              * @description The week's Friday regular-close anchor
@@ -847,12 +873,23 @@ export interface components {
             returnPct: number | null;
             /** @description returnPct (long basis); null when returnPct is null */
             points: number | null;
+            /** @description True for the current, not-yet-settled week (valued so far) */
+            provisional: boolean;
         };
         PlayerListResponse: {
             items: components["schemas"]["PlayerInventoryItem"][];
             total: number;
             limit: number;
             offset: number;
+        };
+        /** @description Trailing 3-month scoring summary over completed weeks. */
+        PlayerScoringSummary: {
+            /** @description Sum of long-basis weekly points over the last ~3 months; null when no week resolves price data */
+            totalPoints: number | null;
+            /** @description Percent (0–100) of scored weeks that finished positive; null when none */
+            pctPositive: number | null;
+            /** @description Count of weeks with resolvable price data in the window */
+            weeks: number;
         };
         PlayerDetail: {
             symbol: string;
@@ -866,6 +903,7 @@ export interface components {
             ownership: components["schemas"]["PlayerOwnership"];
             /** @description Per-week long-basis points for recent completed weeks (newest first) */
             scoringHistory: components["schemas"]["PlayerWeekScore"][];
+            scoring3mo: components["schemas"]["PlayerScoringSummary"];
             /** @description Price-history window (~3 months) for the detail chart */
             prices: components["schemas"]["PriceBar"][];
         };
@@ -997,58 +1035,28 @@ export interface components {
             provisional: boolean;
             breakdown: components["schemas"]["ScoreBreakdownItem"][];
         };
-        /** @description Every manager's settled score for one league week */
+        /** @description Every manager's score for one league week. Settled (provisional = false) once the Friday close is scored; provisional in-week totals (valued so far off the latest close) until then. */
         LeagueScoresResponse: {
             season: number;
             week: number;
             scores: components["schemas"]["WeeklyScore"][];
         };
-        /** @description One head-to-head for a (league, season, week) */
-        Matchup: {
-            id: string;
-            leagueId: string;
-            season: number;
-            week: number;
-            homeUserId: string;
-            /** @description Opponent; null is a bye (home manager sits, no-contest) */
-            awayUserId?: string | null;
-            /** @description Home total — settled, or live when provisional, else null */
-            homePoints?: number | null;
-            /** @description Away total; null for a bye or before scoring */
-            awayPoints?: number | null;
-            /** @description Higher-scoring side; null for a tie, bye, or unsettled */
-            winnerUserId?: string | null;
-            /** @enum {string} */
-            status: "scheduled" | "final";
-        };
-        /** @description A league's full-season round-robin */
-        ScheduleResponse: {
-            season: number;
-            matchups: components["schemas"]["Matchup"][];
-        };
-        /** @description One week's head-to-heads; provisional overlays live points */
-        MatchupsResponse: {
-            season: number;
-            week: number;
-            /** @description True when points are live (the week has not settled) */
-            provisional: boolean;
-            matchups: components["schemas"]["Matchup"][];
-        };
-        /** @description One manager's standings row with the tiebreaker fields exposed */
-        Standing: {
+        /** @description One manager's season win tally. A win is a first-place finish in a settled week's ranking; tied co-leaders each count a win. */
+        SeasonWinsEntry: {
             userId: string;
+            /** @description Weeks finished first in the weekly ranking (co-leaders count) */
             wins: number;
-            losses: number;
-            ties: number;
+            /** @description Settled weeks this manager was scored in */
+            weeksPlayed: number;
+            /** @description Sum of settled weekly totals — the win tiebreaker */
             pointsFor: number;
-            pointsAgainst: number;
-            /** @description 1-based finishing position after the tiebreaker sort */
-            rank: number;
         };
-        /** @description A league's standings, ranked by the documented tiebreakers */
-        StandingsResponse: {
+        /** @description Season-long win standings derived from every settled week. Managers are ordered by wins, then total points-for. Empty until the first week settles. */
+        SeasonWinsResponse: {
             season: number;
-            standings: components["schemas"]["Standing"][];
+            /** @description Number of settled weeks counted into the tally */
+            weeks: number;
+            entries: components["schemas"]["SeasonWinsEntry"][];
         };
         /** @description A queued add/drop request, resolved by the waiver run */
         WaiverClaim: {
@@ -1145,19 +1153,15 @@ export interface components {
             incoming: components["schemas"]["Trade"][];
             outgoing: components["schemas"]["Trade"][];
         };
-        /** @description One season's lifecycle row for a league */
+        /** @description One season's lifecycle row for a league (a re-draft container) */
         Season: {
             id: string;
             leagueId: string;
             seasonNumber: number;
             /** @enum {string} */
-            status: "regular" | "playoffs" | "archived";
-            /** @description Regular-season length; the bracket opens the week after */
+            status: "regular" | "archived";
+            /** @description Season length in weeks; the season archives once it elapses */
             regularWeeks: number;
-            /** @description Top-K standings seeds into the single-elim bracket */
-            playoffSeeds: number;
-            /** @description Crowned once the final playoff matchup settles */
-            championUserId: string | null;
             /** Format: date-time */
             startedAt: string | null;
             /** Format: date-time */
@@ -1167,11 +1171,9 @@ export interface components {
         SeasonsResponse: {
             seasons: components["schemas"]["Season"][];
         };
-        /** @description One season with its final standings and playoff bracket */
+        /** @description One season's lifecycle row (history is read-only) */
         SeasonDetail: {
             season: components["schemas"]["Season"];
-            standings: components["schemas"]["Standing"][];
-            playoffMatchups: components["schemas"]["Matchup"][];
         };
         /** @description Fill `count` empty league slots with auto-managers (bots) */
         AddBotsRequest: {
@@ -1211,16 +1213,15 @@ export interface components {
             userId: string;
             totalPoints: number;
         };
-        /** @description The post-settle weekly recap for one manager, composed from the FS-05 per-slot breakdown and the FS-06 settled matchup. `result` is the head-to-head outcome (bye when the manager had no opponent). */
+        /** @description The post-settle weekly recap for one manager, composed from the FS-05 per-slot breakdown and the manager's weekly ranking. `rank` is the manager's placement among the league's `fieldSize` managers this week. */
         RecapPayload: {
             season: number;
             week: number;
-            /** @enum {string} */
-            result: "win" | "loss" | "tie" | "bye";
+            /** @description 1-based placement this week (ties share a rank) */
+            rank: number;
+            /** @description Number of ranked managers this week */
+            fieldSize: number;
             myScore: number;
-            /** @description Opponent's total; null on a bye */
-            oppScore: number | null;
-            oppUserId: string | null;
             /** @description Highest-scoring started slot, or null if none scored */
             biggestMover: components["schemas"]["RecapSlot"] | null;
             /** @description Most-negative started slot, or null if none scored */
@@ -1266,7 +1267,6 @@ export interface components {
                 forming: number;
                 drafting: number;
                 active: number;
-                playoffs: number;
                 archived: number;
             };
             /** @description Drafts currently in_progress across the fleet */
@@ -1438,6 +1438,32 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    checkUserExists: {
+        parameters: {
+            query: {
+                email: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Existence result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserExistsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalServerError"];
         };
     };

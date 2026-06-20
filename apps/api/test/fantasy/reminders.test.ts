@@ -69,8 +69,8 @@ async function seedUser(name: string): Promise<string> {
 async function seedSeason(leagueId: string): Promise<void> {
   await pool.query(
     `INSERT INTO fs_season
-       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
-     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       (league_id, season_number, status, regular_weeks, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, now()
        FROM fs_league WHERE id = $1`,
     [leagueId],
   );
@@ -266,7 +266,7 @@ describe('lineup reminders', () => {
     expect(rows.map((r) => r.user_id)).toContain(human);
   });
 
-  it('only touches active/playoffs leagues, not forming ones', async () => {
+  it('only touches active leagues, not forming ones', async () => {
     const forming = await activeLeague('forming');
     await addManager(forming, 'M');
 

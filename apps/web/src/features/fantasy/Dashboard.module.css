@@ -1,90 +1,140 @@
-.grid {
+/* The dashboard runs as two newspaper "columns": the week's leaderboard on the
+   left, the season win standings on the right, each opening on an editorial
+   kicker + serif headline over the shared data <Table>. They collapse to a
+   single stacked column on a narrow page. The hairline between them is the
+   classic inter-column rule of a print spread. */
+.page {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--space-5);
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+  align-items: start;
 }
 
-.card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  padding: var(--space-5);
+.page > .section + .section {
+  padding-left: var(--space-8);
+  border-left: 1px solid var(--color-border);
+}
+
+@media (max-width: 720px) {
+  .page {
+    grid-template-columns: 1fr;
+    gap: var(--space-10);
+  }
+
+  .page > .section + .section {
+    padding-left: 0;
+    border-left: none;
+  }
+}
+
+.section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
 }
 
-.cardHead {
-  font-family: var(--font-sans);
-  font-size: 12px;
+/* Section head: the kicker eyebrow and headline on the left, a status tag
+   (live/final, or the season count) pushed to the right margin. */
+.head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.headline {
+  font-family: var(--font-serif);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: var(--font-size-xl);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+
+/* The right-hand standfirst beside a headline — set in the same agate sans as
+   the table heads so the section reads as one typographic family. */
+.note {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--color-text-muted);
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: var(--space-2);
+  padding-bottom: var(--space-1);
 }
 
-.scoreboard {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
+/* ── Table columns ─────────────────────────────────────────── */
 
-.side {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  flex: 1;
-}
-
-.team {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-}
-
-.score {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-xl);
+/* Rank: a narrow agate numeral column, set in the numeric serif so the place
+   reads like a stock-listing line number. */
+.pos {
+  width: 1%;
+  white-space: nowrap;
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
   font-weight: 700;
-}
-
-.vs {
-  font-family: var(--font-serif);
-  font-style: italic;
-  color: var(--color-text-muted);
-}
-
-.provisional {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--color-success);
-  letter-spacing: 0.03em;
-}
-
-.standingLine {
-  font-family: var(--font-serif);
   font-size: var(--font-size-lg);
+  color: var(--color-text-muted);
+  text-align: right;
+  padding-right: var(--space-4) !important;
 }
 
-.rank {
-  font-family: var(--font-mono);
-  font-weight: 700;
+/* The leader's place is inked full-strength and carries a spot-ink accent. */
+.leader .pos {
   color: var(--color-accent);
 }
 
-.link {
-  font-family: var(--font-sans);
-  font-size: var(--font-size-sm);
+.team {
+  font-family: var(--font-serif);
   font-weight: 600;
-  margin-top: auto;
 }
 
-.empty,
-.loading {
+/* The "— you" tag trailing the manager's own team name. */
+.youTag {
+  margin-left: var(--space-2);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  vertical-align: middle;
+}
+
+/* Numeric columns — points, wins, games — right-aligned tabular figures. */
+.num {
+  text-align: right;
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+
+/* Wins is the headline stat of the season table: heavier and full ink. */
+.wins {
+  font-weight: 700;
+  font-size: var(--font-size-lg);
+}
+
+/* The signed week points, sized up a touch to anchor the leaderboard row. */
+.points {
+  font-size: var(--font-size-lg);
+}
+
+/* The manager's own row — a persistent accent wash + leading ink-blue bar,
+   the resting form of the table's clickable-row affordance. */
+.mine td {
+  background: rgba(26, 79, 138, 0.07);
+}
+
+.mine td:first-child {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+/* Empty / loading state inside the table frame. */
+.empty {
   font-family: var(--font-serif);
-  color: var(--color-text-muted);
   font-style: italic;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-8) !important;
 }

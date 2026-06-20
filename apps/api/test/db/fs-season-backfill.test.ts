@@ -84,11 +84,6 @@ async function seedLegacyLeague(status: string): Promise<string> {
      VALUES ($1, $2, 1, 1, 42)`,
     [leagueId, user],
   );
-  await pool.query(
-    `INSERT INTO fs_matchup (league_id, season, week, home_user_id)
-     VALUES ($1, 1, 1, $2)`,
-    [leagueId, user],
-  );
   return leagueId;
 }
 
@@ -106,10 +101,10 @@ describe('migration 014 season-1 backfill', () => {
     });
 
     const active = await seedLegacyLeague('active');
-    const playoffs = await seedLegacyLeague('playoffs');
     const archived = await seedLegacyLeague('archived');
 
-    // Phase 2: apply 014 (backfill + SET NOT NULL must succeed on the rows above).
+    // Phase 2: apply the rest (backfill + SET NOT NULL must succeed on the rows
+    // above; the later refocus migration drops matchups/standings + playoffs).
     await runner({
       databaseUrl,
       dir: migrationsDir,
@@ -129,22 +124,21 @@ describe('migration 014 season-1 backfill', () => {
       `SELECT id, league_id, season_number, status, regular_weeks FROM fs_season`,
     );
     const byLeague = new Map(seasons.rows.map((s) => [s.league_id, s]));
-    expect(seasons.rows).toHaveLength(3);
+    expect(seasons.rows).toHaveLength(2);
     expect(byLeague.get(active)).toMatchObject({
       season_number: 1,
       status: 'regular',
       regular_weeks: 7,
     });
-    expect(byLeague.get(playoffs)!.status).toBe('playoffs');
     expect(byLeague.get(archived)!.status).toBe('archived');
 
     // Every legacy row now points at its league's season-1 row, none null.
-    for (const table of ['fs_lineup', 'fs_weekly_score', 'fs_matchup']) {
+    for (const table of ['fs_lineup', 'fs_weekly_score']) {
       const { rows } = await pool.query<{
         league_id: string;
         season_id: string;
       }>(`SELECT league_id, season_id FROM ${table}`);
-      expect(rows).toHaveLength(3);
+      expect(rows).toHaveLength(2);
       for (const r of rows) {
         expect(r.season_id).toBe(byLeague.get(r.league_id)!.id);
       }

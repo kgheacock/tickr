@@ -86,8 +86,8 @@ async function seedLeague(): Promise<{
   );
   await pool.query(
     `INSERT INTO fs_season
-       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
-     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       (league_id, season_number, status, regular_weeks, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, now()
        FROM fs_league WHERE id = $1`,
     [leagueId],
   );

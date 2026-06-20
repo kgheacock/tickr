@@ -11,7 +11,7 @@ import {
 } from '../../src/routes/leagues/players.js';
 import { isEligible, slotsFor } from '../../src/fantasy/eligibility.js';
 import {
-  lastCompletedWeek,
+  currentWeek,
   recentCompletedWeeks,
 } from '../../src/fantasy/returns.js';
 import type { PlayerGroup } from '@tickr/shared-types';
@@ -83,19 +83,6 @@ async function seedMetadata(symbol: string, name: string): Promise<void> {
   );
 }
 
-async function seedBar(
-  symbol: string,
-  day: number,
-  close: number,
-): Promise<void> {
-  const ts = new Date(Date.UTC(2026, 0, day)).toISOString();
-  await pool.query(
-    `INSERT INTO price_bar (symbol, ts, open, high, low, close, volume)
-     VALUES ($1, $2, $3, $3, $3, $3, 500)`,
-    [symbol, ts, close],
-  );
-}
-
 async function seedBarAt(
   symbol: string,
   ts: Date,
@@ -108,9 +95,23 @@ async function seedBarAt(
   );
 }
 
+async function seedSessionClose(
+  symbol: string,
+  sessionDate: string,
+  close: number,
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO session_close (symbol, session_date, close)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (symbol, session_date) DO UPDATE SET close = EXCLUDED.close`,
+    [symbol, sessionDate, close],
+  );
+}
+
 beforeEach(async () => {
   await pool.query('DELETE FROM fs_roster_entry');
   await pool.query('DELETE FROM fs_player_classification');
+  await pool.query('DELETE FROM session_close');
   await pool.query('DELETE FROM price_bar');
   await pool.query('DELETE FROM fs_league_member');
   await pool.query('DELETE FROM fs_league');
@@ -228,23 +229,24 @@ describe('listPlayers', () => {
     expect(mine.total).toBe(1);
   });
 
-  it('reports lastWeekPoints from the last completed week (return)', async () => {
-    // A fixed weekday clock so the "last completed week" anchors are stable.
+  it('reports currentWeekPoints from the in-flight week so far (return)', async () => {
+    // A fixed weekday clock so the "current week" baseline anchor is stable.
     const now = new Date('2026-06-15T12:00:00Z');
-    const { weekEnd, baselineAt } = lastCompletedWeek(now);
+    const { baselineAt } = currentWeek(now);
 
     await seedSymbol('UP');
     await seedSymbol('NODATA');
-    // 100 → 110 over the week is +10%, scoring +10 long-basis points.
+    // Last Friday's 100 → 110 so far this week is +10%, +10 long-basis points;
+    // the "this" close is valued at `now`, not the (future) week-end Friday.
     await seedBarAt('UP', baselineAt, 100);
-    await seedBarAt('UP', weekEnd, 110);
+    await seedBarAt('UP', now, 110);
 
     const page = await listPlayers(pool, leagueId, { now });
     const up = page.items.find((i) => i.symbol === 'UP')!;
     const nodata = page.items.find((i) => i.symbol === 'NODATA')!;
-    expect(up.lastWeekPoints).toBeCloseTo(10, 6);
+    expect(up.currentWeekPoints).toBeCloseTo(10, 6);
     // No bars in the window → null, not a misleading zero.
-    expect(nodata.lastWeekPoints).toBeNull();
+    expect(nodata.currentWeekPoints).toBeNull();
   });
 
   it('paginates with total/limit/offset', async () => {
@@ -258,7 +260,10 @@ describe('listPlayers', () => {
 
   it('sorts by symbol ascending and descending', async () => {
     for (const s of ['AA', 'BB', 'CC']) await seedSymbol(s);
-    const asc = await listPlayers(pool, leagueId, { sort: 'symbol', dir: 'asc' });
+    const asc = await listPlayers(pool, leagueId, {
+      sort: 'symbol',
+      dir: 'asc',
+    });
     expect(asc.items.map((i) => i.symbol)).toEqual(['AA', 'BB', 'CC']);
     const desc = await listPlayers(pool, leagueId, {
       sort: 'symbol',
@@ -267,16 +272,16 @@ describe('listPlayers', () => {
     expect(desc.items.map((i) => i.symbol)).toEqual(['CC', 'BB', 'AA']);
   });
 
-  it('sorts by last-week move, with no-data symbols always last', async () => {
+  it('sorts by current-week move, with no-data symbols always last', async () => {
     const now = new Date('2026-06-15T12:00:00Z');
-    const { weekEnd, baselineAt } = lastCompletedWeek(now);
+    const { baselineAt } = currentWeek(now);
     await seedSymbol('BIG'); // +20%
     await seedSymbol('SMALL'); // -10%
     await seedSymbol('NONE'); // no bars → null move
     await seedBarAt('BIG', baselineAt, 100);
-    await seedBarAt('BIG', weekEnd, 120);
+    await seedBarAt('BIG', now, 120);
     await seedBarAt('SMALL', baselineAt, 100);
-    await seedBarAt('SMALL', weekEnd, 90);
+    await seedBarAt('SMALL', now, 90);
 
     const desc = await listPlayers(pool, leagueId, {
       sort: 'lastWk',
@@ -300,8 +305,10 @@ describe('getPlayerDetail', () => {
     await seedSymbol('NVDA');
     await seedClassification('NVDA', ['growth', 'defense', 'wildcard'], 20);
     await seedMetadata('NVDA', 'NVIDIA Corporation');
-    await seedBar('NVDA', 1, 100);
-    await seedBar('NVDA', 2, 110);
+    // Regular-session bars on two ET trading days (15:00 ET EST = 20:00 UTC) so
+    // the daily collapse in closes.ts keeps one row each.
+    await seedBarAt('NVDA', new Date('2026-01-05T20:00:00Z'), 100);
+    await seedBarAt('NVDA', new Date('2026-01-06T20:00:00Z'), 110);
 
     // Anchor the 3-month price window to the seeded bars so the chart slice is
     // deterministic regardless of wall-clock date.
@@ -322,7 +329,34 @@ describe('getPlayerDetail', () => {
     expect(detail!.ownership.owned).toBe(false);
   });
 
-  it('builds scoringHistory whose newest week agrees with lastWeekPoints', async () => {
+  it('collapses intraday bars to the regular-session daily close and overlays session_close', async () => {
+    await seedSymbol('DLY');
+    await seedMetadata('DLY', 'Daily Co');
+    // One ET trading day (2026-01-05), three 15-min bars: 09:30 ET (14:30 UTC),
+    // the 15:45 ET regular close (20:45 UTC), and an 18:00 ET after-hours print
+    // (23:00 UTC). The daily close must be the regular 15:45 print, not 9999.
+    await seedBarAt('DLY', new Date('2026-01-05T14:30:00Z'), 9_500);
+    await seedBarAt('DLY', new Date('2026-01-05T20:45:00Z'), 9_600);
+    await seedBarAt('DLY', new Date('2026-01-05T23:00:00Z'), 9_999); // after-hours
+    // The next day exists only in session_close (Massive hasn't backfilled it).
+    await seedSessionClose('DLY', '2026-01-06', 9_700);
+
+    const now = new Date('2026-01-15T00:00:00Z');
+    const detail = await getPlayerDetail(pool, leagueId, 'DLY', now);
+    expect(detail!.prices).toHaveLength(2);
+
+    const [day1, day2] = detail!.prices;
+    // After-hours 9999 excluded; the regular-session close (15:45) wins.
+    expect(day1!.close).toBe(9_600);
+    expect(day1!.open).toBe(9_500); // 09:30 bar; pre-/after-hours filtered out
+    expect(day1!.high).toBe(9_600);
+    // session_close-only day: the official close, OHL collapsed to it, no volume.
+    expect(day2!.close).toBe(9_700);
+    expect(day2!.open).toBe(9_700);
+    expect(day2!.volume).toBeNull();
+  });
+
+  it('builds scoringHistory whose in-flight week agrees with currentWeekPoints', async () => {
     const now = new Date('2026-06-15T12:00:00Z');
     const weeks = recentCompletedWeeks(now, 3);
     await seedSymbol('HIST');
@@ -334,16 +368,28 @@ describe('getPlayerDetail', () => {
 
     const detail = await getPlayerDetail(pool, leagueId, 'HIST', now);
     expect(detail).not.toBeNull();
-    // SCORING_HISTORY_WEEKS entries, newest first.
-    expect(detail!.scoringHistory).toHaveLength(8);
-    expect(detail!.scoringHistory[0]!.points).toBeCloseTo(10, 6); // +10% → +10
-    expect(detail!.scoringHistory[1]!.points).toBeCloseTo(-4.76, 2); // 105→100
-    expect(detail!.scoringHistory[2]!.points).toBeNull(); // no baseline bar
+    // The in-flight week leads, then SCORING_HISTORY_WEEKS completed weeks.
+    expect(detail!.scoringHistory).toHaveLength(9);
+    // [0] is the provisional current week, valued so far off the latest close
+    // (the F-7 bar) against the prior Friday — same bar, so +0% here.
+    expect(detail!.scoringHistory[0]!.provisional).toBe(true);
+    expect(detail!.scoringHistory[0]!.points).toBeCloseTo(0, 6);
+    expect(detail!.scoringHistory[1]!.provisional).toBe(false);
+    expect(detail!.scoringHistory[1]!.points).toBeCloseTo(10, 6); // +10% → +10
+    expect(detail!.scoringHistory[2]!.points).toBeCloseTo(-4.76, 2); // 105→100
+    expect(detail!.scoringHistory[3]!.points).toBeNull(); // no baseline bar
 
-    // The detail's newest week must match the inventory column for the same now.
+    // 3-month summary spans only the two weeks that resolve closes: +10 and
+    // -4.76, one of two positive.
+    expect(detail!.scoring3mo.weeks).toBe(2);
+    expect(detail!.scoring3mo.totalPoints).toBeCloseTo(5.24, 2);
+    expect(detail!.scoring3mo.pctPositive).toBe(50);
+
+    // The inventory column matches the provisional in-flight week (scoringHistory[0]),
+    // not a completed one — both value "so far" off the latest close at `now`.
     const page = await listPlayers(pool, leagueId, { now });
     const hist = page.items.find((i) => i.symbol === 'HIST')!;
-    expect(hist.lastWeekPoints).toBeCloseTo(
+    expect(hist.currentWeekPoints).toBeCloseTo(
       detail!.scoringHistory[0]!.points!,
       6,
     );

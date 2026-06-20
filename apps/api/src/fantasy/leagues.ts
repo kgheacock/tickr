@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { mintBots } from './botMint.js';
+import { randomTeamName } from './teamNames.js';
 import type {
   Invite,
   JoinPolicy,
@@ -309,23 +310,26 @@ export async function createLeague(
       "joinPolicy must be 'invite' or 'open'",
     );
   }
-  // Every non-commissioner seat is filled by an auto-manager up front so the
-  // league is full and can be auto-drafted the instant it's created (FS-14
-  // instant play — the default). Human ("email") seats additionally get a
-  // labelled invite, so a future claim-on-join flow can hand the bot-held team
-  // over to the real manager. Validate invitee emails before we touch the DB.
+  // Every seat is filled up front so the league is full and can be auto-drafted
+  // the instant it's created (FS-14 instant play — the default). A human
+  // ("email") seat resolves one of two ways inside the transaction below: if the
+  // invitee already has a tickr account they're auto-joined as a real manager;
+  // otherwise the seat is held by an auto-manager and a labelled invite is
+  // recorded so a future claim-on-join can hand the bot-held team to the real
+  // manager. Bot seats are always auto-managers. Validate + normalize invitee
+  // emails before we touch the DB.
   const seatCount = members?.length ?? 0;
-  const inviteEmails: string[] = [];
+  const humanEmails: string[] = [];
   for (const m of members ?? []) {
     if (m.isBot) continue;
-    const email = m.email?.trim();
+    const email = m.email?.trim().toLowerCase();
     if (!email || !EMAIL_RE.test(email)) {
       throw new FantasyError(
         'VALIDATION',
         `invalid invitee email: ${m.email ?? '(empty)'}`,
       );
     }
-    inviteEmails.push(email);
+    humanEmails.push(email);
   }
   const teamName = input.teamName?.trim() || null;
   const rosterConfig = input.rosterConfig ?? DEFAULT_ROSTER_CONFIG;
@@ -357,12 +361,53 @@ export async function createLeague(
        VALUES ($1, $2, 'commissioner', $3)`,
       [league.id, userId, teamName],
     );
-    // Fill every seat with an auto-manager (so the league is full and instantly
-    // draftable), then create a labelled invite for each human seat. NOTE:
-    // invite email *delivery* — and the claim-on-join handover from the bot to
-    // the real manager — are not wired yet. See TODO/fantasy-street/14-polish.md.
-    if (seatCount > 0) {
-      await mintBots(client, league.id, seatCount, 0);
+    // Resolve each invited human to an existing account. Those with one are
+    // auto-joined as managers right now; those without fall back to a bot-held
+    // seat + labelled invite (claim-on-join for the unclaimed case is still a
+    // TODO — see below and TODO/fantasy-street/14-polish.md). Bot seats are
+    // always auto-managers. Every seat yields exactly one member, so the league
+    // ends up full (commissioner + seatCount) and instant-play auto-draft runs.
+    let botCount = seatCount - humanEmails.length; // explicit bot seats
+    const joinUserIds: string[] = [];
+    const inviteEmails: string[] = [];
+    const seen = new Set<string>([userId]); // commissioner is already a member
+    for (const email of humanEmails) {
+      const { rows: userRows } = await client.query<{ id: string }>(
+        `SELECT id FROM app_user WHERE lower(email) = $1 LIMIT 1`,
+        [email],
+      );
+      const existingId = userRows[0]?.id;
+      if (existingId && !seen.has(existingId)) {
+        // Existing account → join them straight into the league.
+        seen.add(existingId);
+        joinUserIds.push(existingId);
+      } else if (existingId) {
+        // Self-invite or a duplicate address: the account is already a member,
+        // so backfill the seat with an auto-manager to keep the league full.
+        botCount++;
+      } else {
+        // No account yet: hold the seat with a bot and record a labelled invite.
+        // NOTE: invite email *delivery* and the claim-on-join handover from the
+        // bot to the real manager (incl. minting an unclaimed account so the
+        // invitee auto-joins on first sign-in) are not wired yet.
+        botCount++;
+        inviteEmails.push(email);
+      }
+    }
+    if (botCount > 0) {
+      await mintBots(client, league.id, botCount, 0);
+    }
+    // Give each joining manager a playful starting team name so they don't
+    // show up as the bland account default ("User"); they can rename later.
+    const usedNames = new Set<string>(teamName ? [teamName] : []);
+    for (const joinUserId of joinUserIds) {
+      const startingName = randomTeamName(usedNames);
+      usedNames.add(startingName);
+      await client.query(
+        `INSERT INTO fs_league_member (league_id, user_id, role, team_name)
+         VALUES ($1, $2, 'manager', $3)`,
+        [league.id, joinUserId, startingName],
+      );
     }
     for (const email of inviteEmails) {
       await client.query(

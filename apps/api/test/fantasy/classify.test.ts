@@ -136,6 +136,7 @@ describe('runClassifier', () => {
 
   beforeEach(async () => {
     await pool.query('DELETE FROM fs_player_classification');
+    await pool.query('DELETE FROM session_close');
     await pool.query('DELETE FROM price_bar');
     await pool.query('DELETE FROM universe_symbol');
   });
@@ -146,7 +147,9 @@ describe('runClassifier', () => {
       [symbol],
     );
     for (let i = 0; i < closes.length; i++) {
-      const ts = new Date(Date.UTC(2024, 0, 1 + i)).toISOString();
+      // 20:00 UTC = 15:00 ET (EST) — inside the regular session, so the daily
+      // collapse in closes.ts keeps it (one bar per ET day).
+      const ts = new Date(Date.UTC(2024, 0, 1 + i, 20)).toISOString();
       await pool.query(
         `INSERT INTO price_bar (symbol, ts, open, high, low, close, volume)
          VALUES ($1, $2, $3, $3, $3, $3, $4)`,

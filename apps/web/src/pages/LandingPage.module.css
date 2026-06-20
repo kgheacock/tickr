@@ -152,6 +152,20 @@
   margin-bottom: var(--space-4);
 }
 
+/* Each league is a row: the name link, then the admin delete trashcan inline
+   right after it. The row owns the divider rule so the button stays clear of
+   it. */
+.leagueRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.leagueRow:last-child {
+  border-bottom: none;
+}
+
 .leagueItem {
   display: flex;
   gap: var(--space-2);
@@ -160,17 +174,12 @@
   line-height: 1.3;
   color: var(--color-accent);
   padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--color-border);
   transition: color 0.15s;
 }
 
 .leagueItem::before {
   content: '•';
   color: var(--color-text-muted);
-}
-
-.leagueItem:last-child {
-  border-bottom: none;
 }
 
 .leagueItem:hover {

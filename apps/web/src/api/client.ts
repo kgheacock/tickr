@@ -1,5 +1,6 @@
 import type {
   MeResponse,
+  UserExistsResponse,
   UniverseResponse,
   PricesResponse,
   EvaluateRequest,
@@ -20,9 +21,7 @@ import type {
   Lineup,
   SetLineupRequest,
   LeagueScoresResponse,
-  MatchupsResponse,
-  ScheduleResponse,
-  StandingsResponse,
+  SeasonWinsResponse,
   SeasonsResponse,
   Notification,
   NotificationsResponse,
@@ -95,6 +94,13 @@ class ApiClient {
     return this.request<MeResponse>('GET', '/me');
   }
 
+  /** Admin-only: whether a registered tickr user has the given email. */
+  checkUserExists(email: string): Promise<UserExistsResponse> {
+    return this.request<UserExistsResponse>('GET', '/users/exists', undefined, {
+      email,
+    });
+  }
+
   getUniverse(backfilledOnly = false): Promise<UniverseResponse> {
     return this.request<UniverseResponse>('GET', '/universe', undefined, {
       backfilled: String(backfilledOnly),
@@ -152,6 +158,27 @@ class ApiClient {
   /** Create a league; the caller becomes its commissioner and first member. */
   createLeague(req: CreateLeagueRequest): Promise<LeagueView> {
     return this.request<LeagueView>('POST', '/leagues', req);
+  }
+
+  /** Admin-only: permanently delete a league and all its data (cascades). */
+  deleteLeague(id: string): Promise<void> {
+    return this.request<void>('DELETE', `/leagues/${id}`);
+  }
+
+  /**
+   * Rename a team. A manager may rename their own team (`userId` === self); the
+   * commissioner may rename any member's. Returns the refreshed league view.
+   */
+  renameTeam(
+    id: string,
+    userId: string,
+    teamName: string,
+  ): Promise<LeagueView> {
+    return this.request<LeagueView>(
+      'PATCH',
+      `/leagues/${id}/members/${encodeURIComponent(userId)}`,
+      { teamName },
+    );
   }
 
   /** The caller's roster (owned players) for a league — the lineup pick pool. */
@@ -252,32 +279,10 @@ class ApiClient {
     );
   }
 
-  getMatchups(
-    id: string,
-    week: number,
-    season: number,
-  ): Promise<MatchupsResponse> {
-    return this.request<MatchupsResponse>(
+  getSeasonWins(id: string, season: number): Promise<SeasonWinsResponse> {
+    return this.request<SeasonWinsResponse>(
       'GET',
-      `/leagues/${id}/matchups`,
-      undefined,
-      { week: String(week), season: String(season) },
-    );
-  }
-
-  getSchedule(id: string, season: number): Promise<ScheduleResponse> {
-    return this.request<ScheduleResponse>(
-      'GET',
-      `/leagues/${id}/schedule`,
-      undefined,
-      { season: String(season) },
-    );
-  }
-
-  getStandings(id: string, season: number): Promise<StandingsResponse> {
-    return this.request<StandingsResponse>(
-      'GET',
-      `/leagues/${id}/standings`,
+      `/leagues/${id}/wins`,
       undefined,
       { season: String(season) },
     );
@@ -308,12 +313,16 @@ class ApiClient {
   /**
    * DEV-ONLY: mint a real session via the server's gated dev-login backdoor.
    * Pass an email to impersonate that account; omit it for the default user.
+   * Pass `admin: false` to log in as a plain player (synthetic user only).
    */
-  devLogin(email?: string | null): Promise<void> {
+  devLogin(email?: string | null, admin: boolean = true): Promise<void> {
+    const body: { email?: string; admin?: boolean } = {};
+    if (email) body.email = email;
+    if (!admin) body.admin = false;
     return this.request<void>(
       'POST',
       '/auth/dev-login',
-      email ? { email } : undefined,
+      Object.keys(body).length > 0 ? body : undefined,
     );
   }
 }

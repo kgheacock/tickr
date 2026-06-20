@@ -5,22 +5,22 @@
  * league:
  *
  *   settle (Friday post-close)  — compute each manager's score from the Friday
- *       close, persist it (idempotent upsert), publish `score.updated` (FS-06
- *       settles the matchup off this), and push the final `matchup.updated`.
+ *       close, persist it (idempotent upsert), publish `score.updated`, close the
+ *       week (archive the season when its weeks elapse), and push the final
+ *       `scores.updated` (the weekly ranking is derived from these scores).
  *   provisional (Mon–Thu)       — compute a best-effort total from the latest
- *       available close and push `matchup.updated` without persisting.
+ *       available close and push `scores.updated` without persisting.
  *
  * Thin orchestration; all scoring math lives in fantasy/score.ts.
  */
 import type { Pool } from 'pg';
 import type { Redis } from 'ioredis';
 import { computeLeagueWeek, settleLeagueWeek } from '../fantasy/score.js';
-import { settleMatchups } from '../fantasy/settle.js';
+import { closeWeek } from '../fantasy/settle.js';
 import { generateLeagueRecaps } from '../fantasy/recap.js';
 import {
   publishScoreUpdated,
-  publishMatchupUpdated,
-  publishSeasonChampion,
+  publishScoresUpdated,
 } from '../events/publisher.js';
 import { massiveGet } from '../massive/client.js';
 import { insertBars } from './insertBars.js';
@@ -60,13 +60,11 @@ async function rosteredSymbols(
   week: number,
 ): Promise<string[]> {
   const { rows } = await pool.query<{ symbol: string }>(
-    // Mirror activeLeagueIds: playoff weeks are scored too, so capture their
-    // rostered symbols' close bars as well.
     `SELECT DISTINCT ls.symbol
        FROM fs_lineup l
        JOIN fs_lineup_slot ls ON ls.lineup_id = l.id
        JOIN fs_league lg ON lg.id = l.league_id
-      WHERE lg.status IN ('active', 'playoffs')
+      WHERE lg.status = 'active'
         AND l.season = $1 AND l.week = $2
         AND ls.slot <> 'bench'
       ORDER BY ls.symbol`,
@@ -129,15 +127,10 @@ export interface ScoringResult {
   scores: number;
 }
 
-/**
- * Leagues to score this run. `playoffs` are included (FS-08): the bracket's
- * matchups settle off the same weekly scores, so a playoff week must still be
- * scored — otherwise games tie 0–0 and advance on seed alone.
- */
+/** Leagues to score this run — every active (post-draft, pre-archive) league. */
 async function activeLeagueIds(pool: Pool): Promise<string[]> {
   const { rows } = await pool.query<{ id: string }>(
-    `SELECT id FROM fs_league
-      WHERE status IN ('active', 'playoffs') ORDER BY id`,
+    `SELECT id FROM fs_league WHERE status = 'active' ORDER BY id`,
   );
   return rows.map((r) => r.id);
 }
@@ -191,27 +184,22 @@ export async function runWeeklyScoring(
     result.leagues += 1;
     result.scores += scores.length;
 
-    // FS-06: settle this week's head-to-head matchups off the just-persisted
-    // scores and rebuild standings. In-process (not off the score.updated echo)
-    // so a settle is never dropped, and durable — outside the redis guard.
-    // FS-08: the settle also drives the season→playoffs transition and crowns a
-    // champion when the final settles.
-    let champion: string | null = null;
+    // Close the week off the just-persisted scores: archive the season when its
+    // weeks elapse. In-process (not off the score.updated echo) so it is never
+    // dropped, and durable — outside the redis guard.
     if (!provisional) {
-      const settle = await settleMatchups(pool, leagueId, opts.week, season);
-      champion = settle.championUserId;
-      // FS-11: compose each manager's weekly recap from the just-settled
-      // scores + matchups. After settleMatchups so results are final;
-      // idempotent (upsert) so a re-score regenerates them cleanly. Best-effort
-      // and isolated: recaps are the lowest-criticality consumer, so a failure
-      // here must never abort the settle or block this/other leagues' publishes
+      await closeWeek(pool, leagueId, opts.week, season);
+      // FS-11: compose each manager's weekly recap from the just-settled scores
+      // and their weekly ranking. Idempotent (upsert) so a re-score regenerates
+      // them cleanly. Best-effort and isolated: recaps are the lowest-criticality
+      // consumer, so a failure here must never block this/other leagues' publishes
       // (the scores are already persisted) — log and carry on.
       try {
         await generateLeagueRecaps(pool, leagueId, season, opts.week, redis);
       } catch (err) {
         captureLog.warn(
           { leagueId, week: opts.week, err: String(err) },
-          'recap generation failed — settle stands, recaps deferred',
+          'recap generation failed — scores stand, recaps deferred',
         );
       }
     }
@@ -219,15 +207,8 @@ export async function runWeeklyScoring(
     if (redis) {
       if (!provisional) {
         await publishScoreUpdated(redis, { leagueId, season, week: opts.week });
-        if (champion) {
-          await publishSeasonChampion(redis, {
-            leagueId,
-            season,
-            championUserId: champion,
-          });
-        }
       }
-      await publishMatchupUpdated(
+      await publishScoresUpdated(
         redis,
         leagueId,
         season,

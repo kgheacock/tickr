@@ -1,6 +1,15 @@
 # FS-06 · Matchups, schedule & standings
 
-**Status:** `done` ([#65](https://github.com/kgheacock/tickr/pull/65)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03, 05
+> **⚠️ Refocused — superseded.** Fantasy Street no longer has head-to-head
+> matchups, a round-robin schedule, or W/L/T standings. The game is now
+> **weekly-ranking-only**: each week every manager is scored (FS-05,
+> `fs_weekly_score`) and ranked within the league by that weekly total, derived
+> on read (`score.ts` `rankScores`) — nothing below this banner about matchups,
+> the schedule, or standings is current. `fs_matchup` and `fs_standings` were
+> dropped (migration `1700000000043`); `schedule.ts`/`standings.ts` and the
+> `/schedule|/matchups|/standings` routes were removed.
+
+**Status:** `superseded` (was [#65](https://github.com/kgheacock/tickr/pull/65)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03, 05
 
 ## User stories
 - As a manager, I want to face one opponent each week and win or lose on total

@@ -4,6 +4,7 @@ import {
   isNyseHoliday,
   nyseRegularCloseAnchor,
   mostRecentClose,
+  currentFriday,
 } from '../../src/market/holidays.js';
 
 // Helper: build a UTC instant from an explicit offset so the test states the
@@ -149,5 +150,40 @@ describe('mostRecentClose', () => {
     expect(mostRecentClose(utc('2025-07-16T20:00:00Z')).toISOString()).toBe(
       '2025-07-16T20:00:00.000Z',
     );
+  });
+});
+
+describe('currentFriday', () => {
+  // The result keeps now's time-of-day, so read its America/New_York calendar
+  // date (what every downstream anchor uses), not the raw UTC date.
+  const fridayOf = (iso: string): string =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(currentFriday(utc(iso)));
+
+  it('mid-week (Tue) resolves the coming Friday', () => {
+    // Tue 2026-06-16 12:00 ET (16:00 UTC) → Fri 2026-06-19.
+    expect(fridayOf('2026-06-16T16:00:00Z')).toBe('2026-06-19');
+  });
+
+  it('on Friday resolves that same Friday', () => {
+    // Fri 2026-06-12 18:00 ET (22:00 UTC) → 2026-06-12.
+    expect(fridayOf('2026-06-12T22:00:00Z')).toBe('2026-06-12');
+  });
+
+  it('just past ET midnight (early UTC morning) stays on the right week', () => {
+    // Wed 2026-06-17 00:49 ET = 04:49 UTC. A fixed-offset weekday computed off
+    // the UTC date lands a day late here (Saturday 2026-06-20); the ET-date
+    // mapping must still yield Fri 2026-06-19. Regression for the player-detail
+    // "previous scoring" anchors shifting onto a non-trading Saturday.
+    expect(fridayOf('2026-06-17T04:49:00Z')).toBe('2026-06-19');
+  });
+
+  it('Sunday night ET (Monday early UTC) resolves the coming Friday', () => {
+    // Sun 2026-06-14 23:30 ET = Mon 2026-06-15 03:30 UTC → Fri 2026-06-19.
+    expect(fridayOf('2026-06-15T03:30:00Z')).toBe('2026-06-19');
   });
 });

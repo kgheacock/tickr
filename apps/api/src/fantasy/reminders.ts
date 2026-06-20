@@ -77,7 +77,7 @@ export interface ReminderResult {
 
 /**
  * Fire a one-time lineup reminder to every manager whose scoring-week lineup is
- * incomplete, across every active/playoffs league. Idempotent per (user, week):
+ * incomplete, across every active league. Idempotent per (user, week):
  * a re-fire on the next tick writes nothing (DB dedupe). `redis`, when present,
  * pushes each new reminder to the manager's live feed. The target week is the
  * one the lock job locks (currentWeek), supplied by the caller.
@@ -91,8 +91,7 @@ export async function runLineupReminders(
   const week = opts.week;
 
   const { rows: leagues } = await pool.query<{ id: string }>(
-    `SELECT id FROM fs_league
-      WHERE status IN ('active', 'playoffs') ORDER BY id`,
+    `SELECT id FROM fs_league WHERE status = 'active' ORDER BY id`,
   );
 
   const result: ReminderResult = { reminders: 0 };

@@ -20,7 +20,9 @@ import {
   settleLeagueWeek,
   loadLeagueScores,
   loadWeeklyScore,
+  rankScores,
 } from '../../src/fantasy/score.js';
+import type { WeeklyScore } from '@tickr/shared-types';
 import { runWeeklyScoring } from '../../src/jobs/scoring.js';
 import { SCORE_UPDATED_CHANNEL } from '../../src/events/publisher.js';
 
@@ -95,8 +97,8 @@ async function activeLeague(): Promise<{ leagueId: string; userId: string }> {
 async function seedSeason(leagueId: string): Promise<void> {
   await pool.query(
     `INSERT INTO fs_season
-       (league_id, season_number, status, regular_weeks, playoff_seeds, started_at)
-     SELECT id, 1, 'regular', season_length_weeks, LEAST(4, size), now()
+       (league_id, season_number, status, regular_weeks, started_at)
+     SELECT id, 1, 'regular', season_length_weeks, now()
        FROM fs_league WHERE id = $1`,
     [leagueId],
   );
@@ -386,7 +388,7 @@ function stubRedis(): {
 }
 
 describe('runWeeklyScoring job', () => {
-  it('settles only active leagues and publishes score.updated + matchup.updated', async () => {
+  it('settles only active leagues and publishes score.updated + scores.updated', async () => {
     const active = await activeLeague();
     await seedSymbolBars('ANCH', 10_000, 10_500); // +5% → +5
     await rosterEntry(active.leagueId, active.userId, 'ANCH');
@@ -428,17 +430,17 @@ describe('runWeeklyScoring job', () => {
     expect(
       await loadWeeklyScore(pool, active.leagueId, active.userId, 1),
     ).not.toBeNull();
-    // Settle publishes both the domain event and the live matchup.
+    // Settle publishes both the domain event and the live scores.
     expect(
       published.some(
         (p) =>
           p.channel === SCORE_UPDATED_CHANNEL && p.type === 'score.updated',
       ),
     ).toBe(true);
-    expect(published.some((p) => p.type === 'matchup.updated')).toBe(true);
+    expect(published.some((p) => p.type === 'scores.updated')).toBe(true);
   });
 
-  it('provisional mode publishes matchup.updated but not score.updated, and persists nothing', async () => {
+  it('provisional mode publishes scores.updated but not score.updated, and persists nothing', async () => {
     const { leagueId, userId } = await activeLeague();
     await seedSymbolBars('ANCH', 10_000, 10_500); // +5%
     await rosterEntry(leagueId, userId, 'ANCH');
@@ -451,8 +453,36 @@ describe('runWeeklyScoring job', () => {
       redis,
     );
 
-    expect(published.some((p) => p.type === 'matchup.updated')).toBe(true);
+    expect(published.some((p) => p.type === 'scores.updated')).toBe(true);
     expect(published.some((p) => p.type === 'score.updated')).toBe(false);
     expect(await loadWeeklyScore(pool, leagueId, userId, 1)).toBeNull();
+  });
+});
+
+describe('rankScores (pure)', () => {
+  const s = (userId: string, totalPoints: number): WeeklyScore => ({
+    leagueId: 'L',
+    userId,
+    season: 1,
+    week: 1,
+    totalPoints,
+    computedAt: new Date().toISOString(),
+    provisional: false,
+    breakdown: [],
+  });
+
+  it('ranks by points DESC, 1-based', () => {
+    const ranks = rankScores([s('A', 10), s('B', 30), s('C', 20)]);
+    expect(ranks.get('B')).toBe(1);
+    expect(ranks.get('C')).toBe(2);
+    expect(ranks.get('A')).toBe(3);
+  });
+
+  it('shares a rank on ties and skips the next (1, 2, 2, 4)', () => {
+    const ranks = rankScores([s('A', 30), s('B', 20), s('C', 20), s('D', 10)]);
+    expect(ranks.get('A')).toBe(1);
+    expect(ranks.get('B')).toBe(2);
+    expect(ranks.get('C')).toBe(2);
+    expect(ranks.get('D')).toBe(4);
   });
 });

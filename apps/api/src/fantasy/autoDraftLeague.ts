@@ -8,12 +8,15 @@
  *
  * Deliberately simple: it composes the existing, tested draft primitives —
  * scheduleDraft, startDraft, and the best-available autoPickOnClock drain — and
- * then replicates the only *durable* completion side-effects the WS pick clock
- * would normally perform (ensureSeason + generateSchedule, see
- * draftClock.broadcastPick). No Redis or timers: nobody is subscribed to a draft
- * that was never announced, so the WS broadcasts are intentionally skipped. The
- * isolation is intentional — a live human draft can later replace this call
- * without touching createLeague or the draft engine.
+ * then replicates the *durable* completion side-effects the WS pick clock would
+ * normally perform (ensureSeason, see draftClock.broadcastPick).
+ * It then goes one step further than the WS path and auto-fills every team's
+ * week-1 lineup (lineup.ts) — instant play means the commissioner should land on
+ * a league where every team already fields a legal starting lineup, rather than
+ * waiting for the Monday lock job to populate them. No Redis or timers: nobody is
+ * subscribed to a draft that was never announced, so the WS broadcasts are
+ * intentionally skipped. The isolation is intentional — a live human draft can
+ * later replace this call without touching createLeague or the draft engine.
  *
  * Inventory guard: it auto-drafts only when the tradeable universe holds at
  * least one symbol per pick. Because chooseAutoPick's Wildcard fallback can fill
@@ -31,7 +34,7 @@ import {
   totalRoundsOf,
 } from './draft.js';
 import { ensureSeason } from './season.js';
-import { generateSchedule } from './schedule.js';
+import { autofillRemaining } from './lineup.js';
 
 /** Count of right-now tradeable symbols (mirrors FS-02 / validatePickable). */
 const TRADEABLE_COUNT_SQL = `
@@ -80,9 +83,36 @@ export async function autoDraftFullLeague(
   }
 
   // The final pick flipped the league to `active`; mirror the durable
-  // post-completion work the pick clock does: open the season, then materialize
-  // the head-to-head schedule against it.
+  // post-completion work the pick clock does: open the season.
   const season = await ensureSeason(pool, leagueId);
-  await generateSchedule(pool, leagueId, season.season_number);
+
+  // Every team was just drafted but starts the season with an empty lineup.
+  // Auto-fill week 1 for each so the commissioner lands on a league where every
+  // team — their own and the bots' — already fields a legal starting lineup,
+  // instead of waiting for the Monday lock to populate them. Filled-not-locked:
+  // managers can still edit before lock. Teams are sourced from the roster, the
+  // direct expression of "everyone who has stocks to field," independent of how
+  // bot membership is modelled.
+  await autofillAllLineups(pool, leagueId, season.season_number);
   return true;
+}
+
+/**
+ * Auto-fill the week-1 starting lineup for every drafted team. Reuses the same
+ * roster-only fill the explicit "auto-fill remaining" action and the lock job
+ * use (lineup.ts), so each team fields its best-available legal lineup.
+ */
+async function autofillAllLineups(
+  pool: Pool,
+  leagueId: string,
+  season: number,
+): Promise<void> {
+  const { rows } = await pool.query<{ user_id: string }>(
+    `SELECT DISTINCT user_id FROM fs_roster_entry
+      WHERE league_id = $1 ORDER BY user_id`,
+    [leagueId],
+  );
+  for (const { user_id } of rows) {
+    await autofillRemaining(pool, leagueId, user_id, 1, season);
+  }
 }

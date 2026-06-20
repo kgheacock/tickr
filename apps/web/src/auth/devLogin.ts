@@ -10,6 +10,9 @@
  * user with that email, or creates one if none exists. Omit it for the default
  * synthetic `dev@local.tickr` user.
  *
+ * The synthetic user is an admin by default; add `&admin=false` to log in as a
+ * plain player instead (e.g. to exercise the non-admin onboarding view).
+ *
  * The request (and any impersonation email) is persisted in sessionStorage so it
  * survives client-side navigations that drop the query param (e.g. logout's
  * `navigate('/')`). Logout clears it so we don't immediately re-establish a session.
@@ -18,6 +21,7 @@
  */
 const STORAGE_KEY = 'tickr_dev_login';
 const EMAIL_KEY = 'tickr_dev_login_email';
+const ADMIN_KEY = 'tickr_dev_login_admin';
 
 export function devLoginRequested(): boolean {
   if (!import.meta.env.DEV) return false;
@@ -28,6 +32,12 @@ export function devLoginRequested(): boolean {
       const email = params.get('email')?.trim();
       if (email) {
         sessionStorage.setItem(EMAIL_KEY, email);
+      }
+      // Persist the admin choice only when explicitly given, so re-runs without
+      // the param keep the last choice rather than silently resetting to admin.
+      const admin = params.get('admin');
+      if (admin !== null) {
+        sessionStorage.setItem(ADMIN_KEY, admin === 'false' ? '0' : '1');
       }
     }
     return sessionStorage.getItem(STORAGE_KEY) === '1';
@@ -46,10 +56,21 @@ export function devLoginEmail(): string | null {
   }
 }
 
+/** Whether the pending dev login should be an admin (default true). */
+export function devLoginAdmin(): boolean {
+  if (!import.meta.env.DEV) return true;
+  try {
+    return sessionStorage.getItem(ADMIN_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
 export function clearDevLogin(): void {
   try {
     sessionStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(EMAIL_KEY);
+    sessionStorage.removeItem(ADMIN_KEY);
   } catch {
     // sessionStorage unavailable — nothing to clear
   }

@@ -133,6 +133,14 @@ components:
           items:
             $ref: '#/components/schemas/LeagueMembership'
 
+    UserExistsResponse:
+      type: object
+      required: [exists]
+      properties:
+        exists:
+          type: boolean
+          description: Whether a registered tickr user has the given email
+
     # --- Universe ---
 
     UniverseItem:
@@ -798,7 +806,7 @@ components:
           enum: [invite, open]
         status:
           type: string
-          enum: [forming, drafting, active, playoffs, archived]
+          enum: [forming, drafting, active, archived]
         createdAt:
           type: string
           format: date-time
@@ -836,7 +844,7 @@ components:
           enum: [invite, open]
         status:
           type: string
-          enum: [forming, drafting, active, playoffs, archived]
+          enum: [forming, drafting, active, archived]
         memberCount:
           type: integer
         openSlots:
@@ -874,7 +882,7 @@ components:
           enum: [commissioner, manager]
         status:
           type: string
-          enum: [forming, drafting, active, playoffs, archived]
+          enum: [forming, drafting, active, archived]
 
     Invite:
       type: object
@@ -1013,7 +1021,7 @@ components:
     PlayerInventoryItem:
       type: object
       required:
-        [symbol, name, groups, recentReturnPct, lastWeekPoints, ownership]
+        [symbol, name, groups, recentReturnPct, currentWeekPoints, ownership]
       properties:
         symbol:
           type: string
@@ -1027,19 +1035,26 @@ components:
         recentReturnPct:
           type: ['number', 'null']
           description: Trailing ~3-month return, surfaced for scouting
-        lastWeekPoints:
+        currentWeekPoints:
           type: ['number', 'null']
           description: >-
-            Fantasy points the stock scored last completed week (long basis,
-            return); null when no price data resolves the week
+            Fantasy points the stock has scored so far this in-flight week (long
+            basis, return valued off the latest close); null when no price data
+            resolves the week
         ownership:
           $ref: '#/components/schemas/PlayerOwnership'
 
     PlayerWeekScore:
       type: object
-      description: One completed week's long-basis fantasy points for a stock
-      required: [weekEnd, returnPct, points]
+      description: >-
+        One week's long-basis fantasy points for a stock. The first entry is the
+        in-flight week (provisional = true), valued so far off the latest close.
+      required: [weekStart, weekEnd, returnPct, points, provisional]
       properties:
+        weekStart:
+          type: string
+          format: date-time
+          description: The week's Monday (the Friday-close anchor minus four days)
         weekEnd:
           type: string
           format: date-time
@@ -1050,6 +1065,9 @@ components:
         points:
           type: ['number', 'null']
           description: returnPct (long basis); null when returnPct is null
+        provisional:
+          type: boolean
+          description: True for the current, not-yet-settled week (valued so far)
 
     PlayerListResponse:
       type: object
@@ -1066,6 +1084,23 @@ components:
         offset:
           type: integer
 
+    PlayerScoringSummary:
+      type: object
+      description: Trailing 3-month scoring summary over completed weeks.
+      required: [totalPoints, pctPositive, weeks]
+      properties:
+        totalPoints:
+          type: ['number', 'null']
+          description: >-
+            Sum of long-basis weekly points over the last ~3 months; null when
+            no week resolves price data
+        pctPositive:
+          type: ['number', 'null']
+          description: Percent (0–100) of scored weeks that finished positive; null when none
+        weeks:
+          type: integer
+          description: Count of weeks with resolvable price data in the window
+
     PlayerDetail:
       type: object
       required:
@@ -1077,6 +1112,7 @@ components:
         - metrics
         - ownership
         - scoringHistory
+        - scoring3mo
         - prices
       properties:
         symbol:
@@ -1104,6 +1140,8 @@ components:
           description: Per-week long-basis points for recent completed weeks (newest first)
           items:
             $ref: '#/components/schemas/PlayerWeekScore'
+        scoring3mo:
+          $ref: '#/components/schemas/PlayerScoringSummary'
         prices:
           type: array
           description: Price-history window (~3 months) for the detail chart
@@ -1362,7 +1400,10 @@ components:
 
     LeagueScoresResponse:
       type: object
-      description: Every manager's settled score for one league week
+      description: >-
+        Every manager's score for one league week. Settled (provisional = false)
+        once the Friday close is scored; provisional in-week totals (valued so
+        far off the latest close) until then.
       required: [season, week, scores]
       properties:
         season:
@@ -1374,107 +1415,42 @@ components:
           items:
             $ref: '#/components/schemas/WeeklyScore'
 
-    # --- Matchups, schedule & standings (item 06) ---
-
-    Matchup:
+    SeasonWinsEntry:
       type: object
-      description: One head-to-head for a (league, season, week)
-      required: [id, leagueId, season, week, homeUserId, status]
-      properties:
-        id:
-          type: string
-        leagueId:
-          type: string
-        season:
-          type: integer
-        week:
-          type: integer
-        homeUserId:
-          type: string
-        awayUserId:
-          type: ['string', 'null']
-          description: Opponent; null is a bye (home manager sits, no-contest)
-        homePoints:
-          type: ['number', 'null']
-          description: Home total — settled, or live when provisional, else null
-        awayPoints:
-          type: ['number', 'null']
-          description: Away total; null for a bye or before scoring
-        winnerUserId:
-          type: ['string', 'null']
-          description: Higher-scoring side; null for a tie, bye, or unsettled
-        status:
-          type: string
-          enum: [scheduled, final]
-
-    ScheduleResponse:
-      type: object
-      description: A league's full-season round-robin
-      required: [season, matchups]
-      properties:
-        season:
-          type: integer
-        matchups:
-          type: array
-          items:
-            $ref: '#/components/schemas/Matchup'
-
-    MatchupsResponse:
-      type: object
-      description: One week's head-to-heads; provisional overlays live points
-      required: [season, week, provisional, matchups]
-      properties:
-        season:
-          type: integer
-        week:
-          type: integer
-        provisional:
-          type: boolean
-          description: True when points are live (the week has not settled)
-        matchups:
-          type: array
-          items:
-            $ref: '#/components/schemas/Matchup'
-
-    Standing:
-      type: object
-      description: One manager's standings row with the tiebreaker fields exposed
-      required:
-        - userId
-        - wins
-        - losses
-        - ties
-        - pointsFor
-        - pointsAgainst
-        - rank
+      description: >-
+        One manager's season win tally. A win is a first-place finish in a
+        settled week's ranking; tied co-leaders each count a win.
+      required: [userId, wins, weeksPlayed, pointsFor]
       properties:
         userId:
           type: string
         wins:
           type: integer
-        losses:
+          description: Weeks finished first in the weekly ranking (co-leaders count)
+        weeksPlayed:
           type: integer
-        ties:
-          type: integer
+          description: Settled weeks this manager was scored in
         pointsFor:
           type: number
-        pointsAgainst:
-          type: number
-        rank:
-          type: integer
-          description: 1-based finishing position after the tiebreaker sort
+          description: Sum of settled weekly totals — the win tiebreaker
 
-    StandingsResponse:
+    SeasonWinsResponse:
       type: object
-      description: A league's standings, ranked by the documented tiebreakers
-      required: [season, standings]
+      description: >-
+        Season-long win standings derived from every settled week. Managers are
+        ordered by wins, then total points-for. Empty until the first week
+        settles.
+      required: [season, weeks, entries]
       properties:
         season:
           type: integer
-        standings:
+        weeks:
+          type: integer
+          description: Number of settled weeks counted into the tally
+        entries:
           type: array
           items:
-            $ref: '#/components/schemas/Standing'
+            $ref: '#/components/schemas/SeasonWinsEntry'
 
     # --- Waivers & trades (item 07) ---
 
@@ -1667,19 +1643,17 @@ components:
           items:
             $ref: '#/components/schemas/Trade'
 
-    # --- Season & playoffs (item 08) ---
+    # --- Season lifecycle (item 08) ---
 
     Season:
       type: object
-      description: One season's lifecycle row for a league
+      description: One season's lifecycle row for a league (a re-draft container)
       required:
         - id
         - leagueId
         - seasonNumber
         - status
         - regularWeeks
-        - playoffSeeds
-        - championUserId
         - startedAt
         - endedAt
       properties:
@@ -1691,16 +1665,10 @@ components:
           type: integer
         status:
           type: string
-          enum: [regular, playoffs, archived]
+          enum: [regular, archived]
         regularWeeks:
           type: integer
-          description: Regular-season length; the bracket opens the week after
-        playoffSeeds:
-          type: integer
-          description: Top-K standings seeds into the single-elim bracket
-        championUserId:
-          type: ['string', 'null']
-          description: Crowned once the final playoff matchup settles
+          description: Season length in weeks; the season archives once it elapses
         startedAt:
           type: ['string', 'null']
           format: date-time
@@ -1720,19 +1688,11 @@ components:
 
     SeasonDetail:
       type: object
-      description: One season with its final standings and playoff bracket
-      required: [season, standings, playoffMatchups]
+      description: One season's lifecycle row (history is read-only)
+      required: [season]
       properties:
         season:
           $ref: '#/components/schemas/Season'
-        standings:
-          type: array
-          items:
-            $ref: '#/components/schemas/Standing'
-        playoffMatchups:
-          type: array
-          items:
-            $ref: '#/components/schemas/Matchup'
 
     # --- Fantasy Street: auto-managers / bots (item 10) ---
 
@@ -1812,15 +1772,14 @@ components:
       type: object
       description: >-
         The post-settle weekly recap for one manager, composed from the FS-05
-        per-slot breakdown and the FS-06 settled matchup. `result` is the
-        head-to-head outcome (bye when the manager had no opponent).
+        per-slot breakdown and the manager's weekly ranking. `rank` is the
+        manager's placement among the league's `fieldSize` managers this week.
       required:
         - season
         - week
-        - result
+        - rank
+        - fieldSize
         - myScore
-        - oppScore
-        - oppUserId
         - biggestMover
         - biggestBlowup
         - leagueHigh
@@ -1830,16 +1789,14 @@ components:
           type: integer
         week:
           type: integer
-        result:
-          type: string
-          enum: [win, loss, tie, bye]
+        rank:
+          type: integer
+          description: 1-based placement this week (ties share a rank)
+        fieldSize:
+          type: integer
+          description: Number of ranked managers this week
         myScore:
           type: number
-        oppScore:
-          type: ['number', 'null']
-          description: Opponent's total; null on a bye
-        oppUserId:
-          type: ['string', 'null']
         biggestMover:
           oneOf:
             - $ref: '#/components/schemas/RecapSlot'
@@ -1935,15 +1892,13 @@ components:
         leaguesByStatus:
           type: object
           description: League count keyed by lifecycle status
-          required: [forming, drafting, active, playoffs, archived]
+          required: [forming, drafting, active, archived]
           properties:
             forming:
               type: integer
             drafting:
               type: integer
             active:
-              type: integer
-            playoffs:
               type: integer
             archived:
               type: integer
@@ -2044,6 +1999,33 @@ paths:
                 $ref: '#/components/schemas/MeResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/exists:
+    get:
+      summary: Whether a registered tickr user has the given email (admin only)
+      operationId: checkUserExists
+      tags: [user]
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Existence result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserExistsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

@@ -129,28 +129,14 @@
   font-size: var(--font-size-sm);
 }
 
-.result_win {
-  font-weight: 700;
-  color: var(--color-success);
-}
-
-.result_loss {
-  font-weight: 700;
-  color: var(--color-accent);
-}
-
-.result_tie,
-.result_bye {
+.rank {
   font-weight: 700;
   color: var(--color-text-muted);
 }
 
-.pos {
+.rankTop {
+  font-weight: 700;
   color: var(--color-success);
-}
-
-.neg {
-  color: var(--color-accent);
 }
 
 .markRead {

@@ -19,6 +19,7 @@
  */
 import type { Pool, PoolClient } from 'pg';
 import { currentFriday, nyseRegularCloseAnchor } from '../market/holidays.js';
+import { mergedCloseSql } from './closes.js';
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -57,6 +58,19 @@ export function lastCompletedWeek(now: Date): WeekWindow {
   return recentCompletedWeeks(now, 1)[0]!;
 }
 
+/**
+ * The in-flight (not-yet-settled) scoring week: `weekEnd` is this week's coming
+ * Friday close, `baselineAt` the just-passed Friday's. Pair with `weeklyReturn`'s
+ * `asOf = now` to value it "so far" off the latest available close.
+ */
+export function currentWeek(now: Date): WeekWindow {
+  const friday = currentFriday(now);
+  return {
+    weekEnd: nyseRegularCloseAnchor(friday),
+    baselineAt: nyseRegularCloseAnchor(new Date(friday.getTime() - WEEK_MS)),
+  };
+}
+
 /** Percent move between two closes (cents); null when either is missing / baseline ≤ 0. */
 export function returnPctFrom(
   lastClose: number | null,
@@ -75,21 +89,21 @@ export interface WeeklyReturn {
   returnPct: number | null;
 }
 
-/** Most recent close (cents) at-or-before `at`, or null if no such bar. */
+/**
+ * The merged daily close (cents) for `symbol` at `at`: the official session_close
+ * for the anchor's ET session, else the most recent price_bar at-or-before `at`,
+ * else null. Precedence and the DATE↔ts mapping live in closes.ts.
+ */
 async function closeAtOrBefore(
   db: Pool | PoolClient,
   symbol: string,
   at: Date,
 ): Promise<number | null> {
-  const { rows } = await db.query<{ close: string | number }>(
-    `SELECT close
-       FROM price_bar
-      WHERE symbol = $1 AND ts <= $2
-      ORDER BY ts DESC
-      LIMIT 1`,
+  const { rows } = await db.query<{ close: string | number | null }>(
+    `SELECT ${mergedCloseSql('$1', '$2')} AS close`,
     [symbol, at],
   );
-  return rows[0] ? Number(rows[0].close) : null;
+  return rows[0]?.close != null ? Number(rows[0].close) : null;
 }
 
 /**

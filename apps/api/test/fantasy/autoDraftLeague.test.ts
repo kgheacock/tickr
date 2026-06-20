@@ -42,7 +42,8 @@ afterAll(async () => {
 beforeEach(async () => {
   // Children before parents (FK order).
   for (const t of [
-    'fs_matchup',
+    'fs_lineup_slot',
+    'fs_lineup',
     'fs_season',
     'fs_draft_pick',
     'fs_draft',
@@ -140,7 +141,10 @@ describe('FS-14 instant-play auto-draft', () => {
 
     // Every seat was drafted — including the human commissioner's (DoD:
     // auto-draft everyone), filling a full 32-pick board with no duplicates.
-    const { rows: roster } = await pool.query<{ total: number; owners: number }>(
+    const { rows: roster } = await pool.query<{
+      total: number;
+      owners: number;
+    }>(
       `SELECT count(*)::int AS total, count(DISTINCT user_id)::int AS owners
          FROM fs_roster_entry WHERE league_id = $1`,
       [leagueId],
@@ -155,7 +159,7 @@ describe('FS-14 instant-play auto-draft', () => {
     );
     expect(commishRoster[0]!.n).toBe(8);
 
-    // The draft completed and the season + head-to-head schedule were created.
+    // The draft completed and the season was opened.
     const { rows: draft } = await pool.query<{ status: string }>(
       `SELECT status FROM fs_draft WHERE league_id = $1`,
       [leagueId],
@@ -168,11 +172,23 @@ describe('FS-14 instant-play auto-draft', () => {
     );
     expect(season[0]!.n).toBeGreaterThan(0);
 
-    const { rows: matchups } = await pool.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM fs_matchup WHERE league_id = $1`,
+    // Every team — the commissioner's and all three drafted seats — lands with a
+    // full, legal week-1 starting lineup (6 mandatory slots), not just a roster.
+    const { rows: lineups } = await pool.query<{
+      user_id: string;
+      filled: number;
+    }>(
+      `SELECT l.user_id, count(s.*)::int AS filled
+         FROM fs_lineup l
+         JOIN fs_lineup_slot s ON s.lineup_id = l.id
+        WHERE l.league_id = $1 AND l.season = 1 AND l.week = 1
+        GROUP BY l.user_id`,
       [leagueId],
     );
-    expect(matchups[0]!.n).toBeGreaterThan(0);
+    expect(lineups).toHaveLength(4);
+    for (const row of lineups) {
+      expect(row.filled).toBe(6);
+    }
   });
 
   it('skips the draft and leaves the league forming when the universe is too thin', async () => {

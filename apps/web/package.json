@@ -8,7 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "tsx e2e/league-invite-flow.ts",
+    "e2e:rename": "tsx e2e/team-rename-flow.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.56.0",

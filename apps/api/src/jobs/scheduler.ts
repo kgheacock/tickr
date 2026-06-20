@@ -429,7 +429,7 @@ export function registerScheduledJobs(redis: Redis): void {
   // FS-05 provisional scores: Mon–Thu 21:35 UTC, after the close. Best-effort
   // in-week totals off the last available close (asOf = now, whatever the intraday
   // tail has appended so far — no close capture or regular-close re-anchor here,
-  // unlike the Friday settle); pushed as matchup.updated and never persisted.
+  // unlike the Friday settle); pushed as scores.updated and never persisted.
   // Skipped on a holiday (no fresh bars to score).
   cron.schedule('0 35 21 * * 1-4', () => {
     const now = new Date();

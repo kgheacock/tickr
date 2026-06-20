@@ -2,9 +2,9 @@
  * Fantasy Street item 07 — waiver claims (add/drop) + the rolling waiver run.
  *
  * A manager queues a claim (add an undrafted stock, drop one of theirs); the
- * waiver run — fired from the scheduler after the Friday settle, once standings
- * are rebuilt — awards each contested add to the highest-priority (worst-ranked)
- * claimant, demotes that winner to the back of the order, and marks the rest.
+ * waiver run — fired from the scheduler after the Friday scoring — awards each
+ * contested add to the highest-priority (worst-performing) claimant, demotes that
+ * winner to the back of the order, and marks the rest.
  *
  * Two invariants are load-bearing here:
  *   - single-owner: every add inserts into fs_roster_entry under its
@@ -198,8 +198,8 @@ async function loadOrderEntries(
 
 /**
  * A manager's claims (newest first) and the league's current waiver order. The
- * order is seeded lazily from reverse standings on first read so the priority
- * board is populated before the first run.
+ * order is seeded lazily (worst cumulative points claim first) on first read so
+ * the priority board is populated before the first run.
  */
 export async function listWaivers(
   pool: Pool,
@@ -232,11 +232,11 @@ export async function listWaivers(
 // --- The waiver run ---------------------------------------------------------
 
 /**
- * Seed fs_waiver_order from reverse standings (worst record claims first) when
- * absent. rank is a total order (1..n) so it carries the full standings
- * tiebreaker chain; unranked managers (no settled games) fall to the back,
- * broken by points-for then user_id for determinism. Idempotent: a no-op once
- * the order exists, so demotions from prior runs are preserved.
+ * Seed fs_waiver_order so the worst-performing managers claim first, when
+ * absent. With no standings, "worst" is the lowest cumulative weekly points so
+ * far this season (derived from fs_weekly_score); managers with no scores yet
+ * sort to the front (0 points), broken by user_id for determinism. Idempotent: a
+ * no-op once the order exists, so demotions from prior runs are preserved.
  */
 async function seedWaiverOrder(
   db: Db,
@@ -253,12 +253,14 @@ async function seedWaiverOrder(
   const { rows } = await db.query<{ user_id: string }>(
     `SELECT m.user_id
        FROM fs_league_member m
-       LEFT JOIN fs_standings s
-         ON s.league_id = m.league_id AND s.user_id = m.user_id AND s.season = $2
+       LEFT JOIN (
+         SELECT user_id, SUM(total_points) AS pts
+           FROM fs_weekly_score
+          WHERE league_id = $1 AND season = $2
+          GROUP BY user_id
+       ) s ON s.user_id = m.user_id
       WHERE m.league_id = $1
-      ORDER BY COALESCE(s.rank, 0) DESC,
-               COALESCE(s.points_for, 0) ASC,
-               m.user_id ASC`,
+      ORDER BY COALESCE(s.pts, 0) ASC, m.user_id ASC`,
     [leagueId, season],
   );
   let priority = 1;
@@ -285,15 +287,17 @@ async function loadPriorityMap(
   return new Map(rows.map((r) => [r.user_id, r.priority]));
 }
 
-/** Per-manager points-for (the priority tiebreak); 0 when unranked. */
+/** Per-manager cumulative weekly points (the priority tiebreak); 0 when none. */
 async function loadPointsFor(
   db: Db,
   leagueId: string,
   season: number,
 ): Promise<Map<string, number>> {
   const { rows } = await db.query<{ user_id: string; points_for: number }>(
-    `SELECT user_id, points_for::float8 AS points_for FROM fs_standings
-      WHERE league_id = $1 AND season = $2`,
+    `SELECT user_id, SUM(total_points)::float8 AS points_for
+       FROM fs_weekly_score
+      WHERE league_id = $1 AND season = $2
+      GROUP BY user_id`,
     [leagueId, season],
   );
   return new Map(rows.map((r) => [r.user_id, r.points_for]));

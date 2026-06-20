@@ -24,6 +24,7 @@ export { Checkbox, type CheckboxProps } from './Checkbox';
 export { Field, type FieldProps } from './Field';
 export { Tooltip, type TooltipProps } from './Tooltip';
 export { CategoryChip, type CategoryChipProps } from './CategoryChip';
+export { Badge, type BadgeProps } from './Badge';
 
 // Display primitives — the newsprint "mechanisms" the pages are built from.
 export { Paper, type PaperProps } from './Paper';

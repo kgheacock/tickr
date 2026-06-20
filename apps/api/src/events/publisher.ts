@@ -10,7 +10,7 @@ import {
   UNIVERSE_CHANNEL,
   PRICES_CHANNEL,
   draftChannel,
-  matchupChannel,
+  scoresChannel,
   notifyChannel,
 } from '../ws/topics.js';
 
@@ -145,9 +145,8 @@ export async function publishLineupLocked(
 
 /**
  * A league's week was settled at the Friday close. A plain domain event on its
- * own Redis channel (not a WS gateway message) — FS-06 settles matchups
- * in-process in the scoring job (not off this echo), and FS-11 will build recaps
- * from it. No consumer yet.
+ * own Redis channel (not a WS gateway message) — the scoring job closes the week
+ * in-process (not off this echo) and builds recaps from it. No consumer yet.
  */
 export const SCORE_UPDATED_CHANNEL = 'fs:score:updated';
 
@@ -230,42 +229,12 @@ export async function publishTradeAccepted(
   );
 }
 
-// --- Season & playoffs (item 08) ---
-
-/**
- * A league's season ended and a champion was crowned (the final playoff matchup
- * settled). A plain domain event on its own Redis channel (not a WS gateway
- * message), mirroring score.updated — the dashboard (FS-09) and recaps (FS-11)
- * will surface the champion off it; no consumer yet.
- */
-export const SEASON_CHAMPION_CHANNEL = 'fs:season:champion';
-
-export interface SeasonChampionEvent {
-  type: 'season.champion';
-  leagueId: string;
-  season: number;
-  championUserId: string;
-}
-
-export async function publishSeasonChampion(
-  redis: Redis,
-  event: Omit<SeasonChampionEvent, 'type'>,
-): Promise<void> {
-  await redis.publish(
-    SEASON_CHAMPION_CHANNEL,
-    JSON.stringify({
-      type: 'season.champion',
-      ...event,
-    } satisfies SeasonChampionEvent),
-  );
-}
-
 /**
  * Live per-manager scores for a league week — provisional (in-week) or final
- * (Friday-settled). A WS gateway message on the per-(league, week) matchup
- * channel; the dashboard (FS-09) follows it for a live scoreboard.
+ * (Friday-settled). A WS gateway message on the per-(league, week) scores
+ * channel; the dashboard (FS-09) follows it for a live weekly ranking.
  */
-export async function publishMatchupUpdated(
+export async function publishScoresUpdated(
   redis: Redis,
   leagueId: string,
   season: number,
@@ -273,8 +242,8 @@ export async function publishMatchupUpdated(
   scores: WeeklyScore[],
   provisional: boolean,
 ): Promise<void> {
-  await publishMessage(redis, matchupChannel(leagueId, week), {
-    type: 'matchup.updated',
+  await publishMessage(redis, scoresChannel(leagueId, week), {
+    type: 'scores.updated',
     leagueId,
     season,
     week,

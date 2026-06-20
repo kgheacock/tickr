@@ -1,18 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type {
-  Matchup,
-  WeeklyScore,
-  WsServerMessage,
-} from '@tickr/shared-types';
+import type { WeeklyScore, WsServerMessage } from '@tickr/shared-types';
 import { socket } from '../../api/socket';
-import { applyLiveScores, decideWinner } from './api';
+import { rankScores } from './api';
 
-// Proves the FS-09 "live tick": a `matchup.updated` push arriving on the WS
-// reaches the handler useLeague registers, and the overlay flips the scoreboard
-// (points + winner) without a refetch. The repo has no e2e harness (no
-// Playwright), so — like logoutCache.test.ts — we drive the real primitive
-// (the socket singleton) headlessly with a fake WebSocket rather than a browser.
-// The Playwright e2e from the TODO is deferred (see the FS-09 ledger note).
+// Proves the FS-09 "live tick": a `scores.updated` push arriving on the WS
+// reaches the handler useLeague registers, and the derived weekly ranking
+// reflects it without a refetch. The repo has no e2e harness (no Playwright),
+// so — like logoutCache.test.ts — we drive the real primitive (the socket
+// singleton) headlessly with a fake WebSocket rather than a browser.
 
 const HOME = 'user-home';
 const AWAY = 'user-away';
@@ -30,50 +25,23 @@ function weeklyScore(userId: string, totalPoints: number): WeeklyScore {
   };
 }
 
-const baseMatchup: Matchup = {
-  id: 'm1',
-  leagueId: 'L1',
-  season: 1,
-  week: 1,
-  homeUserId: HOME,
-  awayUserId: AWAY,
-  homePoints: null,
-  awayPoints: null,
-  winnerUserId: null,
-  status: 'scheduled',
-};
-
-describe('applyLiveScores overlay', () => {
-  it('overlays live totals and decides the winner', () => {
-    const [m] = applyLiveScores(
-      [baseMatchup],
-      [weeklyScore(HOME, 42.5), weeklyScore(AWAY, 17.25)],
-    );
-    expect(m?.homePoints).toBe(42.5);
-    expect(m?.awayPoints).toBe(17.25);
-    expect(m?.winnerUserId).toBe(HOME);
+describe('rankScores derivation', () => {
+  it('ranks live totals high → low', () => {
+    const ranking = rankScores([
+      weeklyScore(HOME, 42.5),
+      weeklyScore(AWAY, 17.25),
+    ]);
+    expect(ranking[0]).toMatchObject({ userId: HOME, rank: 1 });
+    expect(ranking[1]).toMatchObject({ userId: AWAY, rank: 2 });
   });
 
-  it('leaves final matchups untouched', () => {
-    const final: Matchup = {
-      ...baseMatchup,
-      status: 'final',
-      homePoints: 10,
-      awayPoints: 20,
-      winnerUserId: AWAY,
-    };
-    const [m] = applyLiveScores([final], [weeklyScore(HOME, 99)]);
-    expect(m?.homePoints).toBe(10);
-    expect(m?.winnerUserId).toBe(AWAY);
-  });
-
-  it('treats a missing opponent as a bye (no winner)', () => {
-    const bye: Matchup = { ...baseMatchup, awayUserId: null };
-    expect(decideWinner(bye.homeUserId, bye.awayUserId, 50, null)).toBeNull();
+  it('shares a rank on ties', () => {
+    const ranking = rankScores([weeklyScore(HOME, 20), weeklyScore(AWAY, 20)]);
+    expect(ranking.every((r) => r.rank === 1)).toBe(true);
   });
 });
 
-// --- Socket delivery: an inbound matchup.updated reaches the handler ---
+// --- Socket delivery: an inbound scores.updated reaches the handler ---
 
 const wsInstances: FakeWebSocket[] = [];
 
@@ -98,7 +66,7 @@ class FakeWebSocket {
   }
 }
 
-describe('socket delivers matchup.updated to useLeague-style handlers', () => {
+describe('socket delivers scores.updated to useLeague-style handlers', () => {
   beforeEach(() => {
     wsInstances.length = 0;
     vi.stubGlobal('WebSocket', FakeWebSocket);
@@ -110,13 +78,12 @@ describe('socket delivers matchup.updated to useLeague-style handlers', () => {
     vi.unstubAllGlobals();
   });
 
-  it('routes a live push to a subscribed handler and overlays it', () => {
-    const received: Extract<WsServerMessage, { type: 'matchup.updated' }>[] =
-      [];
+  it('routes a live push to a subscribed handler and ranks it', () => {
+    const received: Extract<WsServerMessage, { type: 'scores.updated' }>[] = [];
     // Mirrors useLeague: connect, subscribe the week's topic, handle the push.
     socket.connect();
-    socket.subscribe({ kind: 'matchup', leagueId: 'L1', week: 1 });
-    const off = socket.on('matchup.updated', (msg) => {
+    socket.subscribe({ kind: 'scores', leagueId: 'L1', week: 1 });
+    const off = socket.on('scores.updated', (msg) => {
       if (msg.leagueId !== 'L1' || msg.week !== 1) return;
       received.push(msg);
     });
@@ -125,7 +92,7 @@ describe('socket delivers matchup.updated to useLeague-style handlers', () => {
     ws.onopen?.(); // resubscribes the active topic over the wire
 
     const push: WsServerMessage = {
-      type: 'matchup.updated',
+      type: 'scores.updated',
       leagueId: 'L1',
       season: 1,
       week: 1,
@@ -135,8 +102,8 @@ describe('socket delivers matchup.updated to useLeague-style handlers', () => {
     ws.onmessage?.({ data: JSON.stringify(push) });
 
     expect(received).toHaveLength(1);
-    const [m] = applyLiveScores([baseMatchup], received[0]!.scores);
-    expect(m?.winnerUserId).toBe(AWAY); // 45 > 30, no reload required
+    const ranking = rankScores(received[0]!.scores);
+    expect(ranking[0]).toMatchObject({ userId: AWAY, rank: 1 }); // 45 > 30
 
     off();
   });
@@ -144,7 +111,7 @@ describe('socket delivers matchup.updated to useLeague-style handlers', () => {
   it('ignores pushes for a different week', () => {
     const received: unknown[] = [];
     socket.connect();
-    const off = socket.on('matchup.updated', (msg) => {
+    const off = socket.on('scores.updated', (msg) => {
       if (msg.week !== 1) return;
       received.push(msg);
     });
@@ -152,7 +119,7 @@ describe('socket delivers matchup.updated to useLeague-style handlers', () => {
     ws.onopen?.();
     ws.onmessage?.({
       data: JSON.stringify({
-        type: 'matchup.updated',
+        type: 'scores.updated',
         leagueId: 'L1',
         season: 1,
         week: 2,

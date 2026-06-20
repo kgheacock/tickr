@@ -17,12 +17,21 @@ import { useQuery } from '@tanstack/react-query';
 import type { PlayerGroup, SetLineupSlot } from '@tickr/shared-types';
 import { ApiClientError, client } from '../../api/client';
 import { SLOT_LABELS, GLOBAL_GROUPS, isPlayerGroup } from './api';
-import { fmtPoints } from './points';
+import { SignedNumber } from './SignedNumber';
 import type { LeagueContext } from './useLeague';
 import { StockCell, SpecChips } from './StockCell';
+import { ShortBadge } from './ShortBadge';
 import { PlayerDetailModal } from './PlayerDetailModal';
+import { SellModal } from './SellModal';
 import { SlotSelect } from './SlotSelect';
-import { Button, CategoryChip, Modal, Table, TableRow } from '../../components';
+import {
+  Badge,
+  Button,
+  CategoryChip,
+  Modal,
+  Table,
+  TableRow,
+} from '../../components';
 import styles from './TeamView.module.css';
 
 const BENCH = 'bench';
@@ -33,8 +42,8 @@ interface StockRow {
   isShort: boolean;
   /** Classification groups (SpecChips strips the universal slots); [] when locked. */
   groups: PlayerGroup[];
-  /** Points scored last completed week; null when locked (no roster metadata). */
-  lastWeekPoints: number | null;
+  /** Points scored so far this week; null when locked (no roster metadata). */
+  currentWeekPoints: number | null;
 }
 
 /** The configured mandatory slots, normalised to the lowercase lineup keys. */
@@ -49,6 +58,8 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
   const { league, lineup, setLineup } = ctx;
   const locked = lineup?.locked ?? false;
   const navigate = useNavigate();
+  // This week's running total, pinned to the right of the open-positions row.
+  const myScore = ctx.scores.find((s) => s.userId === ctx.myUserId);
 
   // The pick pool is the manager's roster (owned players). fs_roster_entry is
   // exposed via /players?mine; it's the source of names + specialization chips.
@@ -76,14 +87,14 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
           name: null,
           isShort: s.isShort,
           groups: [],
-          lastWeekPoints: null,
+          currentWeekPoints: null,
         }))
       : (rosterQuery.data?.items ?? []).map((p) => ({
           symbol: p.symbol,
           name: p.name,
           isShort: !!p.ownership.isShort,
           groups: p.groups,
-          lastWeekPoints: p.lastWeekPoints,
+          currentWeekPoints: p.currentWeekPoints,
         }));
     return rows.sort(
       (a, b) =>
@@ -108,9 +119,14 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
   // The open stock-detail modal (clicking a roster stock, as on the waiver wire).
   const [selected, setSelected] = useState<string | null>(null);
   // The stock pending a sell (drop) confirmation; null when no prompt is open.
-  const [sellTarget, setSellTarget] = useState<string | null>(null);
+  const [sellTarget, setSellTarget] = useState<{
+    symbol: string;
+    name: string | null;
+  } | null>(null);
   // After auto-fill, the slots it still couldn't fill — drives the wire nudge.
   const [needWire, setNeedWire] = useState<string[] | null>(null);
+  // True while the "auto-fill will overwrite your edits" prompt is open.
+  const [confirmAutofill, setConfirmAutofill] = useState(false);
 
   if (!league) return null;
 
@@ -162,6 +178,13 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
     });
   };
 
+  // Auto-fill replaces the whole assignment with the server's, so unsaved edits
+  // would be lost. Warn first when the draft is dirty; otherwise fill straight away.
+  const requestAutofill = () => {
+    if (dirty) setConfirmAutofill(true);
+    else onAutofill();
+  };
+
   const onSave = () => {
     const out: SetLineupSlot[] = [];
     let benchIndex = 0;
@@ -195,35 +218,47 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
 
   return (
     <div className={styles.editor}>
-      {!locked && (
-        <div className={styles.openPositions}>
-          <span className={styles.openLabel}>Open Positions</span>
-          {openSlots.length === 0 ? (
-            <span className={styles.openNone}>—</span>
-          ) : (
-            <span className={styles.openChips}>
-              <SlotChips slots={openSlots} />
-            </span>
+      <div className={styles.openPositions}>
+        <div className={styles.openLeft}>
+          {!locked && (
+            <>
+              <span className={styles.openLabel}>Open Positions</span>
+              {openSlots.length === 0 ? (
+                <span className={styles.openNone}>—</span>
+              ) : (
+                <span className={styles.openChips}>
+                  <SlotChips slots={openSlots} />
+                </span>
+              )}
+            </>
           )}
-          {openSlots.length > 0 && (
+        </div>
+        <div className={styles.openCenter}>
+          {!locked && openSlots.length > 0 && (
             <Button
-              className={styles.autofillBtn}
               variant="secondary"
               size="sm"
-              onClick={onAutofill}
+              onClick={requestAutofill}
               disabled={ctx.autofill.isPending}
             >
               {ctx.autofill.isPending ? 'Filling…' : 'Auto-fill remaining'}
             </Button>
           )}
         </div>
-      )}
+        <div className={styles.weekScore}>
+          <SignedNumber
+            className={styles.total}
+            value={myScore?.totalPoints ?? 0}
+          />
+          {myScore?.provisional && <Badge>In progress</Badge>}
+        </div>
+      </div>
       <Table>
         <thead>
           <tr>
             <th>Stock</th>
             <th>Specialization</th>
-            <th className={styles.lastWk}>Last wk</th>
+            <th className={styles.thisWk}>This wk</th>
             <th>Slot</th>
             {!locked && <th className={styles.sellCol} aria-label="Sell" />}
           </tr>
@@ -252,12 +287,12 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
             // Short-ness follows the *assigned* slot, not the roster entry:
             // Defense is a short, so its points read with the sign flipped.
             const slotIsShort = current === 'defense';
-            const lastWk =
-              s.lastWeekPoints == null
+            const thisWk =
+              s.currentWeekPoints == null
                 ? null
                 : slotIsShort
-                  ? -s.lastWeekPoints
-                  : s.lastWeekPoints;
+                  ? -s.currentWeekPoints
+                  : s.currentWeekPoints;
             return (
               <TableRow
                 key={s.symbol}
@@ -268,22 +303,14 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
                     symbol={s.symbol}
                     name={s.name}
                     onClick={() => setSelected(s.symbol)}
-                    tag={
-                      slotIsShort && (
-                        <span className={styles.shortTag}>short</span>
-                      )
-                    }
+                    tag={slotIsShort && <ShortBadge />}
                   />
                 </td>
                 <td>
                   <SpecChips groups={s.groups} />
                 </td>
-                <td
-                  className={`${styles.lastWk} ${
-                    lastWk == null ? '' : lastWk >= 0 ? styles.pos : styles.neg
-                  }`}
-                >
-                  {fmtPoints(lastWk)}
+                <td className={styles.thisWk}>
+                  <SignedNumber value={thisWk} />
                 </td>
                 <td>
                   {locked ? (
@@ -311,7 +338,9 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setSellTarget(s.symbol)}
+                      onClick={() =>
+                        setSellTarget({ symbol: s.symbol, name: s.name })
+                      }
                       aria-label={`Sell ${s.symbol}`}
                     >
                       Sell
@@ -342,16 +371,26 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
 
       {selected && (
         <PlayerDetailModal
-          leagueId={ctx.leagueId}
+          ctx={ctx}
           symbol={selected}
+          // The report mirrors the row: a stock filling Defense scores short, so
+          // its ledger reads with the sign flipped and the header carries the flag.
+          isShort={(assignment[selected] ?? BENCH) === 'defense'}
           onClose={() => setSelected(null)}
+          // Roster stocks are all owned, so the report only offers a sell;
+          // hand it off to the confirm dialog, closing the report first.
+          onRequestSell={(symbol, name) => {
+            setSelected(null);
+            setSellTarget({ symbol, name });
+          }}
         />
       )}
 
       {sellTarget && (
         <SellModal
           ctx={ctx}
-          symbol={sellTarget}
+          symbol={sellTarget.symbol}
+          name={sellTarget.name}
           onClose={() => setSellTarget(null)}
         />
       )}
@@ -362,6 +401,35 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
           onGoToWire={() => navigate(`/leagues/${ctx.leagueId}/players`)}
           onClose={() => setNeedWire(null)}
         />
+      )}
+
+      {confirmAutofill && (
+        <Modal
+          onClose={() => setConfirmAutofill(false)}
+          kicker="Lineup"
+          title="Discard your edits?"
+        >
+          <p className={styles.confirmBody}>
+            You have unsaved lineup changes that will be discarded if you
+            continue.
+          </p>
+          <div className={styles.actions}>
+            <Button
+              onClick={() => {
+                setConfirmAutofill(false);
+                onAutofill();
+              }}
+            >
+              Auto-fill remaining
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setConfirmAutofill(false)}
+            >
+              Keep editing
+            </Button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -410,56 +478,6 @@ function WireModal({
         <Button onClick={onGoToWire}>Go to Waiver Wire</Button>
         <Button variant="secondary" onClick={onClose}>
           Not now
-        </Button>
-      </div>
-    </Modal>
-  );
-}
-
-/** Confirm-then-drop dialog for selling an owned stock back to the wire. */
-function SellModal({
-  ctx,
-  symbol,
-  onClose,
-}: {
-  ctx: LeagueContext;
-  symbol: string;
-  onClose: () => void;
-}) {
-  const { sellPlayer } = ctx;
-  const err =
-    sellPlayer.error instanceof ApiClientError
-      ? sellPlayer.error.message
-      : sellPlayer.error
-        ? 'Could not sell this stock.'
-        : null;
-
-  // The mutation lives on the shared league context, so its error outlives this
-  // modal — clear it on close so the next Sell prompt opens clean.
-  const close = () => {
-    sellPlayer.reset();
-    onClose();
-  };
-
-  const onConfirm = () => sellPlayer.mutate(symbol, { onSuccess: onClose });
-
-  return (
-    <Modal onClose={close} kicker="Transaction" title={`Sell ${symbol}`}>
-      <p className={styles.confirmBody}>
-        Drop <strong>{symbol}</strong> from your team and return it to the wire?
-        This opens a roster spot and can’t be undone.
-      </p>
-      {err && <p className={styles.warn}>{err}</p>}
-      <div className={styles.actions}>
-        <Button onClick={onConfirm} disabled={sellPlayer.isPending}>
-          {sellPlayer.isPending ? 'Selling…' : `Sell ${symbol}`}
-        </Button>
-        <Button
-          variant="secondary"
-          onClick={close}
-          disabled={sellPlayer.isPending}
-        >
-          Cancel
         </Button>
       </div>
     </Modal>

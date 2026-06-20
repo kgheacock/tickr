@@ -1,6 +1,16 @@
 # FS-08 · Season & playoffs
 
-**Status:** `done` ([#74](https://github.com/kgheacock/tickr/pull/74)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 06
+> **⚠️ Refocused — partly superseded.** There are no playoffs, no bracket, and
+> no champion. A season is now purely a re-draft container: it runs its
+> configured weeks, then **archives with no winner** (`settle.ts` `closeWeek`),
+> after which the commissioner can re-draft (`startNewSeason`). The `fs_season`
+> playoff fields (`playoff_seeds`, `champion_user_id`) and the `playoffs`
+> lifecycle state were dropped (migration `1700000000043`); `playoffs.ts` and the
+> season-detail standings/bracket payload were removed. The season lifecycle +
+> history (list/load/re-draft) below is still current; everything about seeding,
+> the bracket, and crowning a champion is not.
+
+**Status:** `superseded` (was [#74](https://github.com/kgheacock/tickr/pull/74)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 06
 
 ## User stories
 - As a manager, I want a short regular season followed by playoffs, so that the

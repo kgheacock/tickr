@@ -47,5 +47,19 @@ export function CategoryChip({
   if (className) classes.push(className);
   const chip = <span className={classes.join(' ')}>{children}</span>;
   if (noTooltip) return chip;
-  return <Tooltip content={GROUP_BLURBS[group]}>{chip}</Tooltip>;
+  // Lead the caption with the category's name in bold. The group key is the
+  // lowercase display name, so capitalising it matches SLOT_LABELS without
+  // coupling this primitive to that feature-side map.
+  const label = group.charAt(0).toUpperCase() + group.slice(1);
+  return (
+    <Tooltip
+      content={
+        <>
+          <strong>{label}:</strong> {GROUP_BLURBS[group]}
+        </>
+      }
+    >
+      {chip}
+    </Tooltip>
+  );
 }

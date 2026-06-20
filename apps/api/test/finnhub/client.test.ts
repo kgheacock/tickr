@@ -65,17 +65,56 @@ describe('finnhubGet', () => {
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
-  it('surfaces 429 as FinnhubRateLimitError without retrying', async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValue(new Response('rate limited', { status: 429 }));
+  it('retries on 429 and surfaces FinnhubRateLimitError once exhausted', async () => {
+    vi.useFakeTimers();
+    try {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValue(new Response('rate limited', { status: 429 }));
 
-    await expect(
-      finnhubGet(redis, '/quote', { symbol: 'AAPL' }, mockFetch),
-    ).rejects.toBeInstanceOf(FinnhubRateLimitError);
+      const p = finnhubGet(redis, '/quote', { symbol: 'AAPL' }, mockFetch);
+      // Surface the rejection to the microtask queue so vitest doesn't flag it as
+      // unhandled while we drive the backoff timers.
+      const settled = expect(p).rejects.toBeInstanceOf(FinnhubRateLimitError);
+      await vi.runAllTimersAsync();
+      await settled;
 
-    // One fetch attempt — no retries on 429.
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+      // 1 initial + 3 retries = 4 attempts before giving up.
+      expect(mockFetch).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('recovers when a 429 clears within the retry budget', async () => {
+    vi.useFakeTimers();
+    try {
+      const mockFetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response('rate limited', {
+            status: 429,
+            headers: { 'retry-after': '1' },
+          }),
+        )
+        .mockResolvedValue(
+          new Response(JSON.stringify({ c: 150 }), { status: 200 }),
+        );
+
+      const p = finnhubGet<{ c: number }>(
+        redis,
+        '/quote',
+        { symbol: 'AAPL' },
+        mockFetch,
+      );
+      await vi.runAllTimersAsync();
+      const result = await p;
+
+      expect(result.c).toBe(150);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('retries on ECONNRESET and eventually throws', async () => {

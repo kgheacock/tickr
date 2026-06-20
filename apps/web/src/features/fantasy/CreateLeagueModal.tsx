@@ -25,6 +25,7 @@ import {
   Input,
   Checkbox,
   Field,
+  Tooltip,
 } from '../../components';
 import { fantasyKeys } from './api';
 import styles from './CreateLeagueModal.module.css';
@@ -63,8 +64,54 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
     freshSeat(),
   ]);
 
-  const patchSeat = (id: string, patch: Partial<Seat>) =>
+  // Per-seat result of the "is this email already a tickr account?" check,
+  // keyed by seat id. 'missing' surfaces a non-blocking warning — the invite is
+  // still created, the invitee just needs to sign in before they can claim the
+  // team. Cleared whenever the seat's email or bot flag changes (see patchSeat)
+  // so a stale verdict never lingers against a new address.
+  const [lookups, setLookups] = useState<
+    Record<string, 'checking' | 'exists' | 'missing'>
+  >({});
+
+  const patchSeat = (id: string, patch: Partial<Seat>) => {
     setSeats((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    if ('email' in patch || 'isBot' in patch) {
+      setLookups((prev) => {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }
+  };
+
+  // On blur, check a filled-in human seat's email against the account base. Fire
+  // only for a valid address (the warning is about real, registered people) and
+  // skip if a verdict for this seat already stands — patchSeat clears it on edit,
+  // so a lingering entry means the address is unchanged.
+  const checkSeatEmail = (seat: Seat) => {
+    const email = seat.email.trim();
+    if (seat.isBot || !EMAIL_RE.test(email) || lookups[seat.id]) return;
+    setLookups((prev) => ({ ...prev, [seat.id]: 'checking' }));
+    client
+      .checkUserExists(email)
+      .then((res) =>
+        setLookups((prev) =>
+          // Ignore a late response if the seat was cleared/edited meanwhile.
+          prev[seat.id] === 'checking'
+            ? { ...prev, [seat.id]: res.exists ? 'exists' : 'missing' }
+            : prev,
+        ),
+      )
+      .catch(() =>
+        setLookups((prev) => {
+          if (prev[seat.id] !== 'checking') return prev;
+          const next = { ...prev };
+          delete next[seat.id];
+          return next;
+        }),
+      );
+  };
   const addSeat = () => {
     const seat = freshSeat();
     setSeats((prev) => (prev.length < MAX_MEMBERS ? [...prev, seat] : prev));
@@ -120,11 +167,13 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
         <div className={styles.row}>
           <Field label="League name">
             <Input
+              id="league-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Bear Market Bulls"
               maxLength={80}
+              autoComplete="off"
               required
               autoFocus
             />
@@ -132,11 +181,13 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
 
           <Field label="Your team">
             <Input
+              id="team-name"
               type="text"
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
               placeholder="The Dip Buyers"
               maxLength={80}
+              autoComplete="off"
               required
             />
           </Field>
@@ -149,19 +200,32 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
               <li key={seat.id} className={styles.seat}>
                 <span className={styles.seatNum}>{i + 2})</span>
                 <Input
+                  id={`seat-email-${seat.id}`}
                   className={styles.seatEmail}
                   type="email"
                   value={seat.isBot ? '' : seat.email}
                   onChange={(e) =>
                     patchSeat(seat.id, { email: e.target.value })
                   }
+                  onBlur={() => checkSeatEmail(seat)}
                   placeholder={
                     seat.isBot ? 'Auto-manager' : 'manager@email.com'
                   }
+                  autoComplete="off"
                   disabled={seat.isBot}
                   aria-label={`Manager ${i + 2} email`}
                 />
+                <span className={styles.seatStatus} aria-live="polite">
+                  {lookups[seat.id] === 'missing' ? (
+                    <Tooltip content="No tickr account yet — they'll need to sign in before they can claim this team.">
+                      <span className={styles.warnIcon} aria-label="No account">
+                        ⚠
+                      </span>
+                    </Tooltip>
+                  ) : null}
+                </span>
                 <Checkbox
+                  id={`seat-bot-${seat.id}`}
                   className={styles.botToggle}
                   label="Bot"
                   title="Fill this seat with an auto-manager"
@@ -194,6 +258,7 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
 
         <div className={styles.season}>
           <Checkbox
+            id="continuous-season"
             className={styles.checkLabel}
             label="Continuous season"
             checked={continuous}
@@ -202,6 +267,7 @@ export function CreateLeagueModal({ onClose }: { onClose: () => void }) {
           {continuous ? null : (
             <Field label="Weeks" className={styles.weeksField}>
               <Input
+                id="season-weeks"
                 type="number"
                 min={1}
                 value={weeks}

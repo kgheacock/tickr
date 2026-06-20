@@ -8,9 +8,9 @@
  *   - member management    — remove a pre-draft member, rename a team, transfer
  *                            the commissioner role.
  *   - dispute re-score     — re-run FS-05 scoring for a week (idempotent upsert),
- *                            which re-settles FS-06 matchups and re-ranks standings.
- *   - force-advance        — settle/close a stuck week and drive the FS-08 season
- *                            transition off whatever scores exist.
+ *                            which re-derives that week's ranking.
+ *   - force-advance        — close a stuck week and archive the season when its
+ *                            weeks have elapsed.
  *   - lineup override      — set or unlock a manager's lineup in exceptional cases.
  *
  * Every mutation writes an fs_audit_log row (audit.ts): direct mutations enlist
@@ -38,7 +38,7 @@ import {
 } from './leagues.js';
 import { writeAudit } from './audit.js';
 import { settleLeagueWeek } from './score.js';
-import { settleMatchups, type SettleResult } from './settle.js';
+import { closeWeek, type CloseResult } from './settle.js';
 import { generateLeagueRecaps } from './recap.js';
 import { ensureLineupRow, setLineup, getLineup } from './lineup.js';
 import { nyseRegularCloseAnchor, currentFriday } from '../market/holidays.js';
@@ -294,7 +294,11 @@ export async function removeMember(
   return getLeagueView(leagueId, actorUserId, pool);
 }
 
-/** Set a member's team name (commissioner editing any team). */
+/**
+ * Set a member's team name. A manager may rename their own team; renaming
+ * anyone else's requires the commissioner. (For a self-rename the `rowCount`
+ * check below already enforces that the actor is a member of the league.)
+ */
 export async function renameTeam(
   pool: Pool,
   leagueId: string,
@@ -302,7 +306,9 @@ export async function renameTeam(
   teamName: string,
   actorUserId: string,
 ): Promise<LeagueView> {
-  await assertCommissioner(pool, leagueId, actorUserId);
+  if (actorUserId !== targetUserId) {
+    await assertCommissioner(pool, leagueId, actorUserId);
+  }
   const name = teamName.trim();
   if (!name) throw new FantasyError('VALIDATION', 'teamName must not be empty');
 
@@ -419,18 +425,18 @@ export interface RescoreResult {
   season: number;
   week: number;
   scores: WeeklyScore[];
-  settle: SettleResult;
+  close: CloseResult;
 }
 
 /**
  * Resolve a dispute by re-running the week's scoring through the normal pipeline.
- * settleLeagueWeek recomputes each manager's score and upserts it (idempotent);
- * settleMatchups then re-settles the head-to-heads and rebuilds standings off
- * those fresh totals. The anchors default to mirror the scheduler's live-week
- * inputs exactly (`nyseRegularCloseAnchor(currentFriday(now))` and the matching
- * −7d baseline) so a re-score of the live week reproduces identical scores; a
- * historical dispute can pass explicit anchors. The commissioner and their
- * reason are recorded after the settle succeeds.
+ * settleLeagueWeek recomputes each manager's score and upserts it (idempotent),
+ * which re-derives that week's ranking; closeWeek then re-checks season archival.
+ * The anchors default to mirror the scheduler's live-week inputs exactly
+ * (`nyseRegularCloseAnchor(currentFriday(now))` and the matching −7d baseline) so
+ * a re-score of the live week reproduces identical scores; a historical dispute
+ * can pass explicit anchors. The commissioner and their reason are recorded after
+ * the scoring succeeds.
  */
 export async function rescoreWeek(
   pool: Pool,
@@ -458,7 +464,7 @@ export async function rescoreWeek(
     weekEnd,
     baselineAt,
   });
-  const settle = await settleMatchups(pool, leagueId, week, season);
+  const close = await closeWeek(pool, leagueId, week, season);
 
   // Recaps read the just-settled scores; regenerate them so a correction
   // re-surfaces (idempotent upsert). Lowest-criticality — never fail the
@@ -466,7 +472,7 @@ export async function rescoreWeek(
   try {
     await generateLeagueRecaps(pool, leagueId, season, week, redis);
   } catch {
-    /* recaps are best-effort; the re-score and re-settle already committed */
+    /* recaps are best-effort; the re-score already committed */
   }
 
   await writeAudit(pool, {
@@ -478,11 +484,11 @@ export async function rescoreWeek(
       season,
       reason: opts.reason ?? null,
       managersScored: scores.length,
-      matchupsSettled: settle.settled,
+      seasonArchived: close.archived,
     },
   });
 
-  return { season, week, scores, settle };
+  return { season, week, scores, close };
 }
 
 // --- Force-advance ----------------------------------------------------------
@@ -497,15 +503,14 @@ export interface AdvanceOptions {
 export interface AdvanceResult {
   season: number;
   week: number;
-  settle: SettleResult;
+  close: CloseResult;
 }
 
 /**
- * Force-advance a stuck week. Settles its matchups off whatever scores exist
- * (a missing manager scores 0), rebuilds standings, and drives the FS-08
- * season→playoffs transition — the same pipeline the Friday job runs, on demand.
+ * Force-advance a stuck week: close it and archive the season when its weeks
+ * have elapsed — the same season-lifecycle step the Friday job runs, on demand.
  * Pair with rescoreWeek first if the dispute is bad numbers rather than a
- * never-ran settle. Recorded after the settle succeeds.
+ * never-ran close. Recorded after the close succeeds.
  */
 export async function forceAdvance(
   pool: Pool,
@@ -518,7 +523,7 @@ export async function forceAdvance(
   const week = opts.week ?? 1;
   assertWeek(week);
 
-  const settle = await settleMatchups(pool, leagueId, week, season);
+  const close = await closeWeek(pool, leagueId, week, season);
 
   await writeAudit(pool, {
     leagueId,
@@ -528,13 +533,11 @@ export async function forceAdvance(
       week,
       season,
       reason: opts.reason ?? null,
-      settled: settle.settled,
-      enteredPlayoffs: settle.enteredPlayoffs,
-      championUserId: settle.championUserId,
+      seasonArchived: close.archived,
     },
   });
 
-  return { season, week, settle };
+  return { season, week, close };
 }
 
 // --- Lineup override --------------------------------------------------------
@@ -628,7 +631,6 @@ const LEAGUE_STATUSES: LeagueStatus[] = [
   'forming',
   'drafting',
   'active',
-  'playoffs',
   'archived',
 ];
 
@@ -659,7 +661,7 @@ export async function fantasyHealth(pool: Pool): Promise<FantasyHealth> {
     `SELECT DISTINCT l.league_id, l.season, l.week
        FROM fs_lineup l
        JOIN fs_league lg ON lg.id = l.league_id
-      WHERE lg.status IN ('active', 'playoffs')
+      WHERE lg.status = 'active'
         AND l.locked_at IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM fs_weekly_score s
