@@ -255,12 +255,13 @@ compose run --rm -v /srv/tickr/repo/scripts:/app/scripts:ro \
   api pnpm tsx /app/scripts/data-audit.ts
 ```
 
-> **Note — the `bot` service:** the base compose defines a `bot` service with
-> `ROLE=bot`, but `apps/api/src/index.ts` currently only handles `api` and
-> `worker` and exits non-zero on any other role. Until the bot role is
-> implemented (a separate slice), the `bot` container will restart-loop and the
-> "bot healthy" check in TODO/12's DoD cannot pass. Either implement the role or
-> drop the `bot` service from the overlay before go-live.
+> **Note — the `bot` service (removed):** the compose stack used to define a
+> `bot` service with `ROLE=bot`, but `apps/api/src/index.ts` only handles `api`
+> and `worker` and exits non-zero on any other role, so the container
+> restart-looped. The role was never implemented and nothing depends on it — the
+> FS auto-managers run in-process under the `api` (draft handlers, draft clock)
+> and `worker` (scheduled lineup-lock/waivers/settle) roles — so the `bot`
+> service was dropped from all three compose files rather than implemented.
 
 ## 5. Routine deploys
 

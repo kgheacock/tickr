@@ -78,24 +78,6 @@ services:
       redis:
         condition: service_healthy
 
-  bot:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    restart: unless-stopped
-    env_file:
-      - path: ../.env
-        required: false
-    environment:
-      ROLE: bot
-      DATABASE_URL: postgres://${POSTGRES_USER:-tickr}:${POSTGRES_PASSWORD:-tickr}@postgres:5432/${POSTGRES_DB:-tickr}
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped

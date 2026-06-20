@@ -7,7 +7,7 @@
 #     the host (psql, redis-cli, curl :3000). These must NOT exist in prod —
 #     Docker's published ports bypass UFW, so a published 5432 would be world-
 #     reachable. The prod overlay publishes nothing beyond Caddy's 80/443.
-#   - Source bind-mounts + `tsx watch` for live reload. The api/worker/bot images
+#   - Source bind-mounts + `tsx watch` for live reload. The api/worker images
 #     default to the `dev` Dockerfile target, so no `build.target` is needed here.
 #   - Anonymous node_modules volumes that shadow the host tree with the image's
 #     Linux-built deps.
@@ -50,15 +50,6 @@ services:
       # burning the shared free-tier rate budget (see jobs/scheduler.ts). The prod
       # overlay never sets this and deploy.sh refuses it.
       TICKR_DISABLE_REMOTE_JOBS: '1'
-    volumes:
-      - ../apps/api/src:/app/apps/api/src
-      - ../packages/shared-types/src:/app/packages/shared-types/src
-      - /app/node_modules
-      - /app/apps/api/node_modules
-
-  bot:
-    environment:
-      NODE_ENV: development
     volumes:
       - ../apps/api/src:/app/apps/api/src
       - ../packages/shared-types/src:/app/packages/shared-types/src
