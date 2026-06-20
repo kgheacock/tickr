@@ -3,7 +3,9 @@
 # Single image for the backend. ROLE env var selects which entrypoint runs:
 #   ROLE=api    — HTTP + WS server
 #   ROLE=worker — scheduled background jobs (backfill, daily price, snapshots)
-#   ROLE=bot    — bot runner
+# (A ROLE=bot entrypoint was never implemented; src/index.ts handles only
+#  api|worker. FS auto-managers run in-process under api/worker, not a separate
+#  service — see docs/runbook.md.)
 #
 # Two build targets:
 #   --target dev  (default) — source is bind-mounted over /app/apps/api/src by

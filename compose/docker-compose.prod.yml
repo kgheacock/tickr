@@ -6,7 +6,7 @@
 #   - Pins built images by tag (TICKR_IMAGE_TAG = the deployed commit SHA); no
 #     ":latest". `build:` is kept so a fresh host can build locally before a
 #     registry exists — set TICKR_IMAGE_TAG=local for hand builds.
-#   - api/worker/bot run the self-contained `prod` Dockerfile target (no source
+#   - api/worker run the self-contained `prod` Dockerfile target (no source
 #     bind-mounts, no watch — those live only in the dev overlay).
 #   - Loads production secrets from /srv/tickr/secrets/tickr.env (chmod 600).
 #   - Caddy serves the prebuilt SPA (baked into the web image) and the prod
@@ -64,20 +64,6 @@ services:
         limits:
           cpus: '0.75'
           memory: 512M
-
-  bot:
-    build:
-      target: prod
-    image: ghcr.io/kgheacock/tickr-api:${TICKR_IMAGE_TAG:-local}
-    env_file:
-      - /srv/tickr/secrets/tickr.env
-    environment:
-      NODE_ENV: production
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 256M
 
   caddy:
     build:
