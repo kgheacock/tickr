@@ -8,7 +8,7 @@ const baseLog = jobLogger('finnhub');
 export class FinnhubRateLimitError extends Error {
   readonly status = 429;
   constructor() {
-    super('Finnhub responded with 429 — token bucket is mistuned');
+    super('Finnhub responded with 429 — rate limited after retries');
     this.name = 'FinnhubRateLimitError';
   }
 }
@@ -16,7 +16,12 @@ export class FinnhubRateLimitError extends Error {
 const BASE = 'https://finnhub.io/api/v1';
 const TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 3;
+// Network-transient backoff (timeout / reset), indexed by attempt number.
 const RETRY_DELAYS_MS = [250, 1_000, 2_000] as const;
+// 429 backoff used only when Finnhub sends no Retry-After header. Longer than the
+// network schedule: a 429 means we're over the per-minute window, so a sub-second
+// retry would just clip it again. Honors Retry-After first when present.
+const RATE_LIMIT_DELAYS_MS = [1_000, 2_000, 5_000] as const;
 
 function isRetryable(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
@@ -26,6 +31,24 @@ function isRetryable(err: unknown): boolean {
     return code === 'ETIMEDOUT' || code === 'ECONNRESET';
   }
   return false;
+}
+
+/**
+ * Parse a Retry-After header into a millisecond delay. Finnhub sends seconds, but
+ * the spec also allows an HTTP date — handle both, ignore anything unparseable.
+ */
+function retryAfterMs(res: Response): number | undefined {
+  const raw = res.headers.get('retry-after');
+  if (!raw) return undefined;
+  const secs = Number(raw);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1_000);
+  const when = Date.parse(raw);
+  if (!Number.isNaN(when)) return Math.max(0, when - Date.now());
+  return undefined;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 function log(
@@ -60,12 +83,6 @@ export async function finnhubGet<T>(
   log('debug', 'finnhub request', { path, query });
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    if (attempt > 0) {
-      const delay = RETRY_DELAYS_MS[attempt - 1] ?? 2_000;
-      log('warn', 'finnhub retry', { path, attempt, delay });
-      await new Promise<void>((resolve) => setTimeout(resolve, delay));
-    }
-
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
@@ -73,8 +90,19 @@ export async function finnhubGet<T>(
       clearTimeout(timer);
 
       if (res.status === 429) {
-        log('error', 'finnhub 429 — bucket mistuned', { path });
-        throw new FinnhubRateLimitError();
+        // A 429 is transient — we're over the per-minute window, not broken. Wait
+        // (honoring Retry-After) and retry. Only after exhausting retries do we
+        // surface FinnhubRateLimitError, which the close-capture sweep catches to
+        // skip just this symbol (its scorer falls back to authoritative bars).
+        if (attempt >= MAX_RETRIES) {
+          log('error', 'finnhub 429 — retries exhausted', { path, attempt });
+          throw new FinnhubRateLimitError();
+        }
+        const delay =
+          retryAfterMs(res) ?? RATE_LIMIT_DELAYS_MS[attempt] ?? 5_000;
+        log('warn', 'finnhub 429 — backing off', { path, attempt, delay });
+        await sleep(delay);
+        continue;
       }
       if (!res.ok) {
         log('error', 'finnhub non-OK response', { path, status: res.status });
@@ -86,21 +114,23 @@ export async function finnhubGet<T>(
     } catch (err) {
       clearTimeout(timer);
       if (err instanceof FinnhubRateLimitError) throw err;
-      if (isRetryable(err)) {
-        log('warn', 'finnhub retryable error', {
+      if (isRetryable(err) && attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAYS_MS[attempt] ?? 2_000;
+        log('warn', 'finnhub retryable error — backing off', {
           path,
           attempt,
+          delay,
           code: (err as { cause?: { code?: string } }).cause?.code,
         });
+        await sleep(delay);
+        continue;
       }
-      if (!isRetryable(err) || attempt >= MAX_RETRIES) {
-        log('error', 'finnhub request failed', {
-          path,
-          attempt,
-          err: err instanceof Error ? err.message : String(err),
-        });
-        throw err;
-      }
+      log('error', 'finnhub request failed', {
+        path,
+        attempt,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     }
   }
 

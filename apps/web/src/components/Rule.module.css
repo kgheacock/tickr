@@ -1,0 +1,24 @@
+/* Section rules for the newsprint layout. The line treatment lives here;
+   vertical spacing between sections is the caller's. */
+
+.rule {
+  /* Base: no own margins — placement is the caller's. */
+  border: 0;
+}
+
+/* Masthead rule: a heavy 3px double line capped by a hairline beneath. */
+.heavy {
+  border-top: 3px double var(--color-rule);
+  height: 4px;
+  border-bottom: 1px solid var(--color-rule);
+}
+
+/* Running-head rule: the 2px solid line under an interior page's title. */
+.section {
+  border-top: 2px solid var(--color-rule);
+}
+
+/* Lesser divider: a single hairline. */
+.thin {
+  border-top: 1px solid var(--color-rule);
+}

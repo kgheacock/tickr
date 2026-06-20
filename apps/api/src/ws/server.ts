@@ -8,6 +8,7 @@ import { authenticateUpgrade, readSessionToken } from './auth.js';
 import { getSession } from '../auth/session.js';
 import {
   topicKey,
+  notifyTopicKey,
   channelToTopicKey,
   MAX_PRICE_SYMBOLS,
   type TopicKey,
@@ -137,6 +138,20 @@ export function attachWsGateway(
     return upper;
   }
 
+  async function isLeagueMember(
+    leagueId: string,
+    userId: string,
+  ): Promise<boolean> {
+    const { rows } = await pool.query<{ ok: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM fs_league_member
+          WHERE league_id = $1 AND user_id = $2
+       ) AS ok`,
+      [leagueId, userId],
+    );
+    return rows[0]?.ok ?? false;
+  }
+
   async function handleSubscribe(
     conn: Connection,
     topic: WsTopic,
@@ -152,11 +167,41 @@ export function attachWsGateway(
       }
       conn.priceSymbols = new Set(valid);
     }
+    if (topic.kind === 'draft') {
+      // The draft board is league-private — only members may follow it.
+      if (!(await isLeagueMember(topic.leagueId, conn.userId))) {
+        sendError(conn.socket, {
+          code: 'FORBIDDEN',
+          message: 'League membership required to follow this draft',
+        });
+        return;
+      }
+    }
+    if (topic.kind === 'scores') {
+      // Live scores are league-private — only members may follow them.
+      if (!(await isLeagueMember(topic.leagueId, conn.userId))) {
+        sendError(conn.socket, {
+          code: 'FORBIDDEN',
+          message: 'League membership required to follow these scores',
+        });
+        return;
+      }
+    }
+    if (topic.kind === 'notifications') {
+      // The feed is implicitly the connection's own — keyed off the
+      // authenticated user, never a client-supplied id, so no manager can
+      // follow another's notifications.
+      conn.topics.add(notifyTopicKey(conn.userId));
+      return;
+    }
     conn.topics.add(topicKey(topic));
   }
 
   function handleUnsubscribe(conn: Connection, topic: WsTopic): void {
-    const key = topicKey(topic);
+    const key =
+      topic.kind === 'notifications'
+        ? notifyTopicKey(conn.userId)
+        : topicKey(topic);
     conn.topics.delete(key);
     if (topic.kind === 'prices') conn.priceSymbols.clear();
   }

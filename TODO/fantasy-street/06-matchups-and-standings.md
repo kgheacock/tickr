@@ -1,6 +1,15 @@
 # FS-06 · Matchups, schedule & standings
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03, 05
+> **⚠️ Refocused — superseded.** Fantasy Street no longer has head-to-head
+> matchups, a round-robin schedule, or W/L/T standings. The game is now
+> **weekly-ranking-only**: each week every manager is scored (FS-05,
+> `fs_weekly_score`) and ranked within the league by that weekly total, derived
+> on read (`score.ts` `rankScores`) — nothing below this banner about matchups,
+> the schedule, or standings is current. `fs_matchup` and `fs_standings` were
+> dropped (migration `1700000000043`); `schedule.ts`/`standings.ts` and the
+> `/schedule|/matchups|/standings` routes were removed.
+
+**Status:** `superseded` (was [#65](https://github.com/kgheacock/tickr/pull/65)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 03, 05
 
 ## User stories
 - As a manager, I want to face one opponent each week and win or lose on total
@@ -74,11 +83,23 @@ the win/loss spine FS-08 (playoffs) builds the bracket on.
   `apps/api/src/routes/leagues/index.ts`, `packages/shared-types/src/fantasy.ts`.
 
 ## Definition of done
-- [ ] When the draft completes, a full round-robin schedule is generated; an
+- [x] When the draft completes, a full round-robin schedule is generated; an
       odd-sized league has exactly one bye per week, rotating.
-- [ ] After the Friday score settles, each week's matchups go `final` with the
+- [x] After the Friday score settles, each week's matchups go `final` with the
       higher total winning (ties recorded), and standings update.
-- [ ] Standings rank by the documented tiebreaker order and expose the fields.
-- [ ] A re-scored week (FS-12) re-settles its matchups and re-ranks standings.
-- [ ] `GET /schedule`, `/matchups`, and `/standings` return correct data for an
+- [x] Standings rank by the documented tiebreaker order and expose the fields.
+- [x] A re-scored week (FS-12) re-settles its matchups and re-ranks standings.
+- [x] `GET /schedule`, `/matchups`, and `/standings` return correct data for an
       in-progress season.
+
+## Follow-up — multi-week cron derivation (deferred; tracked from PR #70 review F3)
+
+The schedule/matchup/standings **modules** above are multi-week, but the
+**cron integration** in `apps/api/src/jobs/scheduler.ts` (`currentWeek()`) is
+pinned to week 1 — an intentional single-week MVP scope for the fantasy-street →
+main merge. Consequence: the automated lineup-lock, weekly-settle and
+provisional-scoring jobs only ever target week 1; weeks ≥ 2 must be settled on
+demand until the season-week derivation lands. Multi-week auto-advance needs
+`currentWeek()` to derive the active week from the season start date + week
+length (`fs_league` already carries `seasonLengthWeeks`). Tracked here so the
+MVP boundary is explicit rather than implicit.

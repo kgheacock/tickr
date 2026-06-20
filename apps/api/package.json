@@ -15,6 +15,8 @@
     "db:seed:universe": "tsx src/db/seed-universe.ts",
     "backfill": "node --env-file-if-exists=../../.env --import tsx src/jobs/run-backfill.ts",
     "metadata": "node --env-file-if-exists=../../.env --import tsx src/jobs/run-metadata.ts",
+    "classify": "node --env-file-if-exists=../../.env --import tsx src/jobs/run-classify.ts",
+    "close-capture": "node --env-file-if-exists=../../.env --import tsx src/jobs/run-close-capture.ts",
     "test": "vitest run"
   },
   "dependencies": {

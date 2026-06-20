@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   isRegularSession,
   isNyseHoliday,
+  nyseRegularCloseAnchor,
   mostRecentClose,
+  currentFriday,
 } from '../../src/market/holidays.js';
 
 // Helper: build a UTC instant from an explicit offset so the test states the
@@ -66,6 +68,45 @@ describe('isRegularSession', () => {
   });
 });
 
+describe('nyseRegularCloseAnchor', () => {
+  // The anchor marks the instant just *before* 16:00 ET, so a `ts <= anchor`
+  // lookup lands on the last regular-session bar (15:45 ET) and excludes the
+  // first after-hours bar (ts = 16:00 ET).
+  it('EDT: 16:00 ET close is 20:00 UTC; anchor is 1ms before', () => {
+    // Fri 2025-07-18, noon ET = 16:00 UTC (EDT).
+    const anchor = nyseRegularCloseAnchor(utc('2025-07-18T16:00:00Z'));
+    expect(anchor.toISOString()).toBe('2025-07-18T19:59:59.999Z');
+    // +1ms lands exactly on the 16:00 ET close → excluded by `ts <= anchor`.
+    expect(new Date(anchor.getTime() + 1).toISOString()).toBe(
+      '2025-07-18T20:00:00.000Z',
+    );
+  });
+
+  it('EST: 16:00 ET close is 21:00 UTC; anchor is 1ms before', () => {
+    // Fri 2025-01-17, noon ET = 17:00 UTC (EST).
+    const anchor = nyseRegularCloseAnchor(utc('2025-01-17T17:00:00Z'));
+    expect(anchor.toISOString()).toBe('2025-01-17T20:59:59.999Z');
+  });
+
+  it('resolves the close on the ET calendar date, not the UTC date', () => {
+    // 2025-07-18T02:00:00Z is still 2025-07-17 22:00 ET → anchor on the 17th.
+    const anchor = nyseRegularCloseAnchor(utc('2025-07-18T02:00:00Z'));
+    expect(anchor.toISOString()).toBe('2025-07-17T19:59:59.999Z');
+  });
+
+  it('a DST-transition week keeps both endpoints at 16:00 ET (not 7×24h apart)', () => {
+    // US DST began Sun 2025-03-09. Fri 2025-03-14 is EDT (−4); the prior Friday
+    // 2025-03-07 is EST (−5). Anchoring each zone-aware yields a 16:00-ET-to-
+    // 16:00-ET gap of 7d − 1h, which a fixed weekEnd−7d would get wrong.
+    const thisFri = nyseRegularCloseAnchor(utc('2025-03-14T16:00:00Z'));
+    const priorFri = nyseRegularCloseAnchor(utc('2025-03-07T16:00:00Z'));
+    expect(thisFri.toISOString()).toBe('2025-03-14T19:59:59.999Z'); // EDT 20:00Z
+    expect(priorFri.toISOString()).toBe('2025-03-07T20:59:59.999Z'); // EST 21:00Z
+    const gapHours = (thisFri.getTime() - priorFri.getTime()) / 3_600_000;
+    expect(gapHours).toBe(7 * 24 - 1);
+  });
+});
+
 describe('mostRecentClose', () => {
   // EDT close = 20:00 UTC (16:00 - 4h); EST close = 21:00 UTC (16:00 - 5h).
   it('returns the previous session close mid-session (cap at last close)', () => {
@@ -109,5 +150,40 @@ describe('mostRecentClose', () => {
     expect(mostRecentClose(utc('2025-07-16T20:00:00Z')).toISOString()).toBe(
       '2025-07-16T20:00:00.000Z',
     );
+  });
+});
+
+describe('currentFriday', () => {
+  // The result keeps now's time-of-day, so read its America/New_York calendar
+  // date (what every downstream anchor uses), not the raw UTC date.
+  const fridayOf = (iso: string): string =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(currentFriday(utc(iso)));
+
+  it('mid-week (Tue) resolves the coming Friday', () => {
+    // Tue 2026-06-16 12:00 ET (16:00 UTC) → Fri 2026-06-19.
+    expect(fridayOf('2026-06-16T16:00:00Z')).toBe('2026-06-19');
+  });
+
+  it('on Friday resolves that same Friday', () => {
+    // Fri 2026-06-12 18:00 ET (22:00 UTC) → 2026-06-12.
+    expect(fridayOf('2026-06-12T22:00:00Z')).toBe('2026-06-12');
+  });
+
+  it('just past ET midnight (early UTC morning) stays on the right week', () => {
+    // Wed 2026-06-17 00:49 ET = 04:49 UTC. A fixed-offset weekday computed off
+    // the UTC date lands a day late here (Saturday 2026-06-20); the ET-date
+    // mapping must still yield Fri 2026-06-19. Regression for the player-detail
+    // "previous scoring" anchors shifting onto a non-trading Saturday.
+    expect(fridayOf('2026-06-17T04:49:00Z')).toBe('2026-06-19');
+  });
+
+  it('Sunday night ET (Monday early UTC) resolves the coming Friday', () => {
+    // Sun 2026-06-14 23:30 ET = Mon 2026-06-15 03:30 UTC → Fri 2026-06-19.
+    expect(fridayOf('2026-06-15T03:30:00Z')).toBe('2026-06-19');
   });
 });

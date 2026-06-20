@@ -1,6 +1,71 @@
 export type { paths, components, operations } from './openapi.gen.js';
 export type { WsTopic, WsClientMessage, WsServerMessage } from './ws.js';
 
+// --- Fantasy Street (epic v2) ---
+export type {
+  RosterConfig,
+  LeagueMember,
+  LeagueView,
+  LeagueSummary,
+  LeagueListResponse,
+  LeagueMembership,
+  Invite,
+  CreateLeagueRequest,
+  UpdateLeagueRequest,
+  CreateInviteRequest,
+  JoinLeagueRequest,
+  LeagueStatus,
+  JoinPolicy,
+  MemberRole,
+  PlayerGroup,
+  PlayerMetrics,
+  PlayerOwnership,
+  PlayerInventoryItem,
+  PlayerListResponse,
+  PlayerWeekScore,
+  PlayerDetail,
+  DraftStatus,
+  DraftPick,
+  DraftSlot,
+  DraftState,
+  MakePickRequest,
+  LineupSlot,
+  Lineup,
+  SetLineupSlot,
+  SetLineupRequest,
+  ScoreBreakdownItem,
+  WeeklyScore,
+  LeagueScoresResponse,
+  SeasonWinsEntry,
+  SeasonWinsResponse,
+  WaiverClaim,
+  WaiverOrderEntry,
+  SubmitWaiverRequest,
+  WaiversResponse,
+  RosterTransactionRequest,
+  RosterTransactionResult,
+  TradeItem,
+  Trade,
+  ProposeTradeRequest,
+  TradesResponse,
+  Season,
+  SeasonStatus,
+  SeasonsResponse,
+  SeasonDetail,
+  AddBotsRequest,
+  Notification,
+  NotificationKind,
+  NotificationsResponse,
+  RecapSlot,
+  RecapLeader,
+  RecapPayload,
+  AuditEntry,
+  AuditResponse,
+  FantasyHealth,
+  StuckWeek,
+  LeagueScoringRun,
+} from './fantasy.js';
+
 import type { components } from './openapi.gen.js';
 
 // --- Enums ---
@@ -13,6 +78,7 @@ export type Identity = components['schemas']['Identity'];
 // --- Response types ---
 export type ApiError = components['schemas']['ApiError'];
 export type MeResponse = components['schemas']['MeResponse'];
+export type UserExistsResponse = components['schemas']['UserExistsResponse'];
 export type UniverseItem = components['schemas']['UniverseItem'];
 export type UniverseResponse = components['schemas']['UniverseResponse'];
 export type SymbolMetadata = components['schemas']['SymbolMetadata'];
@@ -46,3 +112,4 @@ export type BackfillRequest = components['schemas']['BackfillRequest'];
 
 // --- Admin / ops ---
 export type OpsResponse = components['schemas']['OpsResponse'];
+export type JobStatus = components['schemas']['JobStatus'];

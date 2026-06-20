@@ -116,7 +116,7 @@ components:
 
     MeResponse:
       type: object
-      required: [user, identities, csrfToken]
+      required: [user, identities, csrfToken, leagues]
       properties:
         user:
           $ref: '#/components/schemas/User'
@@ -127,6 +127,19 @@ components:
         csrfToken:
           type: string
           description: Rotating token required in X-CSRF-Token on state-changing requests
+        leagues:
+          type: array
+          description: Fantasy Street leagues the user is a member of, for client routing
+          items:
+            $ref: '#/components/schemas/LeagueMembership'
+
+    UserExistsResponse:
+      type: object
+      required: [exists]
+      properties:
+        exists:
+          type: boolean
+          description: Whether a registered tickr user has the given email
 
     # --- Universe ---
 
@@ -605,7 +618,9 @@ components:
         - marketData429sLast24h
         - jobQueueDepth
         - backfillRemaining
+        - fantasy
         - worstLag
+        - jobs
       properties:
         lastEodUpdateAt:
           type: ['string', 'null']
@@ -626,6 +641,8 @@ components:
         backfillRemaining:
           type: integer
           description: Count of universe_symbol rows with backfilled = false
+        fantasy:
+          $ref: '#/components/schemas/FantasyHealth'
         worstLag:
           type: ['object', 'null']
           description: >-
@@ -644,6 +661,1258 @@ components:
             lagSec:
               type: integer
               description: Seconds between the freshness reference and latestBarAt (>= 0)
+        jobs:
+          type: array
+          description: >-
+            Per-job run status for the scheduled worker jobs, in registry order.
+            One entry per known job, including jobs that have never run (e.g.
+            external-data jobs under TICKR_DISABLE_REMOTE_JOBS).
+          items:
+            $ref: '#/components/schemas/JobStatus'
+
+    JobStatus:
+      type: object
+      description: Last-run status of one scheduled worker job (admin /admin/jobs viewer)
+      required:
+        - name
+        - cadence
+        - cron
+        - description
+        - remote
+        - running
+        - lastStartAt
+        - lastFinishAt
+        - lastOutcome
+        - lastDurationMs
+        - lastError
+        - lastSkipAt
+        - runs
+        - fails
+        - skips
+      properties:
+        name:
+          type: string
+          description: Stable job identifier (kebab-case); distinct per job even when two jobs share a lock
+        cadence:
+          type: string
+          description: Human-readable schedule (e.g. "Fri 21:35 UTC")
+        cron:
+          type: string
+          description: Cron expression(s) the job is scheduled on, for reference
+        description:
+          type: string
+          description: What the job does
+        remote:
+          type: boolean
+          description: >-
+            True for jobs that reach an external data API; these are skipped
+            entirely under TICKR_DISABLE_REMOTE_JOBS, so "never ran" in dev is
+            expected rather than a fault.
+        running:
+          type: boolean
+          description: True while a run is in flight (per-job marker with a TTL crash-net)
+        lastStartAt:
+          type: ['string', 'null']
+          description: ISO timestamp the job last started, or null if it has never run
+        lastFinishAt:
+          type: ['string', 'null']
+          description: ISO timestamp the last actual execution finished, or null
+        lastOutcome:
+          type: ['string', 'null']
+          enum: [ok, error, null]
+          description: Outcome of the last actual execution (never a busy-skip), or null
+        lastDurationMs:
+          type: ['integer', 'null']
+          description: Duration of the last execution in ms, or null
+        lastError:
+          type: ['string', 'null']
+          description: Truncated error from the last failed execution; null/empty after a success
+        lastSkipAt:
+          type: ['string', 'null']
+          description: ISO timestamp a firing was last skipped because the prior run still held the lock
+        runs:
+          type: integer
+          description: Lifetime count of actual executions
+        fails:
+          type: integer
+          description: Lifetime count of executions that threw
+        skips:
+          type: integer
+          description: Lifetime count of busy-skips (lock already held)
+
+    # --- Fantasy Street: leagues & membership (item 01) ---
+
+    RosterConfig:
+      type: object
+      description: Slot layout for a league's weekly lineup plus bench depth
+      required: [slots, bench]
+      properties:
+        slots:
+          type: array
+          description: Named starting slots (Anchor, Growth, Momentum, Value, Defense, Wildcard)
+          items:
+            type: string
+        bench:
+          type: integer
+          description: Number of bench slots (0–4)
+
+    LeagueMember:
+      type: object
+      required: [userId, displayName, teamName, role, joinedAt]
+      properties:
+        userId:
+          type: string
+        displayName:
+          type: string
+        teamName:
+          type: ['string', 'null']
+        role:
+          type: string
+          enum: [commissioner, manager]
+        joinedAt:
+          type: string
+          format: date-time
+
+    LeagueView:
+      type: object
+      required:
+        - id
+        - name
+        - commissionerUserId
+        - size
+        - seasonLengthWeeks
+        - rosterConfig
+        - joinPolicy
+        - status
+        - createdAt
+        - members
+        - openSlots
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        commissionerUserId:
+          type: string
+        size:
+          type: integer
+          description: Max managers (4–12)
+        seasonLengthWeeks:
+          type: integer
+        rosterConfig:
+          $ref: '#/components/schemas/RosterConfig'
+        joinPolicy:
+          type: string
+          enum: [invite, open]
+        status:
+          type: string
+          enum: [forming, drafting, active, archived]
+        createdAt:
+          type: string
+          format: date-time
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueMember'
+        openSlots:
+          type: integer
+          description: size − current member count
+
+    LeagueSummary:
+      type: object
+      required:
+        - id
+        - name
+        - size
+        - seasonLengthWeeks
+        - joinPolicy
+        - status
+        - memberCount
+        - openSlots
+        - createdAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        size:
+          type: integer
+        seasonLengthWeeks:
+          type: integer
+        joinPolicy:
+          type: string
+          enum: [invite, open]
+        status:
+          type: string
+          enum: [forming, drafting, active, archived]
+        memberCount:
+          type: integer
+        openSlots:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    LeagueListResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueSummary'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    LeagueMembership:
+      type: object
+      description: A user's membership in a league, as surfaced on /me
+      required: [leagueId, teamName, role, status]
+      properties:
+        leagueId:
+          type: string
+        teamName:
+          type: ['string', 'null']
+        role:
+          type: string
+          enum: [commissioner, manager]
+        status:
+          type: string
+          enum: [forming, drafting, active, archived]
+
+    Invite:
+      type: object
+      required: [token, leagueId, expiresAt, maxUses, uses, createdAt]
+      properties:
+        token:
+          type: string
+        leagueId:
+          type: string
+        expiresAt:
+          type: ['string', 'null']
+          format: date-time
+        maxUses:
+          type: ['integer', 'null']
+        uses:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateLeagueMember:
+      type: object
+      description: >-
+        A seat to fill when creating a league. A bot seat is minted as an
+        auto-manager; a human seat creates a labelled invite for the given
+        email (delivery is not yet wired — see FS-14).
+      required: [isBot]
+      properties:
+        email:
+          type: ['string', 'null']
+          description: Invitee email for a human seat; null/omitted for a bot seat.
+        isBot:
+          type: boolean
+
+    CreateLeagueRequest:
+      type: object
+      required: [name, seasonLengthWeeks, joinPolicy]
+      properties:
+        name:
+          type: string
+        teamName:
+          type: ['string', 'null']
+          description: The commissioner's own team name.
+        size:
+          type: integer
+          description: >-
+            League capacity (4–12). Optional and ignored when `members` is
+            supplied — capacity is then derived as 1 (commissioner) + members.
+        seasonLengthWeeks:
+          type: integer
+        rosterConfig:
+          $ref: '#/components/schemas/RosterConfig'
+        joinPolicy:
+          type: string
+          enum: [invite, open]
+        members:
+          type: array
+          description: >-
+            The other seats to fill. Capacity is derived as 1 + members.length,
+            and must land in 4–12 (so 3–11 members).
+          items:
+            $ref: '#/components/schemas/CreateLeagueMember'
+
+    UpdateLeagueRequest:
+      type: object
+      description: Commissioner settings edit; allowed only while status = forming
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        seasonLengthWeeks:
+          type: integer
+        rosterConfig:
+          $ref: '#/components/schemas/RosterConfig'
+        joinPolicy:
+          type: string
+          enum: [invite, open]
+
+    CreateInviteRequest:
+      type: object
+      properties:
+        expiresInHours:
+          type: integer
+          description: Invite lifetime in hours; omit for no expiry
+        maxUses:
+          type: integer
+          description: Cap on accepted joins; omit for unlimited until expiry
+
+    JoinLeagueRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Invite token; required for invite-only leagues, optional for open leagues
+
+    # --- Players & grouping (item 02) ---
+
+    PlayerGroup:
+      type: string
+      description: A draftable slot family a stock can qualify for
+      enum: [anchor, growth, momentum, value, defense, wildcard]
+
+    PlayerMetrics:
+      type: object
+      description: Price-derived metrics behind a stock's group eligibility
+      required: [ret3mPct, ret12mPct, sigma, avgVolume]
+      properties:
+        ret3mPct:
+          type: ['number', 'null']
+          description: Trailing ~3-month price return, percent
+        ret12mPct:
+          type: ['number', 'null']
+          description: Trailing ~12-month price return, percent
+        sigma:
+          type: ['number', 'null']
+          description: Stddev of trailing daily returns (~90d), as a fraction
+        avgVolume:
+          type: ['number', 'null']
+          description: Mean daily volume over the window; null when unavailable
+
+    PlayerOwnership:
+      type: object
+      description: Per-league ownership status for a stock
+      required: [owned]
+      properties:
+        owned:
+          type: boolean
+        ownerTeam:
+          type: ['string', 'null']
+          description: Team name of the owning manager, when owned
+        isShort:
+          type: ['boolean', 'null']
+          description: Whether the owner holds it as a short (defense), when owned
+
+    PlayerInventoryItem:
+      type: object
+      required:
+        [symbol, name, groups, recentReturnPct, currentWeekPoints, ownership]
+      properties:
+        symbol:
+          type: string
+        name:
+          type: ['string', 'null']
+          description: Company name (symbol_metadata); null when unfetched
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerGroup'
+        recentReturnPct:
+          type: ['number', 'null']
+          description: Trailing ~3-month return, surfaced for scouting
+        currentWeekPoints:
+          type: ['number', 'null']
+          description: >-
+            Fantasy points the stock has scored so far this in-flight week (long
+            basis, return valued off the latest close); null when no price data
+            resolves the week
+        ownership:
+          $ref: '#/components/schemas/PlayerOwnership'
+
+    PlayerWeekScore:
+      type: object
+      description: >-
+        One week's long-basis fantasy points for a stock. The first entry is the
+        in-flight week (provisional = true), valued so far off the latest close.
+      required: [weekStart, weekEnd, returnPct, points, provisional]
+      properties:
+        weekStart:
+          type: string
+          format: date-time
+          description: The week's Monday (the Friday-close anchor minus four days)
+        weekEnd:
+          type: string
+          format: date-time
+          description: The week's Friday regular-close anchor
+        returnPct:
+          type: ['number', 'null']
+          description: Week percent return; null when no price data resolves it
+        points:
+          type: ['number', 'null']
+          description: returnPct (long basis); null when returnPct is null
+        provisional:
+          type: boolean
+          description: True for the current, not-yet-settled week (valued so far)
+
+    PlayerListResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerInventoryItem'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    PlayerScoringSummary:
+      type: object
+      description: Trailing 3-month scoring summary over completed weeks.
+      required: [totalPoints, pctPositive, weeks]
+      properties:
+        totalPoints:
+          type: ['number', 'null']
+          description: >-
+            Sum of long-basis weekly points over the last ~3 months; null when
+            no week resolves price data
+        pctPositive:
+          type: ['number', 'null']
+          description: Percent (0–100) of scored weeks that finished positive; null when none
+        weeks:
+          type: integer
+          description: Count of weeks with resolvable price data in the window
+
+    PlayerDetail:
+      type: object
+      required:
+        - symbol
+        - name
+        - groups
+        - eligibleSlots
+        - recentReturnPct
+        - metrics
+        - ownership
+        - scoringHistory
+        - scoring3mo
+        - prices
+      properties:
+        symbol:
+          type: string
+        name:
+          type: ['string', 'null']
+          description: Company name (symbol_metadata); null when unfetched
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlayerGroup'
+        eligibleSlots:
+          type: array
+          description: Roster slot names this stock may fill
+          items:
+            type: string
+        recentReturnPct:
+          type: ['number', 'null']
+        metrics:
+          $ref: '#/components/schemas/PlayerMetrics'
+        ownership:
+          $ref: '#/components/schemas/PlayerOwnership'
+        scoringHistory:
+          type: array
+          description: Per-week long-basis points for recent completed weeks (newest first)
+          items:
+            $ref: '#/components/schemas/PlayerWeekScore'
+        scoring3mo:
+          $ref: '#/components/schemas/PlayerScoringSummary'
+        prices:
+          type: array
+          description: Price-history window (~3 months) for the detail chart
+          items:
+            $ref: '#/components/schemas/PriceBar'
+
+    # --- Live draft (item 03) ---
+
+    DraftStatus:
+      type: string
+      description: Lifecycle of a league's snake draft
+      enum: [scheduled, in_progress, complete]
+
+    DraftPick:
+      type: object
+      description: One landed pick in the snake order; the immutable draft log
+      required: [overallPick, round, userId, symbol, isShort, auto, pickedAt]
+      properties:
+        overallPick:
+          type: integer
+          description: 1-based position in the overall snake order
+        round:
+          type: integer
+          description: 1-based draft round
+        userId:
+          type: string
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+          description: Drafted as a short (Defense), scored as the inverse return
+        auto:
+          type: boolean
+          description: True when the pick clock expired and auto-draft chose it
+        pickedAt:
+          type: string
+          format: date-time
+
+    DraftSlot:
+      type: object
+      description: A seat in the snake order, present whether or not it is filled
+      required: [overallPick, round, userId]
+      properties:
+        overallPick:
+          type: integer
+        round:
+          type: integer
+        userId:
+          type: string
+          description: Manager on the clock for this position
+
+    DraftState:
+      type: object
+      description: The live draft board — order, picks so far, and the clock
+      required:
+        - id
+        - leagueId
+        - status
+        - pickSeconds
+        - totalRounds
+        - totalPicks
+        - currentOverallPick
+        - onClockUserId
+        - deadline
+        - order
+        - picks
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        status:
+          $ref: '#/components/schemas/DraftStatus'
+        pickSeconds:
+          type: integer
+        totalRounds:
+          type: integer
+          description: slots + bench; every manager makes this many picks
+        totalPicks:
+          type: integer
+          description: size × totalRounds; the length of the snake order
+        currentOverallPick:
+          type: integer
+          description: Position on the clock; exceeds totalPicks once complete
+        onClockUserId:
+          type: ['string', 'null']
+          description: Manager currently on the clock; null when complete
+        deadline:
+          type: ['string', 'null']
+          format: date-time
+          description: When the current pick expires; null when not in progress
+        order:
+          type: array
+          description: The full snake order, one seat per overall pick
+          items:
+            $ref: '#/components/schemas/DraftSlot'
+        picks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DraftPick'
+
+    MakePickRequest:
+      type: object
+      required: [symbol]
+      properties:
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+          description: Draft the stock as a short into the Defense slot
+          default: false
+
+    # --- Fantasy Street: rosters & weekly lineups (item 04) ---
+
+    LineupSlot:
+      type: object
+      description: One filled slot in a weekly lineup
+      required: [slot, slotIndex, symbol, isShort]
+      properties:
+        slot:
+          type: string
+          enum: [anchor, growth, momentum, value, defense, wildcard, bench]
+        slotIndex:
+          type: integer
+          description: Disambiguates repeated slots (bench, duplicate slots)
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+          description: True for a Defense short; false for every long slot
+
+    Lineup:
+      type: object
+      description: A manager's weekly starting lineup and its lock state
+      required:
+        - leagueId
+        - userId
+        - season
+        - week
+        - locked
+        - lockedAt
+        - autoFilled
+        - slots
+      properties:
+        leagueId:
+          type: string
+        userId:
+          type: string
+        season:
+          type: integer
+        week:
+          type: integer
+        locked:
+          type: boolean
+          description: True once the scoring week's market open froze the lineup
+        lockedAt:
+          type: ['string', 'null']
+          format: date-time
+        autoFilled:
+          type: boolean
+          description: True when the lock job auto-filled one or more slots
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/LineupSlot'
+
+    SetLineupSlot:
+      type: object
+      required: [slot, symbol]
+      properties:
+        slot:
+          type: string
+          enum: [anchor, growth, momentum, value, defense, wildcard, bench]
+        slotIndex:
+          type: integer
+          default: 0
+          description: Position within a repeated slot; defaults to 0
+        symbol:
+          type: string
+
+    SetLineupRequest:
+      type: object
+      required: [week, slots]
+      properties:
+        week:
+          type: integer
+        season:
+          type: integer
+          default: 1
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/SetLineupSlot'
+
+    # --- Scoring & shorting (item 05) ---
+    ScoreBreakdownItem:
+      type: object
+      description: One started slot's contribution to a manager's weekly score
+      required: [slot, symbol, isShort, lastClose, thisClose, returnPct, points]
+      properties:
+        slot:
+          type: string
+          enum: [anchor, growth, momentum, value, defense, wildcard, bench]
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+          description: True for a Defense short (scored as −r)
+        lastClose:
+          type: ['number', 'null']
+          description: Prior-Friday close in cents, or null if no bar resolved
+        thisClose:
+          type: ['number', 'null']
+          description: This-Friday (or as-of) close in cents, or null
+        returnPct:
+          type: ['number', 'null']
+          description: Week percent return, or null when a close was missing
+        points:
+          type: number
+          description: Slot points (r long, −r short), rounded to 2 dp
+
+    WeeklyScore:
+      type: object
+      description: A manager's weekly point total and its per-slot breakdown
+      required:
+        - leagueId
+        - userId
+        - season
+        - week
+        - totalPoints
+        - computedAt
+        - provisional
+        - breakdown
+      properties:
+        leagueId:
+          type: string
+        userId:
+          type: string
+        season:
+          type: integer
+        week:
+          type: integer
+        totalPoints:
+          type: number
+          description: Uncapped sum of started slots (losses included)
+        computedAt:
+          type: string
+          format: date-time
+        provisional:
+          type: boolean
+          description: True for an in-week live total; false once Friday-settled
+        breakdown:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScoreBreakdownItem'
+
+    LeagueScoresResponse:
+      type: object
+      description: >-
+        Every manager's score for one league week. Settled (provisional = false)
+        once the Friday close is scored; provisional in-week totals (valued so
+        far off the latest close) until then.
+      required: [season, week, scores]
+      properties:
+        season:
+          type: integer
+        week:
+          type: integer
+        scores:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyScore'
+
+    SeasonWinsEntry:
+      type: object
+      description: >-
+        One manager's season win tally. A win is a first-place finish in a
+        settled week's ranking; tied co-leaders each count a win.
+      required: [userId, wins, weeksPlayed, pointsFor]
+      properties:
+        userId:
+          type: string
+        wins:
+          type: integer
+          description: Weeks finished first in the weekly ranking (co-leaders count)
+        weeksPlayed:
+          type: integer
+          description: Settled weeks this manager was scored in
+        pointsFor:
+          type: number
+          description: Sum of settled weekly totals — the win tiebreaker
+
+    SeasonWinsResponse:
+      type: object
+      description: >-
+        Season-long win standings derived from every settled week. Managers are
+        ordered by wins, then total points-for. Empty until the first week
+        settles.
+      required: [season, weeks, entries]
+      properties:
+        season:
+          type: integer
+        weeks:
+          type: integer
+          description: Number of settled weeks counted into the tally
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeasonWinsEntry'
+
+    # --- Waivers & trades (item 07) ---
+
+    WaiverClaim:
+      type: object
+      description: A queued add/drop request, resolved by the waiver run
+      required:
+        - id
+        - leagueId
+        - season
+        - userId
+        - addSymbol
+        - dropSymbol
+        - isShort
+        - status
+        - submittedAt
+        - processedAt
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        season:
+          type: integer
+        userId:
+          type: string
+        addSymbol:
+          type: string
+        dropSymbol:
+          type: string
+        isShort:
+          type: boolean
+          description: True when the add fills the Defense (short) slot
+        status:
+          type: string
+          enum: [pending, won, lost, invalid]
+        submittedAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the waiver run resolved the claim; null while pending
+
+    WaiverOrderEntry:
+      type: object
+      description: One manager's slot in the rolling waiver priority order
+      required: [userId, priority]
+      properties:
+        userId:
+          type: string
+        priority:
+          type: integer
+          description: Lower claims first; reverse standings, demoted on a win
+
+    SubmitWaiverRequest:
+      type: object
+      description: Queue an add/drop waiver claim
+      required: [addSymbol, dropSymbol]
+      properties:
+        addSymbol:
+          type: string
+        dropSymbol:
+          type: string
+        isShort:
+          type: boolean
+          description: Add into the Defense (short) slot
+          default: false
+
+    WaiversResponse:
+      type: object
+      description: A manager's claims and the league's current waiver order
+      required: [season, claims, order]
+      properties:
+        season:
+          type: integer
+        claims:
+          type: array
+          items:
+            $ref: '#/components/schemas/WaiverClaim'
+        order:
+          type: array
+          items:
+            $ref: '#/components/schemas/WaiverOrderEntry'
+
+    RosterTransactionRequest:
+      type: object
+      description: Buy an unowned stock off the wire; pair a drop when the roster is full
+      required: [addSymbol]
+      properties:
+        addSymbol:
+          type: string
+        dropSymbol:
+          type: string
+          description: A stock the caller owns to drop; required when the roster is full
+        isShort:
+          type: boolean
+          description: Add into the Defense (short) slot
+          default: false
+
+    RosterTransactionResult:
+      type: object
+      description: The symbols moved by an immediate buy/sell (null when not applicable)
+      required: [leagueId, added, dropped]
+      properties:
+        leagueId:
+          type: string
+        added:
+          type: ['string', 'null']
+        dropped:
+          type: ['string', 'null']
+
+    TradeItem:
+      type: object
+      description: One leg of a trade — symbol moves from fromUserId to the other side
+      required: [fromUserId, symbol, isShort]
+      properties:
+        fromUserId:
+          type: string
+        symbol:
+          type: string
+        isShort:
+          type: boolean
+
+    Trade:
+      type: object
+      description: A manager-to-manager trade proposal and its lifecycle
+      required:
+        - id
+        - leagueId
+        - proposerUserId
+        - targetUserId
+        - status
+        - createdAt
+        - resolvedAt
+        - items
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        proposerUserId:
+          type: string
+        targetUserId:
+          type: string
+        status:
+          type: string
+          enum: [proposed, accepted, rejected, cancelled, expired]
+        createdAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the trade was accepted/rejected/cancelled; null while proposed
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TradeItem'
+
+    ProposeTradeRequest:
+      type: object
+      description: Offer give-symbols (the proposer's) for receive-symbols (the target's)
+      required: [targetUserId]
+      properties:
+        targetUserId:
+          type: string
+        give:
+          type: array
+          description: Symbols the proposer offers
+          items:
+            type: string
+        receive:
+          type: array
+          description: Symbols the proposer wants in return
+          items:
+            type: string
+
+    TradesResponse:
+      type: object
+      description: A manager's incoming (target) and outgoing (proposer) trades
+      required: [incoming, outgoing]
+      properties:
+        incoming:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+        outgoing:
+          type: array
+          items:
+            $ref: '#/components/schemas/Trade'
+
+    # --- Season lifecycle (item 08) ---
+
+    Season:
+      type: object
+      description: One season's lifecycle row for a league (a re-draft container)
+      required:
+        - id
+        - leagueId
+        - seasonNumber
+        - status
+        - regularWeeks
+        - startedAt
+        - endedAt
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        seasonNumber:
+          type: integer
+        status:
+          type: string
+          enum: [regular, archived]
+        regularWeeks:
+          type: integer
+          description: Season length in weeks; the season archives once it elapses
+        startedAt:
+          type: ['string', 'null']
+          format: date-time
+        endedAt:
+          type: ['string', 'null']
+          format: date-time
+
+    SeasonsResponse:
+      type: object
+      description: A league's seasons, newest first
+      required: [seasons]
+      properties:
+        seasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Season'
+
+    SeasonDetail:
+      type: object
+      description: One season's lifecycle row (history is read-only)
+      required: [season]
+      properties:
+        season:
+          $ref: '#/components/schemas/Season'
+
+    # --- Fantasy Street: auto-managers / bots (item 10) ---
+
+    AddBotsRequest:
+      type: object
+      description: Fill `count` empty league slots with auto-managers (bots)
+      required: [count]
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          description: Number of auto-managers to add, up to the open-slot count
+
+    # --- Fantasy Street: reminders & recaps (item 11) ---
+
+    Notification:
+      type: object
+      description: >-
+        One persisted, in-app notification for a manager. `kind` selects the
+        payload shape: lineup_reminder/draft_reminder carry simple context,
+        recap carries a RecapPayload. Surfaced on the FS-09 dashboard feed and
+        pushed live over WS.
+      required: [id, leagueId, kind, payload, createdAt, readAt]
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        kind:
+          type: string
+          enum: [lineup_reminder, draft_reminder, recap]
+        payload:
+          type: object
+          additionalProperties: true
+          description: Kind-specific body; recap rows hold a RecapPayload
+        createdAt:
+          type: string
+          format: date-time
+        readAt:
+          type: ['string', 'null']
+          format: date-time
+          description: When the manager marked it read, else null
+
+    NotificationsResponse:
+      type: object
+      description: A manager's notifications for a league, newest first
+      required: [notifications]
+      properties:
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+
+    RecapSlot:
+      type: object
+      description: One started slot picked out for the recap (mover or blowup)
+      required: [slot, symbol, points]
+      properties:
+        slot:
+          type: string
+        symbol:
+          type: string
+        points:
+          type: number
+
+    RecapLeader:
+      type: object
+      description: A league high/low entry for the recap
+      required: [userId, totalPoints]
+      properties:
+        userId:
+          type: string
+        totalPoints:
+          type: number
+
+    RecapPayload:
+      type: object
+      description: >-
+        The post-settle weekly recap for one manager, composed from the FS-05
+        per-slot breakdown and the manager's weekly ranking. `rank` is the
+        manager's placement among the league's `fieldSize` managers this week.
+      required:
+        - season
+        - week
+        - rank
+        - fieldSize
+        - myScore
+        - biggestMover
+        - biggestBlowup
+        - leagueHigh
+        - leagueLow
+      properties:
+        season:
+          type: integer
+        week:
+          type: integer
+        rank:
+          type: integer
+          description: 1-based placement this week (ties share a rank)
+        fieldSize:
+          type: integer
+          description: Number of ranked managers this week
+        myScore:
+          type: number
+        biggestMover:
+          oneOf:
+            - $ref: '#/components/schemas/RecapSlot'
+            - type: 'null'
+          description: Highest-scoring started slot, or null if none scored
+        biggestBlowup:
+          oneOf:
+            - $ref: '#/components/schemas/RecapSlot'
+            - type: 'null'
+          description: Most-negative started slot, or null if none scored
+        leagueHigh:
+          $ref: '#/components/schemas/RecapLeader'
+        leagueLow:
+          $ref: '#/components/schemas/RecapLeader'
+
+    # --- Fantasy Street: commissioner & admin tools (item 12) ---
+
+    AuditEntry:
+      type: object
+      description: >-
+        One append-only record of a privileged league action (commissioner or
+        platform admin). `action` is a stable verb; `detail` carries
+        action-specific context (changed fields, target week, dispute reason).
+      required: [id, leagueId, actorUserId, action, detail, createdAt]
+      properties:
+        id:
+          type: string
+        leagueId:
+          type: string
+        actorUserId:
+          type: string
+          description: The commissioner/admin who took the action
+        action:
+          type: string
+          description: >-
+            Stable verb: settings.update, member.remove, member.rename,
+            member.transfer, score.rescore, season.advance, lineup.override
+        detail:
+          type: object
+          additionalProperties: true
+          description: Action-specific context (changed fields, week, reason, …)
+        createdAt:
+          type: string
+          format: date-time
+
+    AuditResponse:
+      type: object
+      description: A league's audit trail, newest first
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditEntry'
+
+    StuckWeek:
+      type: object
+      description: >-
+        A locked-but-unscored week that a later settled week has surpassed — a
+        genuine settle gap an operator should resolve (re-score / force-advance).
+      required: [leagueId, season, week]
+      properties:
+        leagueId:
+          type: string
+        season:
+          type: integer
+        week:
+          type: integer
+
+    LeagueScoringRun:
+      type: object
+      description: The most recent settled scoring run for a league
+      required: [leagueId, lastRunAt]
+      properties:
+        leagueId:
+          type: string
+        lastRunAt:
+          type: string
+          format: date-time
+
+    FantasyHealth:
+      type: object
+      description: >-
+        Per-fleet Fantasy Street health for the admin ops view (item 12):
+        league counts by status, drafts in progress, stuck weeks, and the last
+        scoring run per league.
+      required:
+        - leaguesByStatus
+        - draftsInProgress
+        - stuckWeeks
+        - lastScoringRunByLeague
+      properties:
+        leaguesByStatus:
+          type: object
+          description: League count keyed by lifecycle status
+          required: [forming, drafting, active, archived]
+          properties:
+            forming:
+              type: integer
+            drafting:
+              type: integer
+            active:
+              type: integer
+            archived:
+              type: integer
+        draftsInProgress:
+          type: integer
+          description: Drafts currently in_progress across the fleet
+        stuckWeeks:
+          type: array
+          items:
+            $ref: '#/components/schemas/StuckWeek'
+        lastScoringRunByLeague:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeagueScoringRun'
 
 paths:
   # --- Auth & session ---
@@ -730,6 +1999,33 @@ paths:
                 $ref: '#/components/schemas/MeResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /users/exists:
+    get:
+      summary: Whether a registered tickr user has the given email (admin only)
+      operationId: checkUserExists
+      tags: [user]
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Existence result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserExistsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalServerError'
 

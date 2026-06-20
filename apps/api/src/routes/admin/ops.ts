@@ -9,6 +9,8 @@ import {
   massive429Count,
   jobQueueDepth,
 } from '../../metrics/redis.js';
+import { readJobStatuses } from '../../jobs/status.js';
+import { fantasyHealth } from '../../fantasy/admin.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -41,9 +43,18 @@ export async function registerAdminOpsRoute(
       const massive = await massive429Count(redis, DAY_MS);
       const queueDepth = await jobQueueDepth(redis);
 
+      // Per-job run status (the /admin/jobs viewer). Degrade to [] on a Redis
+      // hiccup so a status read can never 500 /admin/ops — the logs viewer polls
+      // this same endpoint for its worst-lag chip and must keep working.
+      const jobs = await readJobStatuses(redis).catch(() => []);
+
       const { rows } = await pool.query<{ count: number }>(
         `SELECT count(*)::int AS count FROM universe_symbol WHERE backfilled = false`,
       );
+
+      // FS-12: per-fleet Fantasy Street health (leagues by status, drafts in
+      // progress, last scoring run per league, stuck weeks).
+      const fantasy = await fantasyHealth(pool);
 
       // Worst price-bar staleness in the DB. Fresh bars are expected up to ~now
       // during a live session (the intraday sweep runs every 5 min, see
@@ -97,7 +108,9 @@ export async function registerAdminOpsRoute(
         marketData429sLast24h: { massive },
         jobQueueDepth: queueDepth,
         backfillRemaining: rows[0]?.count ?? 0,
+        fantasy,
         worstLag,
+        jobs,
       };
     },
   );

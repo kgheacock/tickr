@@ -1,6 +1,6 @@
 # FS-09 · Dashboard & live following
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 04, 05, 06
+**Status:** `done` ([#76](https://github.com/kgheacock/tickr/pull/76)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 04, 05, 06
 
 ## User stories
 - As a manager, I want a dashboard showing my team, matchup, and standings, so
@@ -70,11 +70,24 @@ the live topics.
   FS topics) if topic plumbing isn't generic.
 
 ## Definition of done
-- [ ] A manager opens their league dashboard and sees team, current matchup, and
-      standings in one place.
-- [ ] During the week the matchup view updates live (provisional scores) over the
-      WS without a reload.
-- [ ] The lineup editor sets a lineup and shows the lock countdown; after lock it
-      is read-only.
-- [ ] Standings and schedule render with correct tiebreaker columns.
-- [ ] Built with Semantic UI + CSS Modules + React 18; e2e proves the live tick.
+- [x] A manager opens their league dashboard and sees team, current matchup, and
+      standings in one place. (`Dashboard.tsx`, Outlet-context layout)
+- [x] During the week the matchup view updates live (provisional scores) over the
+      WS without a reload. (`useLeague` overlays `matchup.updated`, which the
+      scoring/scheduler jobs genuinely publish — `events/publisher.ts`)
+- [x] The lineup editor sets a lineup and shows the lock countdown; after lock it
+      is read-only. (`LineupEditor.tsx`; pick pool = the manager's roster via a
+      new `?mine` filter on `/players`, since an unset lineup has no slots to
+      derive from)
+- [x] Standings and schedule render with correct tiebreaker columns.
+      (`StandingsView.tsx` exposes W-L-T, PF, PA)
+- [~] Built with **CSS Modules + React 18** ✓ — **deviated on Semantic UI**: the
+      web app's UI direction (newspaper theme) was set in FS-00 and every prior
+      slice shipped without Semantic UI; adding it in one slice would fracture
+      the product. **Playwright e2e deferred**: the repo has no e2e harness, so
+      standing one up is its own slice. The live tick is instead proven by a
+      headless Vitest test driving the socket singleton (`liveTick.test.ts`),
+      matching the existing `logoutCache.test.ts` approach.
+
+> Deviations above are intentional and noted for the QA release review (item 13).
+> A follow-up could add a Playwright harness + seeded-league live-tick e2e.

@@ -8,16 +8,26 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MeResponse } from '@tickr/shared-types';
 import { client, ApiClientError } from '../api/client';
-import { devLoginRequested } from './devLogin';
+import { devLoginRequested, devLoginEmail, devLoginAdmin } from './devLogin';
 import { authLog } from './log';
 
 interface AuthState {
+  /**
+   * The full `/me` payload (incl. `identities` and `leagues`), or null when
+   * logged out. `me.leagues` is a *routing hint only* — membership rows with no
+   * league name (see MeResponse). Do not render league lists off it; league
+   * *display* is sourced from `listLeagues('mine')` (fantasyKeys.myLeagues),
+   * which invalidates independently of the slow-changing `['me']` bootstrap.
+   */
+  me: MeResponse | null;
+  // Conveniences derived from `me`, kept so existing consumers don't break.
   user: MeResponse['user'] | null;
   csrfToken: string | null;
   isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthState>({
+  me: null,
   user: null,
   csrfToken: null,
   isLoading: true,
@@ -60,9 +70,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!devLoginRequested() || devLoginAttempted.current) return;
     devLoginAttempted.current = true;
     void (async () => {
-      authLog('dev login requested → POST /auth/dev-login');
+      const email = devLoginEmail();
+      const admin = devLoginAdmin();
+      authLog('dev login requested → POST /auth/dev-login', { email, admin });
       try {
-        await client.devLogin();
+        await client.devLogin(email, admin);
         authLog('dev login established → refetch /me');
         await queryClient.invalidateQueries({ queryKey: ['me'] });
       } catch (err) {
@@ -84,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider
       value={{
+        me: data ?? null,
         user: data?.user ?? null,
         csrfToken: data?.csrfToken ?? null,
         isLoading,

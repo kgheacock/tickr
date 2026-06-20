@@ -22,6 +22,14 @@
 --   provisional by `session_date`; they never collide, so when Massive's real
 --   bar lands Monday the authoritative value simply wins — no overwrite or
 --   precedence machinery, no phantom rows.
+--
+-- SUPERSEDED (FS-05, see apps/api/src/fantasy/closes.ts): FS now *prefers*
+-- session_close and uses price_bar only to fill the gaps. The COALESCE order
+-- above is reversed because price_bar's at-or-before lookup is non-null on a
+-- Friday evening (it resolves to Thursday's bar), so a price_bar-first COALESCE
+-- short-circuits and never reaches session_close — exactly the leading-edge
+-- close this table exists to supply. The reversal is scoped to FS readers;
+-- price_bar stays Massive-pure for backtests and charts.
 
 CREATE TABLE session_close (
   -- tickr's stored symbol, passed to Finnhub as-is (it accepts dotted and dashed

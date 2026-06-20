@@ -263,3 +263,78 @@ export function isRegularSession(now: Date): boolean {
   const minuteOfDay = hour * 60 + parseInt(part('minute'), 10);
   return minuteOfDay >= SESSION_OPEN_MIN && minuteOfDay < SESSION_CLOSE_MIN;
 }
+
+/** America/New_York UTC offset in whole hours at `at` (−4 EDT, −5 EST). */
+function etOffsetHours(at: Date): number {
+  const tzName = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    timeZoneName: 'shortOffset',
+  })
+    .formatToParts(at)
+    .find((p) => p.type === 'timeZoneName')?.value;
+  // e.g. "GMT-4" / "GMT-5"; default to EST if the runtime omits it.
+  const m = tzName?.match(/GMT([+-]\d+)/);
+  return m ? parseInt(m[1]!, 10) : -5;
+}
+
+/**
+ * The UTC instant that marks the regular-session close (16:00 ET) on the ET
+ * calendar date of `d`, returned as the instant **just before** 16:00 ET so a
+ * `ts <= anchor` lookup lands on the last *regular-session* bar (the 15:45 ET bar
+ * at the default 15-min resolution) rather than the first after-hours bar — the
+ * `price_bar` corpus includes extended-hours bars (04:00–~20:00 ET), so a naive
+ * "latest bar before settle time" would pick an uneven after-hours print that
+ * differs symbol-to-symbol. DST-aware: 16:00 ET is 20:00 UTC in EDT, 21:00 in EST.
+ *
+ * Used by the FS weekly settle so every symbol — and the prior-week baseline —
+ * is valued at the *same* point in the trading day. Half-day early closes are not
+ * modeled (consistent with isRegularSession).
+ */
+export function nyseRegularCloseAnchor(d: Date): Date {
+  const dateParts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (t: string): string =>
+    dateParts.find((p) => p.type === t)?.value ?? '';
+  const ymd = `${get('year')}-${get('month')}-${get('day')}`;
+  // Resolve the offset at noon ET that day to stay clear of the 02:00 DST edge.
+  const offset = etOffsetHours(new Date(`${ymd}T12:00:00-05:00`));
+  const closeUtcHour = 16 - offset; // EDT(−4)→20:00Z, EST(−5)→21:00Z
+  const closeUtc = new Date(
+    `${ymd}T${String(closeUtcHour).padStart(2, '0')}:00:00Z`,
+  );
+  // One ms before the 16:00 ET bar so `ts <= anchor` excludes it.
+  return new Date(closeUtc.getTime() - 1);
+}
+
+/**
+ * The Friday of `now`'s week (ET) — today on Friday, the coming Friday Mon–Thu —
+ * returned at `now`'s time-of-day. The FS weekly settle anchors on this Friday;
+ * the lineup-lock, provisional and dispute-rescore paths all resolve the scoring
+ * week off the same calendar mapping. Lifted here (next to nyseRegularCloseAnchor)
+ * so there's one copy.
+ *
+ * The weekday MUST come from the real America/New_York calendar date (via etParts,
+ * DST-correct), not a fixed-offset shift of `now`'s UTC date: the settle cron fires
+ * mid-day UTC, but the provisional/matchups/detail readers call this at arbitrary
+ * request times — including the 00:00–05:00 UTC window just past ET midnight, where
+ * the old fixed-UTC-5 weekday read a day behind `now` and the result landed a day
+ * late (a non-trading Saturday). That shifted the player-detail "previous scoring"
+ * anchors onto Saturdays, where the close walk-back picked the prior day's
+ * after-hours print instead of the 16:00 ET close.
+ *
+ * Only the weekday derivation changed; the returned instant keeps `now`'s
+ * time-of-day, so the `weekEnd − 7d` baseline the provisional path relies on still
+ * lands on the prior week — unchanged from the previously-correct cron-time path.
+ */
+export function currentFriday(now: Date): Date {
+  const { year, month, day } = etParts(now);
+  // Weekday of now's ET calendar date; noon UTC is a DST-safe probe (matches
+  // isEtTradingDay) that never crosses a day boundary under the offset shift.
+  const dow = new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
+  const daysUntilFriday = (5 - dow + 7) % 7;
+  return new Date(now.getTime() + daysUntilFriday * DAY_MS);
+}

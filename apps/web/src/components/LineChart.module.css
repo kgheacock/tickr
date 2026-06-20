@@ -2,6 +2,11 @@
   width: 100%;
 }
 
+/* Positioning context for the SVG and the HTML signpost hit-strips. */
+.plot {
+  position: relative;
+}
+
 .svg {
   width: 100%;
   height: auto;
@@ -19,8 +24,46 @@
 
 .axisLabel {
   fill: var(--color-text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 10px;
+}
+
+/* Week-end signpost: a faint dashed vertical rule topped with a direction
+   arrow, captioned with a muted date. */
+.marker {
+  stroke: var(--color-text-muted);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.markerDate {
+  fill: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+/* A thin transparent column over each signpost; the shared Tooltip hangs off
+   it, so hovering anywhere down the rule reveals the note. */
+.hitSlot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  transform: translateX(-50%);
+}
+
+.hitTrigger {
+  position: absolute;
+  inset: 0;
+}
+
+.hitFill {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .xAxis {
@@ -29,7 +72,7 @@
   margin-top: var(--space-1);
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
 }
 
 .legend {

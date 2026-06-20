@@ -1,0 +1,126 @@
+/* Reusable modal shell — a sheet of newsprint floated over a dimmed page,
+   matching the landing/leagues Wall Street Journal treatment. Centering, the
+   backdrop and focus trapping are inherited from the native <dialog>:modal. */
+
+.dialog {
+  /* No padding of its own: the dialog box fills the centered modal slot, and
+     the click-outside check in Modal.tsx depends on clicks landing on the
+     element itself rather than this padding. Inner padding lives on .sheet. */
+  padding: 0;
+  /* Center in the viewport, keeping a small gutter so the sheet never sits
+     flush against the screen edges on narrow viewports. */
+  margin: auto;
+  width: min(var(--modal-width, 540px), calc(100vw - var(--space-6)));
+  max-height: calc(100vh - var(--space-8));
+  overflow: visible;
+  border-radius: var(--radius-md);
+  background: var(--color-paper);
+  color: var(--color-text);
+  /* Borderless: a long, soft shadow alone lifts the sheet off the dimmed desk. */
+  box-shadow: 0 28px 70px -30px rgba(21, 19, 15, 0.6);
+}
+
+/* The dimmed desk behind the sheet — a warm ink wash with a faint blur. */
+.dialog::backdrop {
+  background: rgba(21, 19, 15, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+/* Inner content frame: holds the padding and anchors the corner close button.
+   Scrolls internally when content exceeds the dialog's max-height. */
+.sheet {
+  position: relative;
+  max-height: calc(100vh - var(--space-8));
+  overflow-y: auto;
+  /* 48px breathing room between the sheet edge and its content; eases down on
+     narrow viewports so the form doesn't get cramped. */
+  padding: clamp(var(--space-6), 7vw, var(--space-12));
+}
+
+/* ── Corner close ─────────────────────────────────────────── */
+
+.close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  font-family: var(--font-sans);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.close:hover {
+  color: var(--color-paper);
+  background: var(--color-rule);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* ── Optional masthead header ─────────────────────────────── */
+
+.header {
+  margin-bottom: var(--space-4);
+  padding-bottom: var(--space-3);
+  /* Keep the rule clear of the close button. */
+  padding-right: var(--space-6);
+  border-bottom: 3px double var(--color-rule);
+}
+
+/* <Kicker> owns the eyebrow treatment; the header only sets its gap to the
+   title below. */
+.kicker {
+  margin-bottom: var(--space-2);
+}
+
+.title {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+/* ── Entrance ─────────────────────────────────────────────── */
+
+@keyframes modalRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes backdropFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* showModal() flips [open] once on mount, so the reveal plays a single time. */
+@media (prefers-reduced-motion: no-preference) {
+  .dialog[open] {
+    animation: modalRise 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .dialog[open]::backdrop {
+    animation: backdropFade 0.22s ease;
+  }
+}

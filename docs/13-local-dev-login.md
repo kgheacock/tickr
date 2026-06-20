@@ -24,6 +24,18 @@ flow without an OAuth round-trip.
    `POST /api/v1/auth/dev-login`, and refetches `/me`. You land authenticated as
    a synthetic admin user (`dev@local.tickr`).
 
+   Add `&admin=false` to log in as a plain **player** instead of an admin —
+   useful for exercising the invite-only, non-admin onboarding view (e.g. the
+   gated "Start a League" CTA):
+
+   ```
+   https://local.tickr.keithheacock.com/?login=true&admin=false
+   ```
+
+   The choice sticks in `sessionStorage`; pass `&admin=true` (or clear it via
+   sign-out) to go back to admin. It applies to the synthetic user only — when
+   impersonating with `&email=`, you take on that account's own role.
+
 3. **Sign out** uses the real logout path (`POST /auth/logout`), so you can
    exercise it normally. The dev-login flag is cleared on logout so you are not
    immediately signed back in.
@@ -36,6 +48,10 @@ navigations (including the post-logout redirect that drops the query param).
 ```bash
 curl -i -X POST https://local.tickr.keithheacock.com/api/v1/auth/dev-login
 # → HTTP/2 204 + Set-Cookie: tickr_sid=…; HttpOnly; Secure; SameSite=Lax
+
+# Log in as a plain player instead of an admin:
+curl -i -X POST https://local.tickr.keithheacock.com/api/v1/auth/dev-login \
+  -H 'Content-Type: application/json' -d '{"admin":false}'
 ```
 
 ### Gotchas

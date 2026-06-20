@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/exists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether a registered tickr user has the given email (admin only) */
+        get: operations["checkUserExists"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/universe": {
         parameters: {
             query?: never;
@@ -352,6 +369,12 @@ export interface components {
             identities: components["schemas"]["Identity"][];
             /** @description Rotating token required in X-CSRF-Token on state-changing requests */
             csrfToken: string;
+            /** @description Fantasy Street leagues the user is a member of, for client routing */
+            leagues: components["schemas"]["LeagueMembership"][];
+        };
+        UserExistsResponse: {
+            /** @description Whether a registered tickr user has the given email */
+            exists: boolean;
         };
         UniverseItem: {
             symbol: string;
@@ -639,6 +662,7 @@ export interface components {
             jobQueueDepth: number;
             /** @description Count of universe_symbol rows with backfilled = false */
             backfillRemaining: number;
+            fantasy: components["schemas"]["FantasyHealth"];
             /** @description Worst price-bar staleness across the playable corpus — the symbol whose latest bar is furthest behind the freshness reference (now during the session, else the most recent NYSE close). null when no playable symbol has any bars. */
             worstLag: {
                 /** @description The worst-lagging playable symbol */
@@ -648,6 +672,607 @@ export interface components {
                 /** @description Seconds between the freshness reference and latestBarAt (>= 0) */
                 lagSec: number;
             } | null;
+            /** @description Per-job run status for the scheduled worker jobs, in registry order. One entry per known job, including jobs that have never run (e.g. external-data jobs under TICKR_DISABLE_REMOTE_JOBS). */
+            jobs: components["schemas"]["JobStatus"][];
+        };
+        /** @description Last-run status of one scheduled worker job (admin /admin/jobs viewer) */
+        JobStatus: {
+            /** @description Stable job identifier (kebab-case); distinct per job even when two jobs share a lock */
+            name: string;
+            /** @description Human-readable schedule (e.g. "Fri 21:35 UTC") */
+            cadence: string;
+            /** @description Cron expression(s) the job is scheduled on, for reference */
+            cron: string;
+            /** @description What the job does */
+            description: string;
+            /** @description True for jobs that reach an external data API; these are skipped entirely under TICKR_DISABLE_REMOTE_JOBS, so "never ran" in dev is expected rather than a fault. */
+            remote: boolean;
+            /** @description True while a run is in flight (per-job marker with a TTL crash-net) */
+            running: boolean;
+            /** @description ISO timestamp the job last started, or null if it has never run */
+            lastStartAt: string | null;
+            /** @description ISO timestamp the last actual execution finished, or null */
+            lastFinishAt: string | null;
+            /**
+             * @description Outcome of the last actual execution (never a busy-skip), or null
+             * @enum {string|null}
+             */
+            lastOutcome: "ok" | "error" | null;
+            /** @description Duration of the last execution in ms, or null */
+            lastDurationMs: number | null;
+            /** @description Truncated error from the last failed execution; null/empty after a success */
+            lastError: string | null;
+            /** @description ISO timestamp a firing was last skipped because the prior run still held the lock */
+            lastSkipAt: string | null;
+            /** @description Lifetime count of actual executions */
+            runs: number;
+            /** @description Lifetime count of executions that threw */
+            fails: number;
+            /** @description Lifetime count of busy-skips (lock already held) */
+            skips: number;
+        };
+        /** @description Slot layout for a league's weekly lineup plus bench depth */
+        RosterConfig: {
+            /** @description Named starting slots (Anchor, Growth, Momentum, Value, Defense, Wildcard) */
+            slots: string[];
+            /** @description Number of bench slots (0–4) */
+            bench: number;
+        };
+        LeagueMember: {
+            userId: string;
+            displayName: string;
+            teamName: string | null;
+            /** @enum {string} */
+            role: "commissioner" | "manager";
+            /** Format: date-time */
+            joinedAt: string;
+        };
+        LeagueView: {
+            id: string;
+            name: string;
+            commissionerUserId: string;
+            /** @description Max managers (4–12) */
+            size: number;
+            seasonLengthWeeks: number;
+            rosterConfig: components["schemas"]["RosterConfig"];
+            /** @enum {string} */
+            joinPolicy: "invite" | "open";
+            /** @enum {string} */
+            status: "forming" | "drafting" | "active" | "archived";
+            /** Format: date-time */
+            createdAt: string;
+            members: components["schemas"]["LeagueMember"][];
+            /** @description size − current member count */
+            openSlots: number;
+        };
+        LeagueSummary: {
+            id: string;
+            name: string;
+            size: number;
+            seasonLengthWeeks: number;
+            /** @enum {string} */
+            joinPolicy: "invite" | "open";
+            /** @enum {string} */
+            status: "forming" | "drafting" | "active" | "archived";
+            memberCount: number;
+            openSlots: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        LeagueListResponse: {
+            items: components["schemas"]["LeagueSummary"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /** @description A user's membership in a league, as surfaced on /me */
+        LeagueMembership: {
+            leagueId: string;
+            teamName: string | null;
+            /** @enum {string} */
+            role: "commissioner" | "manager";
+            /** @enum {string} */
+            status: "forming" | "drafting" | "active" | "archived";
+        };
+        Invite: {
+            token: string;
+            leagueId: string;
+            /** Format: date-time */
+            expiresAt: string | null;
+            maxUses: number | null;
+            uses: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description A seat to fill when creating a league. A bot seat is minted as an auto-manager; a human seat creates a labelled invite for the given email (delivery is not yet wired — see FS-14). */
+        CreateLeagueMember: {
+            /** @description Invitee email for a human seat; null/omitted for a bot seat. */
+            email?: string | null;
+            isBot: boolean;
+        };
+        CreateLeagueRequest: {
+            name: string;
+            /** @description The commissioner's own team name. */
+            teamName?: string | null;
+            /** @description League capacity (4–12). Optional and ignored when `members` is supplied — capacity is then derived as 1 (commissioner) + members. */
+            size?: number;
+            seasonLengthWeeks: number;
+            rosterConfig?: components["schemas"]["RosterConfig"];
+            /** @enum {string} */
+            joinPolicy: "invite" | "open";
+            /** @description The other seats to fill. Capacity is derived as 1 + members.length, and must land in 4–12 (so 3–11 members). */
+            members?: components["schemas"]["CreateLeagueMember"][];
+        };
+        /** @description Commissioner settings edit; allowed only while status = forming */
+        UpdateLeagueRequest: {
+            name?: string;
+            size?: number;
+            seasonLengthWeeks?: number;
+            rosterConfig?: components["schemas"]["RosterConfig"];
+            /** @enum {string} */
+            joinPolicy?: "invite" | "open";
+        };
+        CreateInviteRequest: {
+            /** @description Invite lifetime in hours; omit for no expiry */
+            expiresInHours?: number;
+            /** @description Cap on accepted joins; omit for unlimited until expiry */
+            maxUses?: number;
+        };
+        JoinLeagueRequest: {
+            /** @description Invite token; required for invite-only leagues, optional for open leagues */
+            token?: string;
+        };
+        /**
+         * @description A draftable slot family a stock can qualify for
+         * @enum {string}
+         */
+        PlayerGroup: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard";
+        /** @description Price-derived metrics behind a stock's group eligibility */
+        PlayerMetrics: {
+            /** @description Trailing ~3-month price return, percent */
+            ret3mPct: number | null;
+            /** @description Trailing ~12-month price return, percent */
+            ret12mPct: number | null;
+            /** @description Stddev of trailing daily returns (~90d), as a fraction */
+            sigma: number | null;
+            /** @description Mean daily volume over the window; null when unavailable */
+            avgVolume: number | null;
+        };
+        /** @description Per-league ownership status for a stock */
+        PlayerOwnership: {
+            owned: boolean;
+            /** @description Team name of the owning manager, when owned */
+            ownerTeam?: string | null;
+            /** @description Whether the owner holds it as a short (defense), when owned */
+            isShort?: boolean | null;
+        };
+        PlayerInventoryItem: {
+            symbol: string;
+            /** @description Company name (symbol_metadata); null when unfetched */
+            name: string | null;
+            groups: components["schemas"]["PlayerGroup"][];
+            /** @description Trailing ~3-month return, surfaced for scouting */
+            recentReturnPct: number | null;
+            /** @description Fantasy points the stock has scored so far this in-flight week (long basis, return valued off the latest close); null when no price data resolves the week */
+            currentWeekPoints: number | null;
+            ownership: components["schemas"]["PlayerOwnership"];
+        };
+        /** @description One week's long-basis fantasy points for a stock. The first entry is the in-flight week (provisional = true), valued so far off the latest close. */
+        PlayerWeekScore: {
+            /**
+             * Format: date-time
+             * @description The week's Monday (the Friday-close anchor minus four days)
+             */
+            weekStart: string;
+            /**
+             * Format: date-time
+             * @description The week's Friday regular-close anchor
+             */
+            weekEnd: string;
+            /** @description Week percent return; null when no price data resolves it */
+            returnPct: number | null;
+            /** @description returnPct (long basis); null when returnPct is null */
+            points: number | null;
+            /** @description True for the current, not-yet-settled week (valued so far) */
+            provisional: boolean;
+        };
+        PlayerListResponse: {
+            items: components["schemas"]["PlayerInventoryItem"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /** @description Trailing 3-month scoring summary over completed weeks. */
+        PlayerScoringSummary: {
+            /** @description Sum of long-basis weekly points over the last ~3 months; null when no week resolves price data */
+            totalPoints: number | null;
+            /** @description Percent (0–100) of scored weeks that finished positive; null when none */
+            pctPositive: number | null;
+            /** @description Count of weeks with resolvable price data in the window */
+            weeks: number;
+        };
+        PlayerDetail: {
+            symbol: string;
+            /** @description Company name (symbol_metadata); null when unfetched */
+            name: string | null;
+            groups: components["schemas"]["PlayerGroup"][];
+            /** @description Roster slot names this stock may fill */
+            eligibleSlots: string[];
+            recentReturnPct: number | null;
+            metrics: components["schemas"]["PlayerMetrics"];
+            ownership: components["schemas"]["PlayerOwnership"];
+            /** @description Per-week long-basis points for recent completed weeks (newest first) */
+            scoringHistory: components["schemas"]["PlayerWeekScore"][];
+            scoring3mo: components["schemas"]["PlayerScoringSummary"];
+            /** @description Price-history window (~3 months) for the detail chart */
+            prices: components["schemas"]["PriceBar"][];
+        };
+        /**
+         * @description Lifecycle of a league's snake draft
+         * @enum {string}
+         */
+        DraftStatus: "scheduled" | "in_progress" | "complete";
+        /** @description One landed pick in the snake order; the immutable draft log */
+        DraftPick: {
+            /** @description 1-based position in the overall snake order */
+            overallPick: number;
+            /** @description 1-based draft round */
+            round: number;
+            userId: string;
+            symbol: string;
+            /** @description Drafted as a short (Defense), scored as the inverse return */
+            isShort: boolean;
+            /** @description True when the pick clock expired and auto-draft chose it */
+            auto: boolean;
+            /** Format: date-time */
+            pickedAt: string;
+        };
+        /** @description A seat in the snake order, present whether or not it is filled */
+        DraftSlot: {
+            overallPick: number;
+            round: number;
+            /** @description Manager on the clock for this position */
+            userId: string;
+        };
+        /** @description The live draft board — order, picks so far, and the clock */
+        DraftState: {
+            id: string;
+            leagueId: string;
+            status: components["schemas"]["DraftStatus"];
+            pickSeconds: number;
+            /** @description slots + bench; every manager makes this many picks */
+            totalRounds: number;
+            /** @description size × totalRounds; the length of the snake order */
+            totalPicks: number;
+            /** @description Position on the clock; exceeds totalPicks once complete */
+            currentOverallPick: number;
+            /** @description Manager currently on the clock; null when complete */
+            onClockUserId: string | null;
+            /**
+             * Format: date-time
+             * @description When the current pick expires; null when not in progress
+             */
+            deadline: string | null;
+            /** @description The full snake order, one seat per overall pick */
+            order: components["schemas"]["DraftSlot"][];
+            picks: components["schemas"]["DraftPick"][];
+        };
+        MakePickRequest: {
+            symbol: string;
+            /**
+             * @description Draft the stock as a short into the Defense slot
+             * @default false
+             */
+            isShort: boolean;
+        };
+        /** @description One filled slot in a weekly lineup */
+        LineupSlot: {
+            /** @enum {string} */
+            slot: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard" | "bench";
+            /** @description Disambiguates repeated slots (bench, duplicate slots) */
+            slotIndex: number;
+            symbol: string;
+            /** @description True for a Defense short; false for every long slot */
+            isShort: boolean;
+        };
+        /** @description A manager's weekly starting lineup and its lock state */
+        Lineup: {
+            leagueId: string;
+            userId: string;
+            season: number;
+            week: number;
+            /** @description True once the scoring week's market open froze the lineup */
+            locked: boolean;
+            /** Format: date-time */
+            lockedAt: string | null;
+            /** @description True when the lock job auto-filled one or more slots */
+            autoFilled: boolean;
+            slots: components["schemas"]["LineupSlot"][];
+        };
+        SetLineupSlot: {
+            /** @enum {string} */
+            slot: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard" | "bench";
+            /**
+             * @description Position within a repeated slot; defaults to 0
+             * @default 0
+             */
+            slotIndex: number;
+            symbol: string;
+        };
+        SetLineupRequest: {
+            week: number;
+            /** @default 1 */
+            season: number;
+            slots: components["schemas"]["SetLineupSlot"][];
+        };
+        /** @description One started slot's contribution to a manager's weekly score */
+        ScoreBreakdownItem: {
+            /** @enum {string} */
+            slot: "anchor" | "growth" | "momentum" | "value" | "defense" | "wildcard" | "bench";
+            symbol: string;
+            /** @description True for a Defense short (scored as −r) */
+            isShort: boolean;
+            /** @description Prior-Friday close in cents, or null if no bar resolved */
+            lastClose: number | null;
+            /** @description This-Friday (or as-of) close in cents, or null */
+            thisClose: number | null;
+            /** @description Week percent return, or null when a close was missing */
+            returnPct: number | null;
+            /** @description Slot points (r long, −r short), rounded to 2 dp */
+            points: number;
+        };
+        /** @description A manager's weekly point total and its per-slot breakdown */
+        WeeklyScore: {
+            leagueId: string;
+            userId: string;
+            season: number;
+            week: number;
+            /** @description Uncapped sum of started slots (losses included) */
+            totalPoints: number;
+            /** Format: date-time */
+            computedAt: string;
+            /** @description True for an in-week live total; false once Friday-settled */
+            provisional: boolean;
+            breakdown: components["schemas"]["ScoreBreakdownItem"][];
+        };
+        /** @description Every manager's score for one league week. Settled (provisional = false) once the Friday close is scored; provisional in-week totals (valued so far off the latest close) until then. */
+        LeagueScoresResponse: {
+            season: number;
+            week: number;
+            scores: components["schemas"]["WeeklyScore"][];
+        };
+        /** @description One manager's season win tally. A win is a first-place finish in a settled week's ranking; tied co-leaders each count a win. */
+        SeasonWinsEntry: {
+            userId: string;
+            /** @description Weeks finished first in the weekly ranking (co-leaders count) */
+            wins: number;
+            /** @description Settled weeks this manager was scored in */
+            weeksPlayed: number;
+            /** @description Sum of settled weekly totals — the win tiebreaker */
+            pointsFor: number;
+        };
+        /** @description Season-long win standings derived from every settled week. Managers are ordered by wins, then total points-for. Empty until the first week settles. */
+        SeasonWinsResponse: {
+            season: number;
+            /** @description Number of settled weeks counted into the tally */
+            weeks: number;
+            entries: components["schemas"]["SeasonWinsEntry"][];
+        };
+        /** @description A queued add/drop request, resolved by the waiver run */
+        WaiverClaim: {
+            id: string;
+            leagueId: string;
+            season: number;
+            userId: string;
+            addSymbol: string;
+            dropSymbol: string;
+            /** @description True when the add fills the Defense (short) slot */
+            isShort: boolean;
+            /** @enum {string} */
+            status: "pending" | "won" | "lost" | "invalid";
+            /** Format: date-time */
+            submittedAt: string;
+            /**
+             * Format: date-time
+             * @description When the waiver run resolved the claim; null while pending
+             */
+            processedAt: string | null;
+        };
+        /** @description One manager's slot in the rolling waiver priority order */
+        WaiverOrderEntry: {
+            userId: string;
+            /** @description Lower claims first; reverse standings, demoted on a win */
+            priority: number;
+        };
+        /** @description Queue an add/drop waiver claim */
+        SubmitWaiverRequest: {
+            addSymbol: string;
+            dropSymbol: string;
+            /**
+             * @description Add into the Defense (short) slot
+             * @default false
+             */
+            isShort: boolean;
+        };
+        /** @description A manager's claims and the league's current waiver order */
+        WaiversResponse: {
+            season: number;
+            claims: components["schemas"]["WaiverClaim"][];
+            order: components["schemas"]["WaiverOrderEntry"][];
+        };
+        /** @description Buy an unowned stock off the wire; pair a drop when the roster is full */
+        RosterTransactionRequest: {
+            addSymbol: string;
+            /** @description A stock the caller owns to drop; required when the roster is full */
+            dropSymbol?: string;
+            /**
+             * @description Add into the Defense (short) slot
+             * @default false
+             */
+            isShort: boolean;
+        };
+        /** @description The symbols moved by an immediate buy/sell (null when not applicable) */
+        RosterTransactionResult: {
+            leagueId: string;
+            added: string | null;
+            dropped: string | null;
+        };
+        /** @description One leg of a trade — symbol moves from fromUserId to the other side */
+        TradeItem: {
+            fromUserId: string;
+            symbol: string;
+            isShort: boolean;
+        };
+        /** @description A manager-to-manager trade proposal and its lifecycle */
+        Trade: {
+            id: string;
+            leagueId: string;
+            proposerUserId: string;
+            targetUserId: string;
+            /** @enum {string} */
+            status: "proposed" | "accepted" | "rejected" | "cancelled" | "expired";
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the trade was accepted/rejected/cancelled; null while proposed
+             */
+            resolvedAt: string | null;
+            items: components["schemas"]["TradeItem"][];
+        };
+        /** @description Offer give-symbols (the proposer's) for receive-symbols (the target's) */
+        ProposeTradeRequest: {
+            targetUserId: string;
+            /** @description Symbols the proposer offers */
+            give?: string[];
+            /** @description Symbols the proposer wants in return */
+            receive?: string[];
+        };
+        /** @description A manager's incoming (target) and outgoing (proposer) trades */
+        TradesResponse: {
+            incoming: components["schemas"]["Trade"][];
+            outgoing: components["schemas"]["Trade"][];
+        };
+        /** @description One season's lifecycle row for a league (a re-draft container) */
+        Season: {
+            id: string;
+            leagueId: string;
+            seasonNumber: number;
+            /** @enum {string} */
+            status: "regular" | "archived";
+            /** @description Season length in weeks; the season archives once it elapses */
+            regularWeeks: number;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            endedAt: string | null;
+        };
+        /** @description A league's seasons, newest first */
+        SeasonsResponse: {
+            seasons: components["schemas"]["Season"][];
+        };
+        /** @description One season's lifecycle row (history is read-only) */
+        SeasonDetail: {
+            season: components["schemas"]["Season"];
+        };
+        /** @description Fill `count` empty league slots with auto-managers (bots) */
+        AddBotsRequest: {
+            /** @description Number of auto-managers to add, up to the open-slot count */
+            count: number;
+        };
+        /** @description One persisted, in-app notification for a manager. `kind` selects the payload shape: lineup_reminder/draft_reminder carry simple context, recap carries a RecapPayload. Surfaced on the FS-09 dashboard feed and pushed live over WS. */
+        Notification: {
+            id: string;
+            leagueId: string;
+            /** @enum {string} */
+            kind: "lineup_reminder" | "draft_reminder" | "recap";
+            /** @description Kind-specific body; recap rows hold a RecapPayload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description When the manager marked it read, else null
+             */
+            readAt: string | null;
+        };
+        /** @description A manager's notifications for a league, newest first */
+        NotificationsResponse: {
+            notifications: components["schemas"]["Notification"][];
+        };
+        /** @description One started slot picked out for the recap (mover or blowup) */
+        RecapSlot: {
+            slot: string;
+            symbol: string;
+            points: number;
+        };
+        /** @description A league high/low entry for the recap */
+        RecapLeader: {
+            userId: string;
+            totalPoints: number;
+        };
+        /** @description The post-settle weekly recap for one manager, composed from the FS-05 per-slot breakdown and the manager's weekly ranking. `rank` is the manager's placement among the league's `fieldSize` managers this week. */
+        RecapPayload: {
+            season: number;
+            week: number;
+            /** @description 1-based placement this week (ties share a rank) */
+            rank: number;
+            /** @description Number of ranked managers this week */
+            fieldSize: number;
+            myScore: number;
+            /** @description Highest-scoring started slot, or null if none scored */
+            biggestMover: components["schemas"]["RecapSlot"] | null;
+            /** @description Most-negative started slot, or null if none scored */
+            biggestBlowup: components["schemas"]["RecapSlot"] | null;
+            leagueHigh: components["schemas"]["RecapLeader"];
+            leagueLow: components["schemas"]["RecapLeader"];
+        };
+        /** @description One append-only record of a privileged league action (commissioner or platform admin). `action` is a stable verb; `detail` carries action-specific context (changed fields, target week, dispute reason). */
+        AuditEntry: {
+            id: string;
+            leagueId: string;
+            /** @description The commissioner/admin who took the action */
+            actorUserId: string;
+            /** @description Stable verb: settings.update, member.remove, member.rename, member.transfer, score.rescore, season.advance, lineup.override */
+            action: string;
+            /** @description Action-specific context (changed fields, week, reason, …) */
+            detail: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description A league's audit trail, newest first */
+        AuditResponse: {
+            entries: components["schemas"]["AuditEntry"][];
+        };
+        /** @description A locked-but-unscored week that a later settled week has surpassed — a genuine settle gap an operator should resolve (re-score / force-advance). */
+        StuckWeek: {
+            leagueId: string;
+            season: number;
+            week: number;
+        };
+        /** @description The most recent settled scoring run for a league */
+        LeagueScoringRun: {
+            leagueId: string;
+            /** Format: date-time */
+            lastRunAt: string;
+        };
+        /** @description Per-fleet Fantasy Street health for the admin ops view (item 12): league counts by status, drafts in progress, stuck weeks, and the last scoring run per league. */
+        FantasyHealth: {
+            /** @description League count keyed by lifecycle status */
+            leaguesByStatus: {
+                forming: number;
+                drafting: number;
+                active: number;
+                archived: number;
+            };
+            /** @description Drafts currently in_progress across the fleet */
+            draftsInProgress: number;
+            stuckWeeks: components["schemas"]["StuckWeek"][];
+            lastScoringRunByLeague: components["schemas"]["LeagueScoringRun"][];
         };
     };
     responses: {
@@ -813,6 +1438,32 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    checkUserExists: {
+        parameters: {
+            query: {
+                email: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Existence result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserExistsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
             500: components["responses"]["InternalServerError"];
         };
     };

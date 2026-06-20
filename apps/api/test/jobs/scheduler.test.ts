@@ -89,7 +89,8 @@ describe('registerScheduledJobs', () => {
     mocks.runAlertCheck.mockResolvedValue(undefined);
     // Default to off-hours so the startup backfill runs; flip per-test.
     mocks.isRegularSession.mockReturnValue(false);
-    // Default to a normal trading day so the daily close capture fires; flip per-test.
+    // Default to a normal trading day so the daily close capture fires and the
+    // FS provisional-scoring cron runs; flip per-test.
     mocks.isNyseHoliday.mockReturnValue(false);
     // Default to no sweep in flight so the backfill's Saturday yield is inert.
     mocks.isLockHeld.mockResolvedValue(false);
@@ -104,9 +105,18 @@ describe('registerScheduledJobs', () => {
     expect(exprs).toContain('0 0 0 * * 1,3,6'); // universe refresh Mon/Wed/Sat
     expect(exprs).toContain('0 30 13 * * 6'); // Saturday catch-up sweep
     expect(exprs).toContain('0 30 21 * * 1-5'); // daily early close capture
-    // backfill, intraday, Saturday catch-up, universe, close-capture, alerts (the
-    // post-close EOD cron was dropped)
-    expect(mocks.schedule).toHaveBeenCalledTimes(6);
+    // Fantasy Street jobs (FS-02/04/05/07).
+    expect(exprs).toContain('0 0 6 * * 0'); // classifier: Sunday 06:00 UTC
+    expect(exprs).toContain('0 30 14 * * 1-5'); // lineup lock: weekday open
+    expect(exprs).toContain('0 35 21 * * 5'); // weekly settle: Friday close
+    expect(exprs).toContain('0 35 21 * * 1-4'); // provisional scoring: Mon–Thu
+    expect(exprs).toContain('0 45 21 * * 5'); // waiver run: Friday post-settle
+    expect(exprs).toContain('0 0 18 * * 0'); // lineup reminders: Sunday evening
+    expect(exprs).toContain('0 0 13 * * 1-5'); // lineup reminders: weekday morning
+    // 6 market-data crons (backfill, intraday, Saturday catch-up, universe,
+    // close-capture, alerts; the post-close EOD cron was dropped) + 7 Fantasy
+    // Street crons. Startup backfill is a direct call, not scheduled.
+    expect(mocks.schedule).toHaveBeenCalledTimes(13);
   });
 
   it('daily close capture runs runCloseCapture under its own lock', async () => {
@@ -302,8 +312,10 @@ describe('registerScheduledJobs', () => {
   });
 
   // Dev escape hatch: TICKR_DISABLE_REMOTE_JOBS=1 skips every job that reaches the
-  // external data APIs (backfill, intraday sweep, universe refresh) while leaving
-  // the DB/Redis-only alerts job running. deploy.sh refuses the flag in prod.
+  // external data APIs (backfill, intraday sweep, universe refresh, Friday close
+  // capture) while leaving the DB/Redis-only jobs running — the alerts check plus
+  // every Fantasy Street cron (classifier, lineup lock, scoring, waivers,
+  // reminders). deploy.sh refuses the flag in prod.
   describe('TICKR_DISABLE_REMOTE_JOBS=1', () => {
     const prev = process.env['TICKR_DISABLE_REMOTE_JOBS'];
     beforeEach(() => {
@@ -314,13 +326,27 @@ describe('registerScheduledJobs', () => {
       else process.env['TICKR_DISABLE_REMOTE_JOBS'] = prev;
     });
 
-    it('registers only the alerts cron and skips the external-data schedules', () => {
+    it('skips the external-data schedules but keeps alerts + the FS crons', () => {
       registerScheduledJobs(fakeRedis);
 
-      // Both intraday and alerts use '0 */5 * * * *'; with remote jobs off only
-      // the alerts firing remains, so exactly one cron is registered.
-      expect(mocks.schedule).toHaveBeenCalledTimes(1);
-      expect(mocks.schedule.mock.calls[0]?.[0]).toBe('0 */5 * * * *');
+      const exprs = mocks.schedule.mock.calls.map((c) => c[0]);
+      // External-data crons are gated off: hourly backfill, universe refresh and
+      // Friday close capture. (The intraday sweep shares '0 */5 * * * *' with the
+      // ungated alerts check, so that expression still appears — via alerts.)
+      expect(exprs).not.toContain('0 0 * * * *'); // hourly backfill
+      expect(exprs).not.toContain('0 30 13 * * 6'); // Saturday catch-up sweep
+      expect(exprs).not.toContain('0 0 0 * * 1,3,6'); // universe refresh
+      expect(exprs).not.toContain('0 30 21 * * 5'); // Friday close capture
+      // Alerts + the 7 DB/Redis-only Fantasy Street crons remain.
+      expect(exprs).toContain('0 */5 * * * *'); // alerts
+      expect(exprs).toContain('0 0 6 * * 0'); // classifier
+      expect(exprs).toContain('0 30 14 * * 1-5'); // lineup lock
+      expect(exprs).toContain('0 35 21 * * 5'); // weekly settle
+      expect(exprs).toContain('0 35 21 * * 1-4'); // provisional scoring
+      expect(exprs).toContain('0 45 21 * * 5'); // waiver run
+      expect(exprs).toContain('0 0 18 * * 0'); // lineup reminders (Sunday)
+      expect(exprs).toContain('0 0 13 * * 1-5'); // lineup reminders (weekday)
+      expect(mocks.schedule).toHaveBeenCalledTimes(8);
     });
 
     it('does not run the startup backfill or touch the Massive locks', () => {

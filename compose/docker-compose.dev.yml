@@ -29,6 +29,10 @@ services:
       # Opt in to the dev-only POST /auth/dev-login backdoor (see roles/api.ts).
       # Safe here: the prod overlay never sets this and deploy.sh refuses it.
       TICKR_DEV_AUTH: '1'
+      # Turn off the inbound per-IP rate limiter for local + e2e runs (many rapid
+      # dev-logins from one IP would otherwise 429). prod never sets it; deploy.sh
+      # refuses it.
+      TICKR_DISABLE_RATE_LIMIT: '1'
     volumes:
       - ../apps/api/src:/app/apps/api/src
       - ../packages/shared-types/src:/app/packages/shared-types/src

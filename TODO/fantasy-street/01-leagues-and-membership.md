@@ -1,6 +1,6 @@
 # FS-01 · Leagues & membership
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** platform auth/sessions
+**Status:** `done` ([#54](https://github.com/kgheacock/tickr/pull/54)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** platform auth/sessions
 
 ## User stories
 - As a manager, I want to create a league and invite 3–11 friends, so that we
@@ -98,13 +98,13 @@ and moves through a status lifecycle. This is the first FS slice, so it also
   `index.ts`.
 
 ## Definition of done
-- [ ] A user creates a league, becomes its `commissioner` member, and it shows
+- [x] A user creates a league, becomes its `commissioner` member, and it shows
       in `/me.leagues`.
-- [ ] A second user joins via a valid invite token and appears in `LeagueView`.
-- [ ] An `open` league is joinable without a token and is listed under
+- [x] A second user joins via a valid invite token and appears in `LeagueView`.
+- [x] An `open` league is joinable without a token and is listed under
       `GET /leagues?open=true`; an `invite` league is not.
-- [ ] Joining a full league, an already-drafting league, or with an
+- [x] Joining a full league, an already-drafting league, or with an
       expired/over-used token is rejected with the correct code.
-- [ ] Commissioner can edit settings while `forming`; edits are rejected once
+- [x] Commissioner can edit settings while `forming`; edits are rejected once
       the league leaves `forming`.
-- [ ] A user cannot hold two memberships in the same league (DB-enforced).
+- [x] A user cannot hold two memberships in the same league (DB-enforced).

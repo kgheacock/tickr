@@ -1,0 +1,120 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Base control styling comes from <Input>; the search box only stretches to
+   fill the filter bar. */
+.search {
+  flex: 1;
+  min-width: 160px;
+}
+
+/* The custom specialization listbox sizes to its chip otherwise, so each pick
+   would resize the control; a fixed min-width holds the bar steady. */
+.specFilter {
+  min-width: 200px;
+}
+
+/* Base styling comes from <Checkbox>; only the muted tone differs here. */
+.toggle {
+  color: var(--color-text-muted);
+}
+
+.owner {
+  font-family: var(--font-serif);
+}
+
+/* Unowned (free-agent) stock — a muted dash in the owner column. */
+.unowned {
+  color: var(--color-text-muted);
+}
+
+.num {
+  text-align: center;
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 500;
+  font-size: var(--font-size-base);
+}
+
+/* The shared `.table th` (text-align: left) outranks `.num` on specificity, so
+   the "Last wk" header drifts left of its centred values. This two-class rule
+   (0,2,0) beats it, centring the header over the column. */
+.view .num {
+  text-align: center;
+}
+
+.empty {
+  font-family: var(--font-serif);
+  font-style: italic;
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-6) !important;
+}
+
+/* The trailing Buy column — snug to its ghost button, right-aligned. */
+.buyCol {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Body copy inside the buy confirmation dialog. */
+.confirmBody {
+  font-family: var(--font-serif);
+  font-size: var(--font-size-base);
+  line-height: 1.5;
+  margin: 0 0 var(--space-4);
+}
+
+.modalActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+}
+
+.warn {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+  margin: var(--space-2) 0 0;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.range {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.pageBtns {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.pageNum {
+  font-family: var(--font-numeric);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}

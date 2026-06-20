@@ -1,0 +1,136 @@
+/* Create-league form. The dialog shell (paper sheet, dimmed backdrop, header
+   rule) lives in the reusable <Modal>; only form-specific styles live here. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+/* ── Managers roster ──────────────────────────────────────── */
+
+.seats {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.seats .label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+}
+
+.seatList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.seat {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Existence-check slot between the email field and the bot toggle. Holds a
+   fixed width so toggling the warning in/out never reflows the row. */
+.seatStatus {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+}
+
+.warnIcon {
+  font-size: 14px;
+  line-height: 1;
+  color: #b8860b;
+  cursor: help;
+}
+
+.seatNum {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text);
+  width: 1.8em;
+  text-align: right;
+}
+
+/* Base input styling comes from <Input>; the roster row only tightens the
+   vertical padding and lets the field shrink within the grid column. */
+.seatEmail {
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+/* Bot toggle — compact uppercase variant of <Checkbox> for the tighter roster
+   row; only the type treatment differs from the component default. */
+.botToggle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* Pins the ghost <Button> to the left under the roster; chrome is the
+   component's own. */
+.addSeat {
+  align-self: flex-start;
+}
+
+/* ── Season ───────────────────────────────────────────────── */
+
+.season {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-5);
+}
+
+/* Aligns the <Checkbox> baseline with the adjacent weeks field, whose label
+   sits above its input; chrome is the component's own. */
+.checkLabel {
+  padding-bottom: var(--space-2);
+}
+
+.weeksField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 90px;
+}
+
+.error {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: #9c2b1b;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}

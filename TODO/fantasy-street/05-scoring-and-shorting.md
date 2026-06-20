@@ -1,6 +1,6 @@
 # FS-05 · Scoring & shorting
 
-**Status:** `pending` · **Epic:** [Fantasy Street](README.md) · **Depends on:** 02, 04
+**Status:** `done` ([#63](https://github.com/kgheacock/tickr/pull/63)) · **Epic:** [Fantasy Street](README.md) · **Depends on:** 02, 04
 
 ## User stories
 - As a manager, I want my weekly score to come from how my started stocks moved
@@ -25,7 +25,7 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
 
 ## Pre-reads
 - [Epic README → Scoring rules (canonical)](README.md#scoring-rules-canonical-reference)
-  — the `r × 10` / `−r × 10` formulas + the worked-through short table. **Do not
+  — the `r` / `−r` formulas + the worked-through short table. **Do not
   re-derive; implement these.**
 - [FS-04](04-rosters-and-lineups.md) — the locked `fs_lineup` / `fs_lineup_slot`
   set this scores.
@@ -52,9 +52,9 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
   rows (authoritative keyed by `ts`, provisional by `session_date`; they never
   collide). `returns.ts` owns this fallback; `replay.ts`/`prices.ts` stay
   `price_bar`-only so backtests never see provisional same-day data.
-- **Points** — long slot `= r × 10`; Defense (short) `= −r × 10`. Weekly total =
+- **Points** — long slot `= r`; Defense (short) `= −r`. Weekly total =
   Σ started slots, **uncapped, losses included** (locked decision; mercy cap is
-  open question #2, deferred). Short gain floored at 0 (−100% → +1000); short
+  open question #2, deferred). Short gain floored at 0 (−100% → +100); short
   loss unbounded (the "pick-six").
 - **Shorting reuses the single-owner invariant** — a short is a normal
   `fs_roster_entry` with `is_short=true`; `UNIQUE (league_id, symbol)` (FS-03)
@@ -71,7 +71,7 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
    handles missing/holiday closes by walking back to the last available bar.
 3. **Scorer** (`apps/api/src/fantasy/score.ts`) — for one (league, week): load
    each manager's locked `fs_lineup_slot` started set, compute per-slot points
-   (`r×10`, or `−r×10` for `is_short`), sum to `total_points`, write
+   (`r`, or `−r` for `is_short`), sum to `total_points`, write
    `fs_weekly_score` with the full `breakdown`. Idempotent upsert (re-scoring a
    week overwrites — supports FS-12 dispute corrections).
 4. **Scoring job** — from `jobs/scheduler.ts`, the **Friday** post-close firing
@@ -91,8 +91,8 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
    the live topic `{ kind: 'matchup'; leagueId; week }` in `ws/topics.ts` +
    the `WsTopic` union in `shared-types/ws.ts`, and publish `matchup.updated`
    via `events/publisher.ts` as provisional scores change.
-7. **Tests.** Reproduce the README worked examples (short TSLA −4% → +40; +4% →
-   −40; →0 → +1000 floored; squeeze +30% → −300); losses reduce the total;
+7. **Tests.** Reproduce the README worked examples (short TSLA −4% → +4; +4% →
+   −4; →0 → +100 floored; squeeze +30% → −30); losses reduce the total;
    uncapped totals; breakdown sums to `total_points`; idempotent re-score.
 
 ## Files
@@ -106,12 +106,27 @@ data source FS-06 (matchups) and FS-11 (recaps) read.
   `packages/shared-types/src/ws.ts` + `fantasy.ts`.
 
 ## Definition of done
-- [ ] Each README short example reproduces exactly (+40 / −40 / +1000 floored /
-      −300), and a long slot scores `r × 10`.
-- [ ] Weekly total is the uncapped sum of started slots with losses included;
+- [x] Each README short example reproduces exactly (+4 / −4 / +100 floored /
+      −30), and a long slot scores `r`.
+- [x] Weekly total is the uncapped sum of started slots with losses included;
       the `breakdown` sums to `total_points`.
-- [ ] The Friday post-close job scores every active league's just-closed week
+- [x] The Friday post-close job scores every active league's just-closed week
       and publishes `score.updated`; re-running overwrites cleanly.
-- [ ] The per-slot breakdown is queryable and is the data FS-06 and FS-11 read.
-- [ ] A shorted ticker is unavailable to every other manager in the league
+- [x] The per-slot breakdown is queryable and is the data FS-06 and FS-11 read.
+- [x] A shorted ticker is unavailable to every other manager in the league
       (single-owner invariant holds for shorts).
+
+## Implementation notes
+- Migration `1700000000010_fs_scores.sql` (`fs_weekly_score`: total +
+  JSONB breakdown, idempotent upsert). Domain in `fantasy/returns.ts`
+  (point-in-time `weeklyReturn`, holiday-aware, `asOf` for provisional) and
+  `fantasy/score.ts` (scorer + settle + read functions). Job in `jobs/scoring.ts`
+  driven by two `jobs/scheduler.ts` crons: Friday post-close settle
+  (`score.updated`) and Mon–Thu provisional push (`matchup.updated`).
+- Live `matchup` WS topic (member-gated in `ws/server.ts`, keyed per league+week
+  in `ws/topics.ts` + `shared-types/ws.ts`); `score.updated` is a plain domain
+  event in `events/publisher.ts`, mirroring `lineup.locked`.
+- Read routes in `routes/leagues/scores.ts`. Tests in
+  `test/fantasy/score.test.ts` + `returns.test.ts`.
+- Deferred to later items: schedule→week mapping (the job targets week 1 until
+  FS-06); FS-06 consumes `score.updated` to settle matchups.

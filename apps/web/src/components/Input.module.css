@@ -1,0 +1,24 @@
+/* Standardised text input — sans face, hairline border, accent focus ring.
+   Canonical form-control treatment for Fantasy Street. */
+
+.input {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 2px solid var(--color-rule);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-color: var(--color-accent);
+}
+
+.input:disabled {
+  background: transparent;
+  color: var(--color-text-muted);
+  font-style: italic;
+}

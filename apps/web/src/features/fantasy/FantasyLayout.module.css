@@ -1,0 +1,168 @@
+/* The page sheet/desk is now <Paper width="960px">; this module styles only the
+   content on the sheet. */
+.header {
+  padding-bottom: var(--space-3);
+}
+
+/* Heavy double rule under the team wordmark — at content width, matching the
+   landing masthead's heavy rule above its standfirst. */
+.mastRule {
+  margin-top: var(--space-3);
+}
+
+/* Single hairline below the tabs — the divider the tab content reads up to.
+   Sits at content width, narrower than the bled-out double rule above. The
+   margin below it is the gap to the page body. */
+.headRule {
+  margin-top: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+
+/* Masthead flag line (mirrors the landing Masthead): the league name centred,
+   the back link flush-left and the week flush-right, all baseline-aligned so the
+   small flanks sit at the wordmark's lower corners. */
+.masthead {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin: var(--space-2) 0 var(--space-1);
+}
+
+.back {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* The wordmark and its rename affordance share the centred middle grid cell.
+   The h1 stays optically centred because the pencil hangs off a zero-width
+   anchor (it adds no width to the flow). Items align on the baseline so that
+   anchor — and the button pinned to it — lands on the wordmark's baseline. */
+.nameWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+}
+
+/* League name set in the landing "tickr" wordmark face (see Masthead .wordmark):
+   the big serif brand headline, tightened tracking and leading. */
+.name {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: clamp(48px, 9vw, 84px);
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  text-align: center;
+}
+
+/* A copy-edit cue: hovering an editable wordmark inks in a bold dashed
+   underline, the same transparent-at-rest → coloured-on-hover treatment the
+   custom StockSelect/SlotSelect triggers use to signal "this is clickable".
+   Drawn as a text underline (not a border on the line box) so it hugs the
+   baseline instead of dropping to the bottom of the tall wordmark's descender
+   space. */
+.editable {
+  text-decoration: underline dashed transparent;
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.16em;
+  transition: text-decoration-color 120ms ease;
+}
+.nameWrap:hover .editable {
+  text-decoration-color: var(--color-border);
+}
+
+/* A zero-width, baseline-aligned hook flush with the wordmark's right edge. It
+   carries no width (so it never nudges the centred headline) and sits on the
+   text baseline, giving the absolutely-positioned pencil a baseline to hang on. */
+.anchor {
+  position: relative;
+  width: 0;
+}
+
+/* The rename affordance is the standard square <IconButton>, hung off the anchor
+   so its bottom-left corner rests exactly on the wordmark's baseline, a clear
+   gap past the final glyph. */
+.pencil {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  margin-left: var(--space-3);
+}
+
+/* While editing, the controls sit in the flow to the field's right (the field
+   already centres itself), flanking the wordmark with a save / discard pair.
+   Re-centre them (the view-mode baseline alignment would ride them high). */
+.editingWrap {
+  align-items: center;
+  gap: var(--space-3);
+}
+.editActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.editActions .confirm {
+  color: var(--color-success);
+}
+
+/* The edit field wears the wordmark face so the headline doesn't jump when it
+   flips to editable — same serif, size and leading, on a hairline-ruled baseline
+   that reads as an editorial fill-in line. */
+.nameInput {
+  min-width: 4ch;
+  max-width: min(72vw, 640px);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid var(--color-text);
+  padding: 0 0.08em;
+  outline: none;
+}
+.nameInput:focus {
+  border-bottom-color: var(--color-accent, var(--color-text));
+}
+
+/* <Subhead> owns the label treatment (the landing standfirst's "Est. MMXXVI"
+   look); the week flag holds the right column and aligns to the outer edge. */
+.week {
+  justify-self: end;
+}
+
+/* League standfirst under the double rule — centred between the masthead rules
+   like the landing "Est. MMXXVI" deck. */
+.standfirst {
+  text-align: center;
+  padding: var(--space-3) 0;
+}
+
+/* One cell of the standings ticker: team · live points, set in agate sans like
+   a stock-listing line so the band reads as market data. */
+.tapeItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.tapeTeam {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text);
+}
+
+.nav {
+  margin-top: var(--space-4);
+}
+
+.error {
+  font-family: var(--font-serif);
+  color: var(--color-danger);
+  padding: var(--space-8) 0;
+  text-align: center;
+}

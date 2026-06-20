@@ -1,0 +1,22 @@
+/* The desk: centres the sheet and keeps a gutter from the viewport edges. The
+   warm-grey desk colour is the app background (--color-bg) showing through. */
+.desk {
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(var(--space-4), 4vw, var(--space-12));
+}
+
+/* The sheet: a white page with a hairline border, lifted off the desk by a
+   long soft shadow. */
+.paper {
+  width: 100%;
+  max-width: var(--paper-width, 1000px);
+  background: var(--color-paper);
+  border: 1px solid var(--color-border);
+  box-shadow:
+    0 1px 0 rgba(21, 19, 15, 0.04),
+    0 18px 50px -28px rgba(21, 19, 15, 0.4);
+  padding: clamp(var(--space-6), 4vw, var(--space-12));
+}

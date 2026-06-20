@@ -1,0 +1,89 @@
+/* Standardised button — newsprint CTA treatment shared across Fantasy Street.
+   Base + size + variant are layered; variant rules come last so a ghost can
+   reset the padding the size scale would otherwise apply. */
+
+.button {
+  font-family: var(--font-sans);
+  /* Default size; the size classes override it. Ghost skips them, so this is
+     the size it inherits. */
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.1s;
+}
+
+.button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* ── Sizes ─────────────────────────────────────────────────── */
+
+.md {
+  font-size: var(--font-size-sm);
+  padding: var(--space-3) var(--space-5);
+}
+
+.sm {
+  font-size: 12px;
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ── Variants ──────────────────────────────────────────────── */
+
+.primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-paper);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.secondary {
+  background: transparent;
+  border-color: var(--color-rule);
+  color: var(--color-text);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--color-rule);
+  color: var(--color-paper);
+}
+
+/* An inline text/link button — no chrome, underlines on hover. */
+.ghost {
+  padding: 0;
+  background: none;
+  border: none;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-accent);
+}
+
+.ghost:hover:not(:disabled) {
+  color: var(--color-accent-hover);
+  text-decoration: underline;
+}
+
+.ghost:active:not(:disabled) {
+  transform: none;
+}

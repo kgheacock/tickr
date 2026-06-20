@@ -1,0 +1,26 @@
+.figure {
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+
+/* The +/− sign is bold but stays in the surrounding ink — colour lives on the
+   trailing triangle, not the sign. */
+.sign {
+  font-weight: 700;
+}
+
+/* Trailing direction triangle: green for a gain, red for a loss. */
+.pos,
+.neg {
+  margin-left: 0.25em;
+  font-size: 0.72em;
+  vertical-align: middle;
+}
+
+.pos {
+  color: var(--color-success);
+}
+
+.neg {
+  color: var(--color-danger);
+}

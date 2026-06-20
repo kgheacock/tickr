@@ -1,0 +1,84 @@
+/* Global folio strip: a thin ruled utility bar in the newspaper idiom — small
+   serif wordmark left, account folio right, a single hairline rule underneath. */
+
+.bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) clamp(var(--space-4), 4vw, var(--space-8));
+  border-bottom: 1px solid var(--color-rule);
+  background: var(--color-paper);
+}
+
+.brand {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.brand:hover {
+  color: var(--color-accent);
+}
+
+.account {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.email {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sign out set off by a thin vertical rule, as a quiet ink link. */
+.signout {
+  flex: none;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-left: 1px solid var(--color-rule);
+  padding: 0 0 0 var(--space-3);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.signout:hover {
+  color: var(--color-accent);
+}
+
+.signout:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  /* Drop the verbose label on narrow screens; keep the email + sign out. */
+  .label {
+    display: none;
+  }
+}

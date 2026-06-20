@@ -1,0 +1,86 @@
+/* Editorial annotation tooltip. The trigger is an inline anchor; the bubble is
+   a slip of newsprint — paper fill, a hairline black rule, and the Modal's soft
+   lift — rendered through a portal with `position: fixed` so it escapes any
+   clipping ancestor. It sits above the trigger (translateY(-100%)) with a caret
+   pointing back down. */
+
+.trigger {
+  display: inline-flex;
+  cursor: help;
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.bubble {
+  position: fixed;
+  z-index: 1000;
+  /* `top`/`left` are set inline from the trigger rect; the transform lifts the
+     bubble above that point and centres it horizontally on the trigger. */
+  transform: translate(-50%, -100%);
+
+  width: max-content;
+  max-width: 240px;
+  padding: var(--space-2) var(--space-3);
+
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-text);
+
+  background: var(--color-paper);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 28px -12px rgba(21, 19, 15, 0.5);
+
+  /* Never intercept a click meant for the trigger. */
+  pointer-events: none;
+  /* Plays once on mount (the bubble is only in the DOM while open). */
+  animation: tipFade 0.12s ease;
+}
+
+@keyframes tipFade {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% + 4px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble {
+    animation: none;
+  }
+}
+
+/* Caret: a paper wedge pointing down from the bubble's lower edge, outlined to
+   match the hairline rule. ::before is the black outline triangle; ::after is
+   the paper fill, nudged up 1px so a 1px of the outline shows along its edges. */
+.bubble::before,
+.bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+}
+
+.bubble::before {
+  border-top-color: var(--color-rule);
+}
+
+.bubble::after {
+  margin-top: -1px;
+  border-top-color: var(--color-paper);
+}

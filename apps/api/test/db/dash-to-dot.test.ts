@@ -14,8 +14,8 @@ const migrationsDir = fileURLToPath(
 
 // Everything sorting before the dash→dot rename is "the schema as it stood
 // before the rename". Target the rename migration explicitly by name rather than
-// assuming it sorts last — later migrations (e.g. the coverage watermark) must
-// not shift which step we treat as the rename.
+// assuming it sorts last — later migrations (FS 012+, the coverage watermark)
+// must not shift which step we treat as the rename.
 const RENAME_MIGRATION = '1700000000011_universe-dash-to-dot.sql';
 const allMigrations = readdirSync(migrationsDir)
   .filter((f) => f.endsWith('.sql'))
