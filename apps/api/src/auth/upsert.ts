@@ -46,11 +46,15 @@ export async function upsertUserAndIdentity(
     return { userId, isNew: false };
   }
 
-  // Account-merge: only when the incoming email is verified (AU1)
+  // Account-merge: only when the incoming email is verified (AU1). Matched
+  // case-insensitively — emails are effectively case-insensitive, providers send
+  // whatever case the user typed, and createLeague stores pre-created invitee
+  // accounts force-lowercased, so a case-sensitive match would miss them and
+  // strand the invitee's waiting team behind a brand-new duplicate account.
   let userId: string | undefined;
   if (email && emailVerified) {
     const merged = await client.query<{ id: string }>(
-      `SELECT id FROM app_user WHERE email = $1 LIMIT 1`,
+      `SELECT id FROM app_user WHERE lower(email) = lower($1) LIMIT 1`,
       [email],
     );
     if (merged.rows.length > 0) {
