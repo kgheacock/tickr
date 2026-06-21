@@ -24,9 +24,11 @@ export function Dashboard() {
     queryFn: () => client.getSeasonWins(leagueId, season),
   });
 
-  // In-week totals are provisional until the Friday close settles them; surface
-  // that so a moving board isn't mistaken for the final result.
-  const isLive = ctx.provisional || ctx.scores.some((s) => s.provisional);
+  // Totals are provisional until the Friday close settles them — valued off the
+  // latest close, not a live intraday tick — so they're a projection, not a
+  // running live score. Surface that so a not-yet-final board isn't mistaken for
+  // the settled result.
+  const isProjected = ctx.provisional || ctx.scores.some((s) => s.provisional);
   const winEntries = wins.data?.entries ?? [];
   const weeksCounted = wins.data?.weeks ?? 0;
 
@@ -35,9 +37,12 @@ export function Dashboard() {
       <section className={styles.section}>
         <div className={styles.head}>
           <h2 className={styles.headline}>The Leaderboard</h2>
-          {ctx.ranking.length > 0 && (
-            <Badge>{isLive ? 'Live · in progress' : 'Final'}</Badge>
-          )}
+          {ctx.ranking.length > 0 &&
+            (isProjected ? (
+              <Badge tone="caution">Projected score</Badge>
+            ) : (
+              <Badge>Final</Badge>
+            ))}
         </div>
         <Rule weight="section" />
         <Table>
@@ -65,15 +70,7 @@ export function Dashboard() {
                 const owner = members.get(r.userId)?.displayName;
                 const ownerLine = owner && owner !== label ? owner : null;
                 return (
-                  <tr
-                    key={r.userId}
-                    className={[
-                      r.rank === 1 ? styles.leader : '',
-                      mine ? styles.mine : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
+                  <tr key={r.userId} className={mine ? styles.mine : undefined}>
                     <td className={styles.pos}>{r.rank}</td>
                     <td className={styles.team}>
                       <span className={styles.teamLine}>

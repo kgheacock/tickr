@@ -13,3 +13,9 @@
   padding: 1px 5px;
   vertical-align: middle;
 }
+
+/* Goldenrod variant for a provisional/projected (not-yet-final) status. */
+.caution {
+  color: var(--color-caution);
+  border-color: var(--color-caution);
+}

@@ -15,6 +15,7 @@
   --color-accent-hover: #2d6cb5;
   --color-success: #1f7a4d;
   --color-danger: #a52714;
+  --color-caution: #9a6b00; /* goldenrod — provisional/projected, not yet final */
 
   /* Category spot-inks — vivid "printed colour key" hues, one per stock
      classification group. Each stays dark enough to read as crisp label text
