@@ -4,13 +4,45 @@
   gap: var(--space-6);
 }
 
-/* This week's running total + "In progress" tag, in the right-hand column of
-   the open-positions row. */
+/* This week's running total + its caption ("Current score" once locked, else
+   "Proj score"), in the right-hand column of the open-positions row. */
 .weekScore {
   display: inline-flex;
   align-items: baseline;
   gap: var(--space-2);
   justify-self: end;
+}
+
+/* The caption to the left of the total: small-caps newsprint label, matching the
+   "Open Positions" tag. Carries the projection info icon when unlocked. */
+.scoreLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* A hairline "i" disc that opens the projection tooltip. */
+.infoIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--color-text-muted);
+  border-radius: 50%;
+  font-family: var(--font-serif);
+  font-size: 10px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-text-muted);
+  text-transform: none;
 }
 
 /* The roster <Table> carries its own outline; the editor only stacks it above
@@ -23,6 +55,13 @@
 
 .short {
   background: rgba(165, 39, 20, 0.04);
+}
+
+/* Heavy rule above the first benched row, separating the starting lineup from
+   the bench (Defense is the last starter, so the line falls after it). Matches
+   the table's outer/header rule weight. */
+.benchDivider td {
+  border-top: 2px solid var(--color-rule);
 }
 
 /* The read-only slot label for a benched stock once the week locks. */
@@ -145,4 +184,27 @@
 /* The lineup's This wk column centers its value beneath the header label. */
 .thisWk {
   text-align: center;
+}
+
+/* Leading unnamed column: a single slot-letter tag that reinforces the by-slot
+   row grouping. Snug to its tag and centered. */
+.slotLetterCol {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* Bench carries no spot-ink, so render its letter as a muted bordered tag that
+   matches the coloured specialization/slot CategoryChips (same size + shape). */
+.benchLetter {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-text-muted);
+  border-radius: var(--radius-sm);
 }

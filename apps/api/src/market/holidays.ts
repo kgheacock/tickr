@@ -311,30 +311,62 @@ export function nyseRegularCloseAnchor(d: Date): Date {
 }
 
 /**
- * The Friday of `now`'s week (ET) — today on Friday, the coming Friday Mon–Thu —
- * returned at `now`'s time-of-day. The FS weekly settle anchors on this Friday;
- * the lineup-lock, provisional and dispute-rescore paths all resolve the scoring
- * week off the same calendar mapping. Lifted here (next to nyseRegularCloseAnchor)
- * so there's one copy.
+ * The Friday of the scoring week `now` falls in (ET), returned at `now`'s
+ * time-of-day. The FS weekly settle anchors on this Friday; the provisional and
+ * dispute-rescore paths resolve the scoring week off the same mapping. Lifted
+ * here (next to nyseRegularCloseAnchor) so there's one copy.
  *
- * The weekday MUST come from the real America/New_York calendar date (via etParts,
- * DST-correct), not a fixed-offset shift of `now`'s UTC date: the settle cron fires
- * mid-day UTC, but the provisional/matchups/detail readers call this at arbitrary
- * request times — including the 00:00–05:00 UTC window just past ET midnight, where
- * the old fixed-UTC-5 weekday read a day behind `now` and the result landed a day
- * late (a non-trading Saturday). That shifted the player-detail "previous scoring"
- * anchors onto Saturdays, where the close walk-back picked the prior day's
- * after-hours print instead of the 16:00 ET close.
+ * The scoring week settles at Friday EOD, but the next week doesn't begin until
+ * its first market *open* — the same instant lineups lock (lock.ts). So from
+ * Friday's close until the next trading day's 09:30-ET open, `now` still belongs
+ * to the week that just settled: the weekend, a pre-open Monday, and a holiday
+ * Monday all resolve back to that week's Friday, not forward to the next one. My
+ * Team / Waiver therefore show the trailing week's scoring across the gap instead
+ * of an empty upcoming week, and roll to the new week exactly when it opens.
+ * (The settle cron is Friday-gated and the lineup-lock fires at the open itself,
+ * so neither observes the pre-open branch.)
  *
- * Only the weekday derivation changed; the returned instant keeps `now`'s
- * time-of-day, so the `weekEnd − 7d` baseline the provisional path relies on still
- * lands on the prior week — unchanged from the previously-correct cron-time path.
+ * The calendar date MUST come from the real America/New_York date (via etParts,
+ * DST-correct), not a fixed-offset shift of `now`'s UTC date: the readers call
+ * this at arbitrary request times — including the 00:00–05:00 UTC window just past
+ * ET midnight, where a fixed-UTC-5 weekday reads a day behind `now`.
+ *
+ * The returned instant keeps `now`'s time-of-day, so the `weekEnd − 7d` baseline
+ * the provisional path relies on still lands a week earlier.
  */
 export function currentFriday(now: Date): Date {
   const { year, month, day } = etParts(now);
-  // Weekday of now's ET calendar date; noon UTC is a DST-safe probe (matches
+  // Day-of-week of now's ET calendar date; noon UTC is a DST-safe probe (matches
   // isEtTradingDay) that never crosses a day boundary under the offset shift.
   const dow = new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
-  const daysUntilFriday = (5 - dow + 7) % 7;
-  return new Date(now.getTime() + daysUntilFriday * DAY_MS);
+  const daysSinceMonday = (dow + 6) % 7; // Mon→0 … Sun→6
+  // Day offset from now to the Friday of its Mon–Sun calendar week: Mon→+4 …
+  // Fri→0, Sat→−1, Sun→−2.
+  const friShift = 4 - daysSinceMonday;
+
+  // Find this calendar week's first trading day and its 09:30-ET open. Before
+  // that open the new week hasn't begun, so `now` still belongs to the week that
+  // just settled — step the Friday back a week. (mondayUtc..+4 are UTC-midnight
+  // date markers used only to read calendar Y/M/D, so DST never shifts them.)
+  const mondayUtc = Date.UTC(year, month - 1, day) - daysSinceMonday * DAY_MS;
+  let openUtc: Date | null = null;
+  for (let i = 0; i <= 4; i++) {
+    const d = new Date(mondayUtc + i * DAY_MS);
+    const y = d.getUTCFullYear();
+    const mo = d.getUTCMonth() + 1;
+    const dd = d.getUTCDate();
+    if (isEtTradingDay(y, mo, dd)) {
+      openUtc = etWallClockToUtc(
+        y,
+        mo,
+        dd,
+        Math.floor(SESSION_OPEN_MIN / 60),
+        SESSION_OPEN_MIN % 60,
+      );
+      break;
+    }
+  }
+  const shift =
+    openUtc && now.getTime() < openUtc.getTime() ? friShift - 7 : friShift;
+  return new Date(now.getTime() + shift * DAY_MS);
 }

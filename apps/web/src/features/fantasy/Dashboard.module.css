@@ -89,6 +89,21 @@
   font-weight: 600;
 }
 
+/* The team name + "you" tag, kept on their own line above the owner name. */
+.teamLine {
+  display: block;
+}
+
+/* The owner's display name, set below the team name as muted secondary text. */
+.ownerName {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
 /* The "— you" tag trailing the manager's own team name. */
 .youTag {
   margin-left: var(--space-2);

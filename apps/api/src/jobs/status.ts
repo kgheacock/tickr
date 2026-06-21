@@ -25,7 +25,6 @@ export const JOB_LOCKS = {
   sessionUpdate: 'massive:job:session-update',
   universeRefresh: 'massive:job:universe-refresh',
   closeCapture: 'finnhub:job:close-capture',
-  classify: 'fs:job:classify',
   lineupLock: 'fs:job:lineup-lock',
   scoring: 'fs:job:scoring',
   waivers: 'fs:job:waivers',
@@ -33,7 +32,7 @@ export const JOB_LOCKS = {
 } as const;
 
 export interface JobDef {
-  /** Stable status key — kebab-case, never the lock key (two jobs share a lock). */
+  /** Stable status key — kebab-case, never the lock key (locks may be shared). */
   name: string;
   /** Redis lock key this job runs under, or null if it takes no lock. */
   lockKey: string | null;
@@ -55,8 +54,8 @@ export interface JobDef {
  * The static job registry — the single source of truth for what jobs exist and
  * how they're scheduled. Static (not derived from what got `cron.schedule`d) so a
  * remote job still lists here, as "never run", under TICKR_DISABLE_REMOTE_JOBS.
- * Note SESSION_UPDATE_LOCK and SCORING_LOCK each back two distinct jobs — they
- * are tracked by `name`, never by lock key.
+ * Jobs are tracked by `name`, never by lock key, so two jobs may share a lock key
+ * (none do today) and still record their status independently.
  */
 export const JOB_DEFS = [
   {
@@ -76,14 +75,6 @@ export const JOB_DEFS = [
     remote: true,
   },
   {
-    name: 'saturday-catchup',
-    lockKey: JOB_LOCKS.sessionUpdate,
-    cron: '0 30 13 * * 6',
-    cadence: 'Sat 13:30 UTC',
-    description: "Pull Friday's now-available bars forward before Monday",
-    remote: true,
-  },
-  {
     name: 'universe-refresh',
     lockKey: JOB_LOCKS.universeRefresh,
     cron: '0 0 0 * * 1,3,6',
@@ -94,9 +85,9 @@ export const JOB_DEFS = [
   {
     name: 'close-capture',
     lockKey: JOB_LOCKS.closeCapture,
-    cron: '0 30 21 * * 5',
-    cadence: 'Fri 21:30 UTC',
-    description: "Capture Friday's close via Finnhub for the FS weekly settle",
+    cron: '0 30 21 * * 1-5',
+    cadence: 'Trading days 21:30 UTC',
+    description: "Capture each session's close via Finnhub for the FS settle",
     remote: true,
   },
   {
@@ -105,14 +96,6 @@ export const JOB_DEFS = [
     cron: '0 */5 * * * *',
     cadence: 'Every 5 min',
     description: 'Check stuck states (EOD lag, backfill, 429 burst) and alert',
-    remote: false,
-  },
-  {
-    name: 'classifier',
-    lockKey: JOB_LOCKS.classify,
-    cron: '0 0 6 * * 0',
-    cadence: 'Sun 06:00 UTC',
-    description: 'Recompute Fantasy Street player classifications',
     remote: false,
   },
   {
@@ -137,14 +120,6 @@ export const JOB_DEFS = [
     cron: '0 35 21 * * 5',
     cadence: 'Fri 21:35 UTC',
     description: 'Settle the scoring week and close out the season',
-    remote: false,
-  },
-  {
-    name: 'provisional-scoring',
-    lockKey: JOB_LOCKS.scoring,
-    cron: '0 35 21 * * 1-4',
-    cadence: 'Mon–Thu 21:35 UTC',
-    description: 'Push best-effort in-week provisional scores (not persisted)',
     remote: false,
   },
   {

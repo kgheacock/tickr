@@ -4,7 +4,7 @@ import { runBackfill } from './backfill.js';
 import { runIntradayUpdate } from './intraday-update.js';
 import { runCloseCapture } from './close-capture.js';
 import { runMetadataRefresh } from './refresh-metadata.js';
-import { tryAcquireLock, releaseLock, isLockHeld } from './locks.js';
+import { tryAcquireLock, releaseLock } from './locks.js';
 import {
   JOB_LOCKS,
   recordJobStart,
@@ -20,7 +20,6 @@ import {
   currentFriday,
 } from '../market/holidays.js';
 import { runAlertCheck } from '../alerts/checker.js';
-import { runClassifier } from '../fantasy/classify.js';
 import { lockLineups, isFirstTradingDayOfWeek } from '../fantasy/lock.js';
 import { runWeeklyScoring } from './scoring.js';
 import { runWaivers } from '../fantasy/waivers.js';
@@ -44,7 +43,6 @@ const BACKFILL_LOCK = JOB_LOCKS.backfill;
 const SESSION_UPDATE_LOCK = JOB_LOCKS.sessionUpdate;
 const UNIVERSE_REFRESH_LOCK = JOB_LOCKS.universeRefresh;
 const CLOSE_CAPTURE_LOCK = JOB_LOCKS.closeCapture;
-const CLASSIFY_LOCK = JOB_LOCKS.classify;
 const LINEUP_LOCK_LOCK = JOB_LOCKS.lineupLock;
 const SCORING_LOCK = JOB_LOCKS.scoring;
 const WAIVER_LOCK = JOB_LOCKS.waivers;
@@ -54,8 +52,8 @@ const LINEUP_REMINDER_LOCK = JOB_LOCKS.lineupReminder;
 // the ET calendar date is stable when picking the week's Friday (currentFriday).
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// MVP scope (intentional for this merge): the automated lineup-lock, weekly-settle
-// and provisional-scoring crons drive a single scoring week. Item 06's round-robin
+// MVP scope (intentional for this merge): the automated lineup-lock and
+// weekly-settle crons drive a single scoring week. Item 06's round-robin
 // schedule supports multiple weeks, but auto-advancing the *cron* target across
 // weeks is deferred — weeks >= 2 are settled on demand until the season-week
 // derivation lands. Tracked as a follow-up in TODO/fantasy-street/06-matchups-and-standings.md.
@@ -170,23 +168,6 @@ export function registerScheduledJobs(redis: Redis): void {
       redis,
       { name: 'backfill', key: BACKFILL_LOCK, ttlMs: LONG_LOCK_TTL_MS },
       async () => {
-        // Saturday only: the weekend catch-up sweep (below) is the first Massive
-        // job that fires in the same off-hours window as this backfill, and both
-        // draw the single global token bucket (massive:bucket). Yield the rate
-        // budget to an active sweep so it pulls Friday's tail at full throughput;
-        // the next hourly firing resumes the backfill once the sweep releases
-        // SESSION_UPDATE_LOCK. Scoped to Saturday so an orphaned session lock (a
-        // mid-session weekday deploy, see intraday-update) never stalls the
-        // weekday off-hours backfill.
-        if (
-          now.getUTCDay() === 6 &&
-          (await isLockHeld(redis, SESSION_UPDATE_LOCK))
-        ) {
-          log('info', 'backfill deferred — Saturday catch-up sweep active', {
-            trigger,
-          });
-          return;
-        }
         await runBackfill(redis);
       },
     ).catch((err: unknown) => {
@@ -223,37 +204,6 @@ export function registerScheduledJobs(redis: Redis): void {
         () => runIntradayUpdate(redis),
       ).catch((err: unknown) => {
         log('error', 'intraday sweep failed', { err: String(err) });
-      });
-    });
-  }
-
-  // Saturday catch-up sweep: 13:30 UTC (~09:30 ET). Friday's bars are 403'd on
-  // Friday itself (the free tier never serves the current trading day) and the
-  // in-session sweep above never runs on the weekend, so Friday's prices would
-  // otherwise not reach the authoritative price_bar store until Monday's session.
-  // The free tier *does* serve the prior trading day by the weekend (verified
-  // 2026-06-14: Friday 06-12 bars were available), so a single Saturday sweep pulls
-  // Friday's now-available tail forward by two days. runIntradayUpdate re-fetches a
-  // trailing multi-day window with ON CONFLICT inserts — the same self-healing
-  // append the weekday sweep does, just unconditional (Saturday is never a regular
-  // session, so there is no session gate to apply). Reuses SESSION_UPDATE_LOCK so
-  // it can't double-run, and the 13:30 mid-hour slot means it holds that lock
-  // before the top-of-hour backfill fires — backfillIfOffHours then defers to it,
-  // keeping the shared Massive rate bucket undivided. The Friday session_close
-  // capture (item 30) still settles the FS scorer; this fills the price_bar store
-  // that charts and backtests read.
-  if (!remoteJobsDisabled) {
-    cron.schedule('0 30 13 * * 6', () => {
-      void withLock(
-        redis,
-        {
-          name: 'saturday-catchup',
-          key: SESSION_UPDATE_LOCK,
-          ttlMs: LONG_LOCK_TTL_MS,
-        },
-        () => runIntradayUpdate(redis),
-      ).catch((err: unknown) => {
-        log('error', 'Saturday catch-up sweep failed', { err: String(err) });
       });
     });
   }
@@ -323,22 +273,6 @@ export function registerScheduledJobs(redis: Redis): void {
         log('error', 'alert check failed', { err: String(err) });
       },
     );
-  });
-
-  // Fantasy Street player classifier (FS-02): weekly, Sunday 06:00 UTC. Reads
-  // price_bar and recomputes fs_player_classification. Idempotent and cheap;
-  // also runnable on demand via runClassifier(pool).
-  cron.schedule('0 0 6 * * 0', () => {
-    void withLock(
-      redis,
-      { name: 'classifier', key: CLASSIFY_LOCK },
-      async () => {
-        const n = await runClassifier(pool);
-        log('info', 'classifier run complete', { symbols: n });
-      },
-    ).catch((err: unknown) => {
-      log('error', 'classifier failed', { err: String(err) });
-    });
   });
 
   // FS-04 lineup lock: market open (~14:30 UTC) Mon–Fri, but only on the week's
@@ -426,40 +360,6 @@ export function registerScheduledJobs(redis: Redis): void {
     });
   });
 
-  // FS-05 provisional scores: Mon–Thu 21:35 UTC, after the close. Best-effort
-  // in-week totals off the last available close (asOf = now, whatever the intraday
-  // tail has appended so far — no close capture or regular-close re-anchor here,
-  // unlike the Friday settle); pushed as scores.updated and never persisted.
-  // Skipped on a holiday (no fresh bars to score).
-  cron.schedule('0 35 21 * * 1-4', () => {
-    const now = new Date();
-    if (isNyseHoliday(now)) {
-      log('info', 'holiday — skipping provisional scoring', {
-        date: now.toISOString().slice(0, 10),
-      });
-      return;
-    }
-    void withLock(
-      redis,
-      { name: 'provisional-scoring', key: SCORING_LOCK },
-      async () => {
-        const result = await runWeeklyScoring(
-          pool,
-          {
-            week: currentWeek(),
-            weekEnd: currentFriday(now),
-            provisional: true,
-            asOf: now,
-          },
-          redis,
-        );
-        log('info', 'provisional scoring complete', result);
-      },
-    ).catch((err: unknown) => {
-      log('error', 'provisional scoring failed', { err: String(err) });
-    });
-  });
-
   // FS-07 waiver run: Friday 21:45 UTC, ~10 min after the weekly settle has
   // rebuilt standings (the reverse-standings priority depends on them). Opens
   // the between-weeks window — every active league whose week has just settled
@@ -477,7 +377,7 @@ export function registerScheduledJobs(redis: Redis): void {
   log(
     'info',
     remoteJobsDisabled
-      ? 'scheduler registered (external-data jobs disabled via TICKR_DISABLE_REMOTE_JOBS — alerts + classifier + lineup-lock + scoring + waivers + lineup-reminders only)'
-      : 'scheduler registered (off-hours backfill, intraday live tail, Saturday catch-up sweep, M/W/Sat universe refresh + metadata, daily close capture, alerts + classifier + lineup-lock + scoring + waivers + lineup-reminders)',
+      ? 'scheduler registered (external-data jobs disabled via TICKR_DISABLE_REMOTE_JOBS — alerts + lineup-lock + scoring + waivers + lineup-reminders only)'
+      : 'scheduler registered (off-hours backfill, intraday live tail, M/W/Sat universe refresh + metadata, daily close capture, alerts + lineup-lock + scoring + waivers + lineup-reminders)',
   );
 }

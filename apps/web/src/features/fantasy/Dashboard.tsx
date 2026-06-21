@@ -58,6 +58,12 @@ export function Dashboard() {
             ) : (
               ctx.ranking.map((r) => {
                 const mine = r.userId === myUserId;
+                const label = managerLabel(members, r.userId);
+                // The owner's name below the team name, as secondary text. Hidden
+                // when it would just repeat the line above (no team name set, so
+                // the label already is the display name).
+                const owner = members.get(r.userId)?.displayName;
+                const ownerLine = owner && owner !== label ? owner : null;
                 return (
                   <tr
                     key={r.userId}
@@ -70,8 +76,13 @@ export function Dashboard() {
                   >
                     <td className={styles.pos}>{r.rank}</td>
                     <td className={styles.team}>
-                      {managerLabel(members, r.userId)}
-                      {mine && <span className={styles.youTag}>You</span>}
+                      <span className={styles.teamLine}>
+                        {label}
+                        {mine && <span className={styles.youTag}>You</span>}
+                      </span>
+                      {ownerLine && (
+                        <span className={styles.ownerName}>{ownerLine}</span>
+                      )}
                     </td>
                     <td className={styles.num}>
                       <SignedNumber

@@ -37,12 +37,15 @@ describe('job status registry', () => {
     expect(names.size).toBe(JOB_DEFS.length);
   });
 
-  it('two jobs share the scoring lock but stay distinct entries', () => {
+  it('weekly-settle runs under the scoring lock', () => {
     const settle = JOB_DEFS.find((d) => d.name === 'weekly-settle')!;
-    const prov = JOB_DEFS.find((d) => d.name === 'provisional-scoring')!;
     expect(settle.lockKey).toBe(JOB_LOCKS.scoring);
-    expect(prov.lockKey).toBe(JOB_LOCKS.scoring);
-    expect(settle.name).not.toBe(prov.name);
+  });
+
+  it('does not register the removed saturday-catchup / provisional-scoring jobs', () => {
+    const names = JOB_DEFS.map((d) => d.name);
+    expect(names).not.toContain('saturday-catchup');
+    expect(names).not.toContain('provisional-scoring');
   });
 });
 
@@ -63,10 +66,10 @@ describe('readJobStatuses', () => {
 
 describe('record → read round trip', () => {
   it('records a successful run: ok outcome, duration, run count, not running', async () => {
-    await recordJobStart(redis, 'classifier');
-    await recordJobResult(redis, 'classifier', { ok: true, durationMs: 1234 });
+    await recordJobStart(redis, 'lineup-lock');
+    await recordJobResult(redis, 'lineup-lock', { ok: true, durationMs: 1234 });
 
-    const job = find(await readJobStatuses(redis), 'classifier');
+    const job = find(await readJobStatuses(redis), 'lineup-lock');
     expect(job.running).toBe(false);
     expect(job.lastOutcome).toBe('ok');
     expect(job.lastDurationMs).toBe(1234);
