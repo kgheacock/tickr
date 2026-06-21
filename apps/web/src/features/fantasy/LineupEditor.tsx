@@ -31,18 +31,32 @@ import {
   Modal,
   Table,
   TableRow,
+  Tooltip,
 } from '../../components';
 import styles from './TeamView.module.css';
 
 const BENCH = 'bench';
 
+// Canonical slot order the table is always grouped by: the long slots, then
+// Wildcard, then Defense (the lone short) last, then bench. Also the order of
+// the leading slot-letter tags.
+const SLOT_ORDER = [
+  'anchor',
+  'growth',
+  'momentum',
+  'value',
+  'wildcard',
+  'defense',
+  BENCH,
+];
+
 interface StockRow {
   symbol: string;
   name: string | null;
   isShort: boolean;
-  /** Classification groups (SpecChips strips the universal slots); [] when locked. */
+  /** Classification groups (SpecChips strips the universal slots); [] until the roster loads. */
   groups: PlayerGroup[];
-  /** Points scored so far this week; null when locked (no roster metadata). */
+  /** Points scored so far this week; null until the roster loads. */
   currentWeekPoints: number | null;
 }
 
@@ -62,13 +76,21 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
   const myScore = ctx.scores.find((s) => s.userId === ctx.myUserId);
 
   // The pick pool is the manager's roster (owned players). fs_roster_entry is
-  // exposed via /players?mine; it's the source of names + specialization chips.
-  // Disabled once locked — the read-only view renders from the saved lineup.
+  // exposed via /players?mine; it's the source of names, specialization chips and
+  // this-week points. Loaded even when locked: the frozen lineup carries only
+  // symbol + slot, so the read-only view merges this metadata onto it (a GET is
+  // not gated by the lock window). Unlocked, the same data is the editable pool.
   const rosterQuery = useQuery({
     queryKey: ['fantasy', 'roster', ctx.leagueId],
     queryFn: () => client.getRoster(ctx.leagueId),
-    enabled: !locked,
   });
+  // Roster metadata by symbol, for enriching the frozen lineup rows when locked.
+  const rosterBySymbol = useMemo(() => {
+    const items = rosterQuery.data?.items ?? [];
+    const map = new Map<string, (typeof items)[number]>();
+    for (const p of items) map.set(p.symbol, p);
+    return map;
+  }, [rosterQuery.data]);
 
   const slots = useMemo(
     () => (league ? mandatorySlots(league.rosterConfig.slots) : []),
@@ -78,17 +100,23 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
 
   // The stock list (the table's rows). Unlocked: the live roster, with names and
   // specialization chips. Locked: the frozen lineup, which carries every placed
-  // symbol + its slot but no roster metadata. Sort is stable (longs then the
-  // short(s), each alphabetical) so rows never jump as assignments change.
+  // symbol + its slot but no roster metadata. The final row order is by slot
+  // (orderedStocks below); this base list is alphabetical for a stable secondary.
   const stocks = useMemo<StockRow[]>(() => {
     const rows: StockRow[] = locked
-      ? (lineup?.slots ?? []).map((s) => ({
-          symbol: s.symbol,
-          name: null,
-          isShort: s.isShort,
-          groups: [],
-          currentWeekPoints: null,
-        }))
+      ? // Frozen lineup rows, enriched with name / specialization / points from
+        // the roster (the lineup payload itself carries only symbol + slot). A
+        // symbol missing from the roster (e.g. later sold) falls back to bare.
+        (lineup?.slots ?? []).map((s) => {
+          const meta = rosterBySymbol.get(s.symbol);
+          return {
+            symbol: s.symbol,
+            name: meta?.name ?? null,
+            isShort: s.isShort,
+            groups: meta?.groups ?? [],
+            currentWeekPoints: meta?.currentWeekPoints ?? null,
+          };
+        })
       : (rosterQuery.data?.items ?? []).map((p) => ({
           symbol: p.symbol,
           name: p.name,
@@ -96,12 +124,8 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
           groups: p.groups,
           currentWeekPoints: p.currentWeekPoints,
         }));
-    return rows.sort(
-      (a, b) =>
-        Number(a.isShort) - Number(b.isShort) ||
-        a.symbol.localeCompare(b.symbol),
-    );
-  }, [locked, lineup, rosterQuery.data]);
+    return rows.sort((a, b) => a.symbol.localeCompare(b.symbol));
+  }, [locked, lineup, rosterQuery.data, rosterBySymbol]);
 
   // Current slot per stock, seeded from the saved lineup; unplaced stocks bench.
   const initial = useMemo(() => {
@@ -115,6 +139,27 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
 
   const [draft, setDraft] = useState<Record<string, string> | null>(null);
   const assignment = draft ?? initial;
+
+  // Rows are always grouped by slot in canonical order (reinforced by the leading
+  // slot-letter column). Sorting on the live assignment means reassigning a slot
+  // re-groups the row immediately; symbol breaks ties within a slot.
+  const orderedStocks = useMemo(() => {
+    const rank = (symbol: string) => {
+      const i = SLOT_ORDER.indexOf(assignment[symbol] ?? BENCH);
+      return i === -1 ? SLOT_ORDER.length : i;
+    };
+    return [...stocks].sort(
+      (a, b) =>
+        rank(a.symbol) - rank(b.symbol) || a.symbol.localeCompare(b.symbol),
+    );
+  }, [stocks, assignment]);
+
+  // The bench sorts last, so the first benched row marks the starters↔bench
+  // boundary — drawn as a heavy rule above it (skipped when there are no starters
+  // above it to divide from).
+  const firstBenchIndex = orderedStocks.findIndex(
+    (s) => (assignment[s.symbol] ?? BENCH) === BENCH,
+  );
 
   // The open stock-detail modal (clicking a roster stock, as on the waiver wire).
   const [selected, setSelected] = useState<string | null>(null);
@@ -246,16 +291,30 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
           )}
         </div>
         <div className={styles.weekScore}>
+          <span className={styles.scoreLabel}>
+            {locked ? 'Current score' : 'Proj score'}
+            {!locked && (
+              <Tooltip content="Until your lineup locks at the week’s open, this is projected from last week’s scoring.">
+                <span
+                  className={styles.infoIcon}
+                  aria-label="How the projected score is calculated"
+                >
+                  i
+                </span>
+              </Tooltip>
+            )}
+          </span>
           <SignedNumber
             className={styles.total}
             value={myScore?.totalPoints ?? 0}
           />
-          {myScore?.provisional && <Badge>In progress</Badge>}
+          {locked && myScore?.provisional && <Badge>In progress</Badge>}
         </div>
       </div>
       <Table>
         <thead>
           <tr>
+            <th className={styles.slotLetterCol} aria-label="Slot" />
             <th>Stock</th>
             <th>Specialization</th>
             <th className={styles.thisWk}>This wk</th>
@@ -264,17 +323,18 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
           </tr>
         </thead>
         <tbody>
-          {stocks.length === 0 && (
+          {orderedStocks.length === 0 && (
             <tr>
-              <td colSpan={locked ? 4 : 5} className={styles.empty}>
+              <td colSpan={locked ? 5 : 6} className={styles.empty}>
                 {rosterQuery.isLoading
                   ? 'Loading your roster…'
                   : 'No stocks on your roster yet.'}
               </td>
             </tr>
           )}
-          {stocks.map((s) => {
+          {orderedStocks.map((s, index) => {
             const current = assignment[s.symbol] ?? BENCH;
+            const benchDivider = index === firstBenchIndex && index > 0;
             // The slot sets the basis: any owned stock may fill Defense (it's
             // converted to a short for the week), so every classification-
             // eligible slot is offered. Mirrors the server (eligibility.ts):
@@ -296,8 +356,24 @@ export function LineupEditor({ ctx }: { ctx: LeagueContext }) {
             return (
               <TableRow
                 key={s.symbol}
-                className={slotIsShort ? styles.short : undefined}
+                className={[
+                  slotIsShort ? styles.short : '',
+                  benchDivider ? styles.benchDivider : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               >
+                <td className={styles.slotLetterCol}>
+                  {isPlayerGroup(current) ? (
+                    <CategoryChip group={current}>
+                      {(SLOT_LABELS[current] ?? current).charAt(0)}
+                    </CategoryChip>
+                  ) : (
+                    <span className={styles.benchLetter}>
+                      {(SLOT_LABELS[current] ?? current).charAt(0)}
+                    </span>
+                  )}
+                </td>
                 <td>
                   <StockCell
                     symbol={s.symbol}

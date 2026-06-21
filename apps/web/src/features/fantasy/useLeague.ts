@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   LeagueMember,
+  Lineup,
   RosterTransactionRequest,
   SetLineupSlot,
   WeeklyScore,
@@ -102,25 +103,28 @@ export function useLeague(leagueId: string, opts: UseLeagueOptions) {
       }),
     ]);
 
+  // A saved/auto-filled lineup is the new source of the team's total: a stock's
+  // slot drives its basis (Defense scores short, flipping the sign) and only the
+  // started slots count, so the running/projected score shifts. Seed the fresh
+  // lineup, drop any stale live overlay (the save fires no scores push of its
+  // own), and refetch the week's scores so the header reflects the new lineup.
+  const onLineupSaved = (next: Lineup) => {
+    queryClient.setQueryData(fantasyKeys.lineup(leagueId, week, season), next);
+    setLive(null);
+    void queryClient.invalidateQueries({
+      queryKey: fantasyKeys.scores(leagueId, week, season),
+    });
+  };
+
   const setLineup = useMutation({
     mutationFn: (slots: SetLineupSlot[]) =>
       client.setLineup(leagueId, { week, season, slots }),
-    onSuccess: (next) => {
-      queryClient.setQueryData(
-        fantasyKeys.lineup(leagueId, week, season),
-        next,
-      );
-    },
+    onSuccess: onLineupSaved,
   });
 
   const autofill = useMutation({
     mutationFn: () => client.autofillLineup(leagueId, week, season),
-    onSuccess: (next) => {
-      queryClient.setQueryData(
-        fantasyKeys.lineup(leagueId, week, season),
-        next,
-      );
-    },
+    onSuccess: onLineupSaved,
   });
 
   // Buy/sell change ownership, so the roster (lineup pool), the wire inventory,

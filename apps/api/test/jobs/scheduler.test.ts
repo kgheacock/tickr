@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => ({
   isNyseHoliday: vi.fn(),
   tryAcquireLock: vi.fn(),
   releaseLock: vi.fn(),
-  isLockHeld: vi.fn(),
 }));
 
 vi.mock('node-cron', () => ({ default: { schedule: mocks.schedule } }));
@@ -46,7 +45,6 @@ vi.mock('../../src/market/holidays.js', () => ({
 vi.mock('../../src/jobs/locks.js', () => ({
   tryAcquireLock: mocks.tryAcquireLock,
   releaseLock: mocks.releaseLock,
-  isLockHeld: mocks.isLockHeld,
 }));
 
 import { registerScheduledJobs } from '../../src/jobs/scheduler.js';
@@ -89,11 +87,9 @@ describe('registerScheduledJobs', () => {
     mocks.runAlertCheck.mockResolvedValue(undefined);
     // Default to off-hours so the startup backfill runs; flip per-test.
     mocks.isRegularSession.mockReturnValue(false);
-    // Default to a normal trading day so the daily close capture fires and the
-    // FS provisional-scoring cron runs; flip per-test.
+    // Default to a normal trading day so the daily close capture fires; flip
+    // per-test.
     mocks.isNyseHoliday.mockReturnValue(false);
-    // Default to no sweep in flight so the backfill's Saturday yield is inert.
-    mocks.isLockHeld.mockResolvedValue(false);
   });
 
   it('registers exactly the expected cron schedules', () => {
@@ -103,20 +99,16 @@ describe('registerScheduledJobs', () => {
     expect(exprs).toContain('0 0 * * * *'); // hourly backfill
     expect(exprs).toContain('0 */5 * * * *'); // intraday live tail + alerts
     expect(exprs).toContain('0 0 0 * * 1,3,6'); // universe refresh Mon/Wed/Sat
-    expect(exprs).toContain('0 30 13 * * 6'); // Saturday catch-up sweep
     expect(exprs).toContain('0 30 21 * * 1-5'); // daily early close capture
-    // Fantasy Street jobs (FS-02/04/05/07).
-    expect(exprs).toContain('0 0 6 * * 0'); // classifier: Sunday 06:00 UTC
+    // Fantasy Street jobs (FS-04/05/07).
     expect(exprs).toContain('0 30 14 * * 1-5'); // lineup lock: weekday open
     expect(exprs).toContain('0 35 21 * * 5'); // weekly settle: Friday close
-    expect(exprs).toContain('0 35 21 * * 1-4'); // provisional scoring: Mon–Thu
     expect(exprs).toContain('0 45 21 * * 5'); // waiver run: Friday post-settle
     expect(exprs).toContain('0 0 18 * * 0'); // lineup reminders: Sunday evening
     expect(exprs).toContain('0 0 13 * * 1-5'); // lineup reminders: weekday morning
-    // 6 market-data crons (backfill, intraday, Saturday catch-up, universe,
-    // close-capture, alerts; the post-close EOD cron was dropped) + 7 Fantasy
-    // Street crons. Startup backfill is a direct call, not scheduled.
-    expect(mocks.schedule).toHaveBeenCalledTimes(13);
+    // 5 market-data crons (backfill, intraday, universe, close-capture, alerts)
+    // + 5 Fantasy Street crons. Startup backfill is a direct call, not scheduled.
+    expect(mocks.schedule).toHaveBeenCalledTimes(10);
   });
 
   it('daily close capture runs runCloseCapture under its own lock', async () => {
@@ -213,70 +205,6 @@ describe('registerScheduledJobs', () => {
     });
   });
 
-  describe('Saturday catch-up sweep', () => {
-    it('sweeps under the session lock regardless of session state (Saturday is never a regular session)', async () => {
-      // The sweep must run with no session gate — prove it fires even when
-      // isRegularSession reports closed (the weekend default).
-      mocks.isRegularSession.mockReturnValue(false);
-      registerScheduledJobs(fakeRedis);
-
-      callbackFor('0 30 13 * * 6')();
-
-      await vi.waitFor(() =>
-        expect(mocks.runIntradayUpdate).toHaveBeenCalledWith(fakeRedis),
-      );
-      expect(mocks.tryAcquireLock).toHaveBeenCalledWith(
-        fakeRedis,
-        SESSION_UPDATE_LOCK,
-        SIX_HOURS_MS,
-      );
-    });
-
-    it('defers the off-hours backfill while the Saturday sweep holds the session lock', async () => {
-      // Freeze to a Saturday (2026-06-13) outside market hours so the backfill's
-      // Saturday-only yield engages; the sweep is represented as holding the lock.
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date('2026-06-13T14:05:00Z'));
-      try {
-        mocks.isRegularSession.mockReturnValue(false);
-        mocks.isLockHeld.mockResolvedValue(true);
-
-        registerScheduledJobs(fakeRedis);
-        callbackFor('0 0 * * * *')(); // hourly backfill firing
-
-        await vi.waitFor(() =>
-          expect(mocks.isLockHeld).toHaveBeenCalledWith(
-            fakeRedis,
-            SESSION_UPDATE_LOCK,
-          ),
-        );
-        expect(mocks.runBackfill).not.toHaveBeenCalled();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-
-    it('does not consult the sweep lock on a weekday — an orphaned session lock never stalls the off-hours backfill', async () => {
-      // A Wednesday (2026-06-10) off-hours: the Saturday-only guard short-circuits
-      // before isLockHeld, so even a stale/orphaned session lock is ignored.
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date('2026-06-10T06:00:00Z'));
-      try {
-        mocks.isRegularSession.mockReturnValue(false);
-        mocks.isLockHeld.mockResolvedValue(true); // orphaned lock — must be ignored
-
-        registerScheduledJobs(fakeRedis);
-        mocks.runBackfill.mockClear(); // drop the startup firing
-        callbackFor('0 0 * * * *')();
-
-        await vi.waitFor(() => expect(mocks.runBackfill).toHaveBeenCalled());
-        expect(mocks.isLockHeld).not.toHaveBeenCalled();
-      } finally {
-        vi.useRealTimers();
-      }
-    });
-  });
-
   describe('universe refresh (Mon/Wed/Sat)', () => {
     it('reconciles then refreshes metadata, in that order, under its own lock', async () => {
       const order: string[] = [];
@@ -312,10 +240,10 @@ describe('registerScheduledJobs', () => {
   });
 
   // Dev escape hatch: TICKR_DISABLE_REMOTE_JOBS=1 skips every job that reaches the
-  // external data APIs (backfill, intraday sweep, universe refresh, Friday close
+  // external data APIs (backfill, intraday sweep, universe refresh, daily close
   // capture) while leaving the DB/Redis-only jobs running — the alerts check plus
-  // every Fantasy Street cron (classifier, lineup lock, scoring, waivers,
-  // reminders). deploy.sh refuses the flag in prod.
+  // every Fantasy Street cron (lineup lock, scoring, waivers, reminders).
+  // deploy.sh refuses the flag in prod.
   describe('TICKR_DISABLE_REMOTE_JOBS=1', () => {
     const prev = process.env['TICKR_DISABLE_REMOTE_JOBS'];
     beforeEach(() => {
@@ -331,22 +259,19 @@ describe('registerScheduledJobs', () => {
 
       const exprs = mocks.schedule.mock.calls.map((c) => c[0]);
       // External-data crons are gated off: hourly backfill, universe refresh and
-      // Friday close capture. (The intraday sweep shares '0 */5 * * * *' with the
+      // daily close capture. (The intraday sweep shares '0 */5 * * * *' with the
       // ungated alerts check, so that expression still appears — via alerts.)
       expect(exprs).not.toContain('0 0 * * * *'); // hourly backfill
-      expect(exprs).not.toContain('0 30 13 * * 6'); // Saturday catch-up sweep
       expect(exprs).not.toContain('0 0 0 * * 1,3,6'); // universe refresh
-      expect(exprs).not.toContain('0 30 21 * * 5'); // Friday close capture
-      // Alerts + the 7 DB/Redis-only Fantasy Street crons remain.
+      expect(exprs).not.toContain('0 30 21 * * 1-5'); // daily close capture
+      // Alerts + the 5 DB/Redis-only Fantasy Street crons remain.
       expect(exprs).toContain('0 */5 * * * *'); // alerts
-      expect(exprs).toContain('0 0 6 * * 0'); // classifier
       expect(exprs).toContain('0 30 14 * * 1-5'); // lineup lock
       expect(exprs).toContain('0 35 21 * * 5'); // weekly settle
-      expect(exprs).toContain('0 35 21 * * 1-4'); // provisional scoring
       expect(exprs).toContain('0 45 21 * * 5'); // waiver run
       expect(exprs).toContain('0 0 18 * * 0'); // lineup reminders (Sunday)
       expect(exprs).toContain('0 0 13 * * 1-5'); // lineup reminders (weekday)
-      expect(mocks.schedule).toHaveBeenCalledTimes(8);
+      expect(mocks.schedule).toHaveBeenCalledTimes(6);
     });
 
     it('does not run the startup backfill or touch the Massive locks', () => {

@@ -106,7 +106,7 @@ describe('GET /admin/ops', () => {
     await recordEodRun(getRedis(), 1234, 42);
     // Seed one job's status so we can assert it survives the HTTP route (Fastify
     // would strip response fields not in a response schema — /admin/ops has none).
-    await recordJobResult(getRedis(), 'classifier', {
+    await recordJobResult(getRedis(), 'lineup-lock', {
       ok: true,
       durationMs: 321,
     });
@@ -127,9 +127,9 @@ describe('GET /admin/ops', () => {
     // jobs[] is the data source for the /admin/jobs viewer: one entry per
     // registered job, with the seeded outcome flowing through.
     expect(body.jobs).toHaveLength(JOB_DEFS.length);
-    const classifier = body.jobs.find((j) => j.name === 'classifier');
-    expect(classifier?.lastOutcome).toBe('ok');
-    expect(classifier?.lastDurationMs).toBe(321);
+    const seeded = body.jobs.find((j) => j.name === 'lineup-lock');
+    expect(seeded?.lastOutcome).toBe('ok');
+    expect(seeded?.lastDurationMs).toBe(321);
   });
 
   describe('worstLag', () => {

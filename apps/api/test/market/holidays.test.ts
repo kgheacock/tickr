@@ -182,8 +182,32 @@ describe('currentFriday', () => {
     expect(fridayOf('2026-06-17T04:49:00Z')).toBe('2026-06-19');
   });
 
-  it('Sunday night ET (Monday early UTC) resolves the coming Friday', () => {
-    // Sun 2026-06-14 23:30 ET = Mon 2026-06-15 03:30 UTC → Fri 2026-06-19.
-    expect(fridayOf('2026-06-15T03:30:00Z')).toBe('2026-06-19');
+  it('weekend resolves the just-passed Friday, not the coming one', () => {
+    // The scoring week settles Friday EOD; the next week begins Monday's open, so
+    // over the weekend My Team / Waiver show the trailing week. Sat 2026-06-20 →
+    // Fri 2026-06-19 (the week that just closed), not the next Friday 2026-06-26.
+    expect(fridayOf('2026-06-20T16:00:00Z')).toBe('2026-06-19');
+    // Sun 2026-06-14 23:30 ET = Mon 2026-06-15 03:30 UTC → the just-passed
+    // Fri 2026-06-12, not the coming Fri 2026-06-19.
+    expect(fridayOf('2026-06-15T03:30:00Z')).toBe('2026-06-12');
+  });
+
+  it('rolls to the new week at the open, not at midnight', () => {
+    // The week rolls over at the new week's first market open (09:30 ET), the
+    // instant lineups lock — not calendar midnight.
+    // Mon 2026-06-22 08:00 ET (pre-open) still belongs to last week → 2026-06-19.
+    expect(fridayOf('2026-06-22T12:00:00Z')).toBe('2026-06-19');
+    // Mon 2026-06-22 10:00 ET (post-open) is the new week → 2026-06-26.
+    expect(fridayOf('2026-06-22T14:00:00Z')).toBe('2026-06-26');
+  });
+
+  it('a holiday Monday defers the roll-over to the next open', () => {
+    // Mon 2026-01-19 is MLK Day (closed); the new week opens Tue 2026-01-20.
+    // All of the holiday Monday still resolves to the prior Friday 2026-01-16.
+    expect(fridayOf('2026-01-19T18:00:00Z')).toBe('2026-01-16'); // 13:00 ET Mon
+    // Tue 2026-01-20 08:00 ET (pre-open) still last week → 2026-01-16.
+    expect(fridayOf('2026-01-20T13:00:00Z')).toBe('2026-01-16');
+    // Tue 2026-01-20 10:00 ET (post-open) is the new week → 2026-01-23.
+    expect(fridayOf('2026-01-20T15:00:00Z')).toBe('2026-01-23');
   });
 });
